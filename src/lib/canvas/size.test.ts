@@ -23,9 +23,9 @@ describe("canvas size controls", () => {
   })
 
   it("clamps only invisible or oversized drafts when applied", () => {
-    expect(resolveDraftCanvasSize({ width: "0", height: "2000" }, { width: 360, height: 480 })).toEqual({
+    expect(resolveDraftCanvasSize({ width: "0", height: "5000" }, { width: 360, height: 480 })).toEqual({
       width: 1,
-      height: 1600,
+      height: 4096,
     })
   })
 
@@ -37,9 +37,9 @@ describe("canvas size controls", () => {
   })
 
   it("normalizes canvas sizes to the supported range", () => {
-    expect(normalizeCanvasSize({ width: 0, height: 2000.8 })).toEqual({
+    expect(normalizeCanvasSize({ width: 0, height: 5000.8 })).toEqual({
       width: 1,
-      height: 1600,
+      height: 4096,
     })
   })
 })

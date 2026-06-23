@@ -126,6 +126,46 @@ function nearestOpenRouterAspectRatio(width: number, height: number) {
   }, OPENROUTER_ASPECT_RATIOS[0])
 }
 
+function roundUpToMultiple(value: number, multiple: number) {
+  return Math.ceil(value / multiple) * multiple
+}
+
+function nearestStandardImageSize(width: number, height: number) {
+  const target = width / height
+  const standardSizes = ["1024x1024", "1536x1024", "1024x1536"] as const
+
+  return standardSizes.reduce((best, candidate) => {
+    const [candidateWidth, candidateHeight] = candidate.split("x").map(Number)
+    const [bestWidth, bestHeight] = best.split("x").map(Number)
+    const candidateDistance = Math.abs(Math.log(target / (candidateWidth / candidateHeight)))
+    const bestDistance = Math.abs(Math.log(target / (bestWidth / bestHeight)))
+    return candidateDistance < bestDistance ? candidate : best
+  }, standardSizes[0])
+}
+
+function openAiCompatibleSizeFor(model: string, width: number, height: number) {
+  const normalizedModel = model.toLowerCase()
+
+  if (normalizedModel.includes("gpt-image-2")) {
+    const nextWidth = Math.min(roundUpToMultiple(width, 16), 3840)
+    const nextHeight = Math.min(roundUpToMultiple(height, 16), 3840)
+    return `${nextWidth}x${nextHeight}`
+  }
+
+  if (normalizedModel.includes("dall-e-2")) {
+    return "1024x1024"
+  }
+
+  if (normalizedModel.includes("dall-e-3")) {
+    const target = width / height
+    if (target > 1.2) return "1792x1024"
+    if (target < 0.8) return "1024x1792"
+    return "1024x1024"
+  }
+
+  return nearestStandardImageSize(width, height)
+}
+
 function composeImagePrompt({
   prompt,
   feedback,
@@ -368,7 +408,7 @@ function bodyForProvider({
     model,
     prompt: composedPrompt,
     n: 1,
-    size: "auto",
+    size: openAiCompatibleSizeFor(model, width, height),
   }
 }
 

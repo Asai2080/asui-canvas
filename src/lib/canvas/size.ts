@@ -1,7 +1,7 @@
 import type { CanvasSize } from "@/lib/canvas/types"
 
 export const MIN_CANVAS_SIZE = 1
-export const MAX_CANVAS_SIZE = 1600
+export const MAX_CANVAS_SIZE = 4096
 
 const clampSize = (value: number) =>
   Math.min(Math.max(Math.round(value), MIN_CANVAS_SIZE), MAX_CANVAS_SIZE)

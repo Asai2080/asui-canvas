@@ -84,6 +84,62 @@ describe("image generation route", () => {
     expect(payload.version.src).toBe(`data:image/png;base64,${"a".repeat(120)}`)
   })
 
+  it("sends arbitrary canvas dimensions for gpt-image-2 compatible models", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: [{ b64_json: "abc123" }],
+        }),
+        { status: 200 }
+      )
+    )
+
+    const response = await POST(
+      createRequest({
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "sk-test",
+        model: "gpt-image-2",
+        prompt: "ramen poster",
+        width: 1024,
+        height: 1820,
+      })
+    )
+    const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)) as {
+      size: string
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.size).toBe("1024x1824")
+  })
+
+  it("maps gpt-image-1 canvas dimensions to the nearest supported standard size", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: [{ b64_json: "abc123" }],
+        }),
+        { status: 200 }
+      )
+    )
+
+    const response = await POST(
+      createRequest({
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "sk-test",
+        model: "gpt-image-1",
+        prompt: "ramen poster",
+        width: 900,
+        height: 1600,
+      })
+    )
+    const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)) as {
+      size: string
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.size).toBe("1024x1536")
+  })
+
   it("uses OpenRouter chat completions image generation when the base URL is openrouter.ai", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
