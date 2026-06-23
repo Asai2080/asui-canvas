@@ -9,6 +9,10 @@ type GenerateImageRequest = {
   model?: string
   prompt?: string
   feedback?: string
+  feedbackItems?: Array<{
+    label?: string
+    text?: string
+  }>
   parentVersionId?: string
   sourceImageSrc?: string
   width?: number
@@ -166,15 +170,26 @@ function openAiCompatibleSizeFor(model: string, width: number, height: number) {
   return nearestStandardImageSize(width, height)
 }
 
-function composeImagePrompt({
-  prompt,
-  feedback,
-  hasSourceImage,
-}: {
-  prompt: string
-  feedback?: string
-  hasSourceImage: boolean
-}) {
+function composeFeedback(feedback?: string, feedbackItems?: GenerateImageRequest["feedbackItems"]) {
+  const items = (feedbackItems ?? [])
+    .map((item) => ({
+      label: item.label?.trim() || "标注区域",
+      text: item.text?.trim() ?? "",
+    }))
+    .filter((item) => item.text)
+
+  if (items.length === 0) return feedback?.trim() || undefined
+
+  return [
+    "Apply the following canvas annotations as one unified edit request.",
+    "Only change the regions requested by these annotations. Preserve unannotated regions as much as possible.",
+    "",
+    "Annotations:",
+    ...items.map((item, index) => `${index + 1}. ${item.label}: ${item.text}`),
+  ].join("\n")
+}
+
+function composeImagePrompt({ prompt, feedback, hasSourceImage }: { prompt: string; feedback?: string; hasSourceImage: boolean }) {
   if (!feedback?.trim()) return prompt
 
   if (!hasSourceImage) {
@@ -429,7 +444,7 @@ export async function POST(request: Request) {
   const sourceImageSrc = provider === "openrouter" ? await sourceImageToModelUrl(body.sourceImageSrc) : null
   const composedPrompt = composeImagePrompt({
     prompt,
-    feedback: body.feedback,
+    feedback: composeFeedback(body.feedback, body.feedbackItems),
     hasSourceImage: Boolean(sourceImageSrc),
   })
   const upstream = await fetch(targetUrl, {

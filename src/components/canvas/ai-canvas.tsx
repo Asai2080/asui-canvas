@@ -17,6 +17,11 @@ import { Button } from "@/components/ui/button"
 import { CanvasSizeFloatingBar } from "@/components/canvas/canvas-size-floating-bar"
 import { CanvasToolbar } from "@/components/canvas/canvas-toolbar"
 import { GenerationPanel } from "@/components/canvas/generation-panel"
+import {
+  buildAnnotationFeedbackItems,
+  validateSameAnnotationTarget,
+  type ResolvedAnnotation,
+} from "@/lib/canvas/annotations"
 import { readApiConfigFromSession } from "@/lib/canvas/api-config"
 import { expandBounds, findClearPlacement, intersects } from "@/lib/canvas/geometry"
 import { CANVAS_PERSISTENCE_KEY, IMAGE_VERSION_STORAGE_KEY } from "@/lib/canvas/persistence"
@@ -115,6 +120,52 @@ function getAnnotationFeedback(editor: Editor, annotationId: TLShapeId) {
 
   const text = editor.getShapeUtil(shape).getText(shape)?.trim()
   return text || "根据画布标注区域优化图片"
+}
+
+function getAnnotationLocationLabel(annotationBounds: Bounds, sourceBounds: Bounds) {
+  const centerX = annotationBounds.x + annotationBounds.w / 2
+  const centerY = annotationBounds.y + annotationBounds.h / 2
+  const horizontal =
+    centerX < sourceBounds.x + sourceBounds.w / 3
+      ? "左"
+      : centerX > sourceBounds.x + (sourceBounds.w * 2) / 3
+        ? "右"
+        : "中"
+  const vertical =
+    centerY < sourceBounds.y + sourceBounds.h / 3
+      ? "上"
+      : centerY > sourceBounds.y + (sourceBounds.h * 2) / 3
+        ? "下"
+        : "中"
+
+  if (horizontal === "中" && vertical === "中") return "中间区域"
+  if (horizontal === "中") return `${vertical}方区域`
+  if (vertical === "中") return `${horizontal}侧区域`
+  return `${vertical}${horizontal}区域`
+}
+
+function resolveAnnotationForGeneration(editor: Editor, annotationId: TLShapeId): ResolvedAnnotation | null {
+  const target = getGeneratedImageTargetForAnnotation(editor, annotationId)
+  if (!target) return null
+  const sourceBounds = editor.getShapePageBounds(target.imageId)
+
+  return {
+    annotationId,
+    imageId: target.imageId,
+    versionId: target.versionId,
+    text: getAnnotationFeedback(editor, annotationId),
+    label: sourceBounds ? getAnnotationLocationLabel(target.annotationBounds, toBounds(sourceBounds)) : "标注区域",
+  }
+}
+
+function getImageAnnotationsForGeneration(editor: Editor, imageId: TLShapeId) {
+  return editor
+    .getCurrentPageShapes()
+    .filter((shape) => ANNOTATION_TYPES.has(shape.type))
+    .map((shape) => resolveAnnotationForGeneration(editor, shape.id as TLShapeId))
+    .filter((annotation): annotation is ResolvedAnnotation => {
+      return annotation !== null && annotation.imageId === imageId
+    })
 }
 
 const extensionFromSrc = (src: string) => {
@@ -217,12 +268,14 @@ async function persistImageVersion(version: ImageVersion) {
 async function generateImageVersion({
   prompt,
   feedback,
+  feedbackItems,
   parentVersionId,
   bounds,
   sourceImageSrc,
 }: {
   prompt: string
   feedback?: string
+  feedbackItems?: Array<{ label: string; text: string }>
   parentVersionId?: string
   bounds: Bounds
   sourceImageSrc?: string
@@ -230,7 +283,10 @@ async function generateImageVersion({
   const apiConfig = readApiConfigFromSession()
 
   if (!apiConfig.baseUrl.trim() || !apiConfig.apiKey.trim()) {
-    return generatePoster({ prompt, feedback, parentVersionId })
+    const localFeedback = feedbackItems?.length
+      ? feedbackItems.map((item, index) => `${index + 1}. ${item.label}: ${item.text}`).join("\n")
+      : feedback
+    return generatePoster({ prompt, feedback: localFeedback, parentVersionId })
   }
 
   const response = await fetch("/api/images/generate", {
@@ -242,6 +298,7 @@ async function generateImageVersion({
       ...apiConfig,
       prompt,
       feedback,
+      feedbackItems,
       parentVersionId,
       sourceImageSrc,
       width: bounds.w,
@@ -280,6 +337,13 @@ export function AiCanvas() {
     annotationId: TLShapeId
     imageId: TLShapeId
     versionId: string
+    x: number
+    y: number
+  } | null>(null)
+  const [multiAnnotationAction, setMultiAnnotationAction] = useState<{
+    imageId: TLShapeId
+    versionId: string
+    annotations: ResolvedAnnotation[]
     x: number
     y: number
   } | null>(null)
@@ -335,6 +399,7 @@ export function AiCanvas() {
 
     const selectedShape = editor.getOnlySelectedShape()
     const selectedMeta = shapeMeta(selectedShape)
+    const selectedShapeIds = editor.getSelectedShapeIds()
 
     if (
       selectedShape &&
@@ -355,11 +420,53 @@ export function AiCanvas() {
           x: anchor.x + 8,
           y: anchor.y - 4,
         })
+        setMultiAnnotationAction(null)
         return
       }
     }
 
     setAnnotationAction(null)
+
+    if (
+      selectedShape?.type === "image" &&
+      (selectedMeta.kind === "generated-image" || selectedMeta.asuiNode === "generated-image") &&
+      typeof selectedMeta.versionId === "string"
+    ) {
+      const annotations = getImageAnnotationsForGeneration(editor, selectedShape.id as TLShapeId)
+      const imageBounds = editor.getShapePageBounds(selectedShape.id)
+      if (annotations.length >= 2 && imageBounds) {
+        const anchor = editor.pageToViewport({ x: imageBounds.x + imageBounds.w, y: imageBounds.y })
+        setMultiAnnotationAction({
+          imageId: selectedShape.id as TLShapeId,
+          versionId: selectedMeta.versionId,
+          annotations,
+          x: anchor.x + 8,
+          y: anchor.y + 36,
+        })
+        return
+      }
+    }
+
+    if (selectedShapeIds.length >= 2) {
+      const annotations = selectedShapeIds
+        .map((id) => resolveAnnotationForGeneration(editor, id as TLShapeId))
+        .filter((annotation): annotation is ResolvedAnnotation => Boolean(annotation))
+      const target = validateSameAnnotationTarget(annotations)
+      if (target && annotations.length >= 2) {
+        const firstBounds = editor.getShapePageBounds(annotations[0].annotationId as TLShapeId)
+        const anchor = firstBounds ? editor.pageToViewport({ x: firstBounds.x + firstBounds.w, y: firstBounds.y }) : { x: 120, y: 120 }
+        setMultiAnnotationAction({
+          imageId: target.imageId as TLShapeId,
+          versionId: target.versionId,
+          annotations,
+          x: anchor.x + 8,
+          y: anchor.y + 36,
+        })
+        return
+      }
+    }
+
+    setMultiAnnotationAction(null)
   }, [])
 
   const handleMount = useCallback(
@@ -598,6 +705,75 @@ export function AiCanvas() {
     }
   }, [annotationAction, prompt, versions])
 
+  const editFromAllAnnotations = useCallback(async () => {
+    const editor = editorRef.current
+    if (!editor || !multiAnnotationAction) return
+    const sourceBounds = editor.getShapePageBounds(multiAnnotationAction.imageId)
+    if (!sourceBounds) return
+    const source = versions.find((version) => version.versionId === multiAnnotationAction.versionId)
+
+    setStatus("editing")
+    setStatusDetail("")
+    try {
+      await new Promise((resolve) => window.setTimeout(resolve, 650))
+      const obstacles = editor
+        .getCurrentPageShapes()
+        .filter((shape) => shape.id !== multiAnnotationAction.imageId)
+        .map((shape) => editor.getShapePageBounds(shape.id))
+        .filter((bounds): bounds is NonNullable<typeof bounds> => Boolean(bounds))
+        .map(toBounds)
+      const imageBounds = findClearPlacement({
+        anchor: toBounds(sourceBounds),
+        width: sourceBounds.w,
+        height: sourceBounds.h,
+        obstacles,
+        margin: 190,
+      })
+      const version = await persistImageVersion(
+        await generateImageVersion({
+          prompt: source?.prompt ?? prompt,
+          feedbackItems: buildAnnotationFeedbackItems(multiAnnotationAction.annotations),
+          parentVersionId: multiAnnotationAction.versionId,
+          bounds: imageBounds,
+          sourceImageSrc: source?.src ?? getImageShapeSource(editor, multiAnnotationAction.imageId) ?? undefined,
+        })
+      )
+      const imageId = createImageShape(editor, version, imageBounds)
+      const arrowId = createShapeId()
+      editor.createShape({
+        id: arrowId,
+        type: "arrow",
+        x: sourceBounds.x + sourceBounds.w + 24,
+        y: sourceBounds.y + sourceBounds.h / 2,
+        props: {
+          start: { x: 0, y: 0 },
+          end: { x: Math.max(80, imageBounds.x - sourceBounds.x - sourceBounds.w - 48), y: 0 },
+          color: "red",
+          dash: "dashed",
+          size: "m",
+          arrowheadEnd: "arrow",
+          richText: toRichText("AI 合并新版本"),
+        },
+        meta: {
+          kind: "version-link",
+          asuiNode: "version-link",
+          asuiMetaVersion: ASUI_META_VERSION,
+          sourceShapeId: multiAnnotationAction.imageId,
+          targetShapeId: imageId,
+          sourceAnnotationIds: multiAnnotationAction.annotations.map((annotation) => annotation.annotationId),
+        },
+      })
+      editor.select(imageId)
+      editor.zoomToSelection({ animation: { duration: 240 } })
+      setVersions((current) => [...current, version])
+      setStatus("success")
+    } catch (error) {
+      console.error("Failed to generate from annotations", error)
+      setStatus("error")
+      setStatusDetail(error instanceof Error ? error.message : "图片生成失败")
+    }
+  }, [multiAnnotationAction, prompt, versions])
+
   const createAiAnnotation = useCallback(() => {
     const editor = editorRef.current
     if (!editor) return
@@ -654,6 +830,7 @@ export function AiCanvas() {
   }, [])
 
   const canGenerateFromAnnotation = Boolean(annotationAction) && status !== "editing"
+  const canGenerateFromAllAnnotations = Boolean(multiAnnotationAction) && status !== "editing"
 
   return (
     <main className="canvas-app-shell">
@@ -694,6 +871,31 @@ export function AiCanvas() {
           onPresetChange={applyHolderPreset}
           onSizeChange={(nextSize) => updateHolderSize(nextSize, "custom")}
         />
+      )}
+      {multiAnnotationAction && (
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="absolute z-30 h-8 gap-1.5 rounded-full px-3 text-xs shadow-xl"
+          style={{
+            left: multiAnnotationAction.x,
+            top: multiAnnotationAction.y,
+          }}
+          disabled={!canGenerateFromAllAnnotations}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            void editFromAllAnnotations()
+          }}
+        >
+          {status === "editing" ? (
+            <LoaderCircle className="size-3.5 animate-spin" />
+          ) : (
+            <Sparkles className="size-3.5" />
+          )}
+          全部标注生成
+        </Button>
       )}
       <CanvasToolbar onCreateHolder={createHolder} onCreateAnnotation={createAiAnnotation} />
       <GenerationPanel

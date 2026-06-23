@@ -277,6 +277,53 @@ describe("image generation route", () => {
     })
   })
 
+  it("composes multiple annotation feedback items into one localized edit request", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                images: [{ image_url: { url: "https://example.test/edited.png" } }],
+              },
+            },
+          ],
+        }),
+        { status: 200 }
+      )
+    )
+
+    const response = await POST(
+      createRequest({
+        baseUrl: "https://openrouter.ai",
+        apiKey: "sk-test",
+        model: "openai/gpt-5.4-image-2-20260421",
+        prompt: "ramen poster",
+        feedbackItems: [
+          { label: "右上区域", text: "把天空改成傍晚" },
+          { label: "中间主体", text: "外套改成红色" },
+        ],
+        sourceImageSrc: "https://example.test/source.png",
+        width: 900,
+        height: 1600,
+      })
+    )
+    const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)) as {
+      messages: Array<{
+        content: Array<{
+          type: string
+          text?: string
+        }>
+      }>
+    }
+    const text = body.messages[0]?.content[0]?.text ?? ""
+
+    expect(response.status).toBe(200)
+    expect(text).toContain("Apply the following canvas annotations")
+    expect(text).toContain("1. 右上区域: 把天空改成傍晚")
+    expect(text).toContain("2. 中间主体: 外套改成红色")
+  })
+
   it("summarizes unrecognized successful payloads", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
