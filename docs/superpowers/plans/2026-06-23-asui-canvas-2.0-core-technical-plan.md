@@ -156,11 +156,20 @@ type ProviderSizeMapping = {
 }
 ```
 
-## 2. Multi-Annotation Single Generation
+## 2. Annotation Generation Modes
 
 ### Product Behavior
 
-Keep the existing single-annotation generation path. Add a new multi-annotation path:
+This feature must support two first-class generation modes.
+
+Independent single-annotation mode:
+
+1. User selects one AI annotation.
+2. The existing nearby "Generate" action remains available.
+3. The app sends only that annotation as feedback.
+4. The result becomes a new version linked to the original image.
+
+Unified multi-annotation mode:
 
 1. User creates several AI annotations on one source image.
 2. User selects the source image or selects multiple annotations.
@@ -174,12 +183,14 @@ Keep the existing single-annotation generation path. Add a new multi-annotation 
 - Modify `src/components/canvas/ai-canvas.tsx`
   - Track multi-selection with `editor.getSelectedShapeIds()`.
   - Derive eligible annotation groups.
-  - Show a multi-annotation generation action.
+  - Keep the current single-annotation floating generate action.
+  - Show a separate multi-annotation generation action.
 
 - Create `src/lib/canvas/annotations.ts`
   - Resolve annotation targets.
   - Extract annotation text.
   - Validate same source image/version.
+  - Compose single-annotation feedback.
   - Compose multi-annotation feedback.
 
 - Modify `src/lib/canvas/types.ts`
@@ -191,6 +202,7 @@ Keep the existing single-annotation generation path. Add a new multi-annotation 
 
 - Create tests:
   - `src/lib/canvas/annotations.test.ts`
+  - Add coverage proving single-annotation feedback still uses only the selected annotation.
   - Add route tests for `feedbackItems`.
 
 ### Prompt Shape

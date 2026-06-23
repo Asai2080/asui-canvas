@@ -105,21 +105,28 @@ The current app supports multiple annotations existing on the canvas, but genera
 3. The app sends that one annotation as feedback.
 4. A new image version is created.
 
-### Desired 2.0 Behavior
+### Required 2.0 Behavior
 
-Users should be able to apply several local edit instructions to the same source image in one generation.
+2.0 must support both independent single-annotation edits and unified multi-annotation edits.
 
-Candidate interaction:
+Independent edit mode:
+
+1. Select one annotation.
+2. Use the annotation's nearby "generate" action.
+3. The app sends only that annotation as the edit instruction.
+4. The result becomes a new version linked to the original image.
+
+Unified edit mode:
 
 1. Add several AI annotations to one generated image.
-2. Select multiple annotations or select the source image and use a "generate from annotations" action.
+2. Select multiple annotations or select the source image and use a "generate from all annotations" action.
 3. The app combines the annotation texts and their source-image relationship into one edit request.
 4. The result is created as a new version linked to the original image.
 
 ### Guardrails
 
 - Only combine annotations that target the same source image/version.
-- Preserve the single-annotation path.
+- Preserve the single-annotation path as a first-class workflow, not a fallback.
 - Show a clear message when selected annotations belong to different images.
 - Store the annotation IDs used for the generation in metadata for traceability.
 
