@@ -159,6 +159,10 @@
   .generation-panel {
     @apply absolute right-4 top-4 z-20 w-[340px] rounded-3xl border bg-background/95 p-4 shadow-2xl backdrop-blur;
   }
+
+  .canvas-size-floating-bar {
+    @apply absolute z-30 flex max-w-[calc(100vw-2rem)] items-center overflow-visible rounded-2xl border bg-background/95 shadow-2xl backdrop-blur;
+  }
 }
 
 @media (max-width: 860px) {
@@ -168,5 +172,9 @@
 
   .generation-panel {
     @apply bottom-3 left-3 right-3 top-auto max-h-[46vh] w-auto overflow-y-auto rounded-2xl;
+  }
+
+  .canvas-size-floating-bar {
+    @apply left-3 right-3 max-w-[calc(100vw-1.5rem)] flex-wrap;
   }
 }

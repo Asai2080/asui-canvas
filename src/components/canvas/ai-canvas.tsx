@@ -14,12 +14,14 @@ import {
 import { LoaderCircle, Sparkles } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { CanvasSizeFloatingBar } from "@/components/canvas/canvas-size-floating-bar"
 import { CanvasToolbar } from "@/components/canvas/canvas-toolbar"
 import { GenerationPanel } from "@/components/canvas/generation-panel"
 import { readApiConfigFromSession } from "@/lib/canvas/api-config"
 import { expandBounds, findClearPlacement, intersects } from "@/lib/canvas/geometry"
 import { CANVAS_PERSISTENCE_KEY, IMAGE_VERSION_STORAGE_KEY } from "@/lib/canvas/persistence"
 import { generatePoster } from "@/lib/canvas/poster-generator"
+import { resolveCanvasSizePreset, type CanvasSizePresetId } from "@/lib/canvas/size-presets"
 import { normalizeCanvasSize } from "@/lib/canvas/size"
 import type { Bounds, CanvasSelection, CanvasSize, GenerationStatus, ImageVersion } from "@/lib/canvas/types"
 
@@ -28,6 +30,8 @@ const ANNOTATION_TYPES = new Set(["arrow", "draw", "text", "highlight", "geo"])
 const ASUI_META_VERSION = 1
 
 const shapeMeta = (shape?: TLShape | null) => (shape?.meta ?? {}) as Record<string, unknown>
+const isCanvasSizePresetId = (value: unknown): value is CanvasSizePresetId =>
+  typeof value === "string" && ["custom", "1:1", "2:3", "9:16", "3:2", "16:9", "a4", "web"].includes(value)
 
 const toBounds = (box: { x: number; y: number; w: number; h: number }): Bounds => ({
   x: box.x,
@@ -279,6 +283,11 @@ export function AiCanvas() {
     x: number
     y: number
   } | null>(null)
+  const [sizeBar, setSizeBar] = useState<{
+    x: number
+    y: number
+    presetId: CanvasSizePresetId
+  } | null>(null)
   const [holderSize, setHolderSize] = useState<CanvasSize>(DEFAULT_HOLDER_SIZE)
   const [prompt, setPrompt] = useState("")
   const [status, setStatus] = useState<GenerationStatus>("idle")
@@ -287,6 +296,17 @@ export function AiCanvas() {
 
   useEffect(() => {
     return () => unlistenRef.current?.()
+  }, [])
+
+  useEffect(() => {
+    const closeSizeBar = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Element && target.closest("[data-canvas-size-bar]")) return
+      setSizeBar(null)
+    }
+
+    window.addEventListener("pointerdown", closeSizeBar, { capture: true })
+    return () => window.removeEventListener("pointerdown", closeSizeBar, { capture: true })
   }, [])
 
   useEffect(() => {
@@ -300,7 +320,16 @@ export function AiCanvas() {
     if (nextSelection?.kind === "holder") {
       const bounds = editor.getShapePageBounds(nextSelection.shapeId as TLShapeId)
       if (bounds) {
-        setHolderSize(normalizeCanvasSize({ width: bounds.w, height: bounds.h }))
+        const normalizedSize = normalizeCanvasSize({ width: bounds.w, height: bounds.h })
+        const shape = editor.getShape(nextSelection.shapeId as TLShapeId)
+        const meta = shapeMeta(shape)
+        const anchor = editor.pageToViewport({ x: bounds.x, y: bounds.y })
+        setHolderSize(normalizedSize)
+        setSizeBar({
+          x: Math.max(16, anchor.x),
+          y: Math.max(16, anchor.y - 64),
+          presetId: isCanvasSizePresetId(meta.sizePreset) ? meta.sizePreset : "custom",
+        })
       }
     }
 
@@ -347,7 +376,7 @@ export function AiCanvas() {
   )
 
   const updateHolderSize = useCallback(
-    (nextSize: CanvasSize) => {
+    (nextSize: CanvasSize, nextPreset: CanvasSizePresetId = "custom") => {
       const normalizedSize = normalizeCanvasSize(nextSize)
       setHolderSize(normalizedSize)
 
@@ -381,6 +410,8 @@ export function AiCanvas() {
             asuiNode: "image-holder",
             asuiMetaVersion: ASUI_META_VERSION,
             size: normalizedSize,
+            sizePreset: nextPreset,
+            layoutMode: "manual",
           },
         })
         return
@@ -401,10 +432,19 @@ export function AiCanvas() {
           asuiNode: "image-holder",
           asuiMetaVersion: ASUI_META_VERSION,
           size: normalizedSize,
+          sizePreset: nextPreset,
+          layoutMode: "manual",
         },
       })
     },
     [selection]
+  )
+
+  const applyHolderPreset = useCallback(
+    (presetId: CanvasSizePresetId) => {
+      updateHolderSize(resolveCanvasSizePreset(presetId, holderSize), presetId)
+    },
+    [holderSize, updateHolderSize]
   )
 
   const createHolder = useCallback(() => {
@@ -429,6 +469,8 @@ export function AiCanvas() {
         asuiNode: "image-holder",
         asuiMetaVersion: ASUI_META_VERSION,
         size: holderSize,
+        sizePreset: "custom",
+        layoutMode: "manual",
       },
     })
     editor.select(id)
@@ -641,6 +683,17 @@ export function AiCanvas() {
           )}
           生成
         </Button>
+      )}
+      {selection?.kind === "holder" && sizeBar && (
+        <CanvasSizeFloatingBar
+          key={`${selection.shapeId}:${holderSize.width}x${holderSize.height}`}
+          x={sizeBar.x}
+          y={sizeBar.y}
+          size={holderSize}
+          presetId={sizeBar.presetId}
+          onPresetChange={applyHolderPreset}
+          onSizeChange={(nextSize) => updateHolderSize(nextSize, "custom")}
+        />
       )}
       <CanvasToolbar onCreateHolder={createHolder} onCreateAnnotation={createAiAnnotation} />
       <GenerationPanel
