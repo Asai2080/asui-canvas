@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown, Frame, LayoutTemplate } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,6 +21,38 @@ type CanvasSizeFloatingBarProps = {
   presetId: CanvasSizePresetId
   onPresetChange: (presetId: CanvasSizePresetId) => void
   onSizeChange: (size: CanvasSize) => void
+}
+
+const presetIconClass = (presetId: CanvasSizePresetId) => {
+  switch (presetId) {
+    case "1:1":
+      return "h-4 w-4 rounded-[4px]"
+    case "2:3":
+      return "h-5 w-3.5 rounded-[4px]"
+    case "9:16":
+      return "h-6 w-3 rounded-[4px]"
+    case "3:2":
+      return "h-3.5 w-5 rounded-[4px]"
+    case "16:9":
+      return "h-3 w-6 rounded-[4px]"
+    case "a4":
+    case "web":
+      return "h-4 w-5 rounded-[3px] before:absolute before:-left-1 before:-top-1 before:h-4 before:w-5 before:rounded-[3px] before:border before:border-current before:bg-background"
+    default:
+      return "h-4 w-5 rounded-[3px]"
+  }
+}
+
+function PresetIcon({ presetId }: { presetId: CanvasSizePresetId }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "relative inline-flex shrink-0 border border-current bg-background text-foreground",
+        presetIconClass(presetId)
+      )}
+    />
+  )
 }
 
 export function CanvasSizeFloatingBar({
@@ -55,19 +87,19 @@ export function CanvasSizeFloatingBar({
           aria-expanded={isPresetOpen}
           onClick={() => setIsPresetOpen((current) => !current)}
         >
-          <LayoutTemplate className="size-3.5" />
+          <PresetIcon presetId={selectedPreset.id} />
           {selectedPreset.label}
           <ChevronDown className={cn("size-3.5 transition-transform", isPresetOpen && "rotate-180")} />
         </Button>
 
         {isPresetOpen && (
-          <div className="absolute left-3 top-10 z-40 w-60 rounded-xl border bg-background p-1.5 shadow-2xl">
+          <div className="absolute left-0 top-10 z-40 w-72 rounded-2xl bg-background p-1.5 shadow-2xl">
             {CANVAS_SIZE_PRESETS.filter((preset) => preset.id !== "custom").map((preset) => (
               <button
                 key={preset.id}
                 type="button"
                 className={cn(
-                  "flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm transition-colors hover:bg-muted",
+                  "flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-base transition-colors hover:bg-muted",
                   preset.id === presetId && "bg-muted"
                 )}
                 onClick={() => {
@@ -75,10 +107,10 @@ export function CanvasSizeFloatingBar({
                   setIsPresetOpen(false)
                 }}
               >
-                <Frame className="size-3.5 text-muted-foreground" />
+                <PresetIcon presetId={preset.id} />
                 <span className="font-medium">{preset.label}</span>
                 {preset.width && preset.height && preset.group !== "ratio" ? (
-                  <span className="text-muted-foreground">
+                  <span className="text-muted-foreground/70">
                     {preset.width}*{preset.height}
                   </span>
                 ) : null}
