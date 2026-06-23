@@ -8,7 +8,7 @@ This document captures the current 2.0 direction discussed for Asui Canvas. It i
 
 ## 2.0 Product Direction
 
-Asui Canvas 2.0 should keep the existing canvas generation path stable while adding higher-resolution generation, multi-annotation editing, slicing/export workflows, and an optional Codex collaboration path.
+Asui Canvas 2.0 should keep the existing canvas generation path stable while adding size-driven generation, multi-annotation editing, slicing/export workflows, and an optional Codex collaboration path.
 
 The 1.0 path must remain intact:
 
@@ -22,7 +22,7 @@ Codex-related capabilities are a side path. They must not replace, block, or wea
 
 ## Goals
 
-- Add real 2K and 4K generation choices that are passed through to the API layer.
+- Make canvas dimensions the source of truth for generated image size and pass them through to the API layer.
 - Support generating from multiple annotations on the same image in one request.
 - Add a slicing workflow for turning generated images into reusable output formats.
 - Define a Codex collaboration task path for code changes and image generation assistance.
@@ -35,17 +35,17 @@ Codex-related capabilities are a side path. They must not replace, block, or wea
 - Do not promise video generation in the core 2.0 scope until model choice, cost, storage, and UX are decided.
 - Do not build a full multi-user cloud project system in this iteration.
 
-## Feature Area 1: 2K and 4K Generation
+## Feature Area 1: Size-Driven Generation
 
 ### User Experience
 
-Resolution and canvas size should move toward a floating canvas settings bar, similar to the provided reference image. The bar should feel attached to the selected image holder or canvas frame, rather than being buried only in the side panel.
+Canvas size should move toward a floating canvas settings bar, similar to the provided reference image. The bar should feel attached to the selected image holder or canvas frame, rather than being buried only in the side panel.
 
 The floating settings bar should include:
 
 - Canvas/frame identity, such as the frame name.
 - Layout mode: auto or manual.
-- Size preset selector: custom, common social presets, 2K, and 4K.
+- Size preset selector: custom dimensions and common aspect/document/web presets.
 - Width and height fields.
 - A resize or fit affordance when useful.
 
@@ -57,14 +57,7 @@ The size preset selector should behave like a design-tool dropdown. Example pres
 
 Choosing a preset should immediately update the active canvas/frame dimensions on the canvas. The user should see the blue selected frame resize in real time while the width and height fields update to the resolved pixel dimensions. Manual width and height edits should also resize the selected frame immediately after commit, such as on Enter, blur, or explicit apply depending on the final control behavior.
 
-Resolution choices should include:
-
-- Auto
-- 1K
-- 2K
-- 4K
-
-The selected resolution should affect the actual model request, not only the displayed canvas node size.
+There should not be a separate 2K or 4K control in the first 2.0 design. The selected or entered canvas dimensions are the user's output-size intent.
 
 ### Floating Settings Behavior
 
@@ -76,30 +69,29 @@ The floating settings bar should open from these triggers:
 
 The floating settings bar should close when the user clicks outside the settings bar and outside the active canvas/frame interaction area.
 
-This interaction should preserve the current right-side generation panel. The floating bar owns frame layout, width, height, and resolution preset changes. The generation panel continues to own prompt entry, generation status, and generation actions unless later product work intentionally merges these surfaces.
+This interaction should preserve the current right-side generation panel. The floating bar owns frame layout, width, height, and size preset changes. The generation panel continues to own prompt entry, generation status, and generation actions unless later product work intentionally merges these surfaces.
 
 ### Technical Behavior
 
-The client should send a structured resolution field, for example `resolutionPreset`, along with width and height. The server should map this to provider-specific parameters.
+The client should send width and height as the source of truth. The server should map those dimensions to provider-specific parameters.
 
 Current behavior to improve:
 
 - OpenAI-compatible requests currently use `size: "auto"`.
 - OpenRouter requests currently map width and height to `image_config.aspect_ratio`.
-- Width and height are preserved in returned version metadata, but not always enforced as provider output resolution.
+- Width and height are preserved in returned version metadata, but not always enforced as provider output size.
 
 2.0 should make the API behavior explicit:
 
 - For providers that support exact size values, send the closest supported size.
-- For providers that support quality or resolution tiers, map 2K and 4K to those documented tiers.
-- For providers that only support aspect ratio, send aspect ratio and return a clear capability note.
-- If 4K is unsupported, either warn and downgrade or block with a clear error. The preferred behavior should be chosen during implementation planning.
+- For providers that support quality or resolution tiers, derive the closest tier from the requested dimensions.
+- For providers that only support aspect ratio, send aspect ratio and return a clear capability note that the provider may choose the final pixel dimensions.
+- If a requested size is unsupported, either warn and downgrade or block with a clear error. The preferred behavior should be chosen during implementation planning.
 
 Canvas/frame settings should be stored in metadata so they survive selection changes and reloads:
 
 - Layout mode.
 - Size preset.
-- Resolution preset.
 - Width and height.
 
 ## Feature Area 2: Multi-Annotation Generation
@@ -168,7 +160,7 @@ The exact schema can be finalized later, but each task should include:
 - Task ID.
 - Task type: `code-change` or `image-generation`.
 - Created timestamp.
-- Source canvas context: selected shape IDs, version IDs, annotation IDs, prompt, dimensions, and resolution preset.
+- Source canvas context: selected shape IDs, version IDs, annotation IDs, prompt, dimensions, and size preset.
 - User instruction.
 - Status: `queued`, `in-progress`, `completed`, `failed`, or `cancelled`.
 - Result links or generated asset references when available.
@@ -189,7 +181,7 @@ Possible slicing workflow:
 4. Export slices as image assets.
 5. Optionally place exported slices back onto the canvas as separate versioned assets.
 
-The slicing workflow pairs naturally with 2K and 4K generation because high-resolution source images give users more usable crop area.
+The slicing workflow pairs naturally with size-driven generation because larger source images give users more usable crop area.
 
 ## Feature Area 5: Video Model Exploration
 
@@ -216,7 +208,7 @@ Because video introduces a different asset type and likely async job polling, it
 2.0 should extend existing boundaries instead of replacing them:
 
 - `AiCanvas` remains the main tldraw orchestration layer.
-- `GenerationPanel` gains resolution controls and maybe batch/multi-annotation entry points.
+- `GenerationPanel` gains batch/multi-annotation entry points while size controls move toward the floating canvas settings bar.
 - `/api/images/generate` becomes provider-capability aware.
 - A new Codex task route can own structured task creation.
 - A new slicing module can handle crop math and asset export.
@@ -227,7 +219,7 @@ The current metadata-driven approach should continue. New fields should be added
 
 Minimum coverage should include:
 
-- Resolution preset normalization and provider request mapping.
+- Size preset normalization and provider request mapping.
 - Multi-annotation selection validation and prompt composition.
 - Codex task schema validation and file writing.
 - Slice rectangle normalization and exported asset sizing.
@@ -235,8 +227,8 @@ Minimum coverage should include:
 
 ## Open Decisions
 
-- Whether unsupported 4K should downgrade with a warning or fail explicitly.
-- Exact resolution mapping per provider and model.
+- Whether unsupported requested sizes should downgrade with a warning or fail explicitly.
+- Exact size mapping per provider and model.
 - Whether multi-annotation generation is triggered by multi-select annotations or by selecting the source image.
 - Whether slicing exports only to files or also creates canvas nodes.
 - Whether Codex image generation writes results directly into canvas assets in 2.0 or only records a task/result contract.
