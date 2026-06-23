@@ -16,6 +16,7 @@ import { LoaderCircle, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CanvasSizeFloatingBar } from "@/components/canvas/canvas-size-floating-bar"
 import { CanvasToolbar } from "@/components/canvas/canvas-toolbar"
+import { CodexTaskPanel } from "@/components/canvas/codex-task-panel"
 import { GenerationPanel } from "@/components/canvas/generation-panel"
 import {
   buildAnnotationFeedbackItems,
@@ -353,6 +354,9 @@ export function AiCanvas() {
     presetId: CanvasSizePresetId
   } | null>(null)
   const [holderSize, setHolderSize] = useState<CanvasSize>(DEFAULT_HOLDER_SIZE)
+  const [selectedShapeIds, setSelectedShapeIds] = useState<string[]>([])
+  const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<string[]>([])
+  const [isCodexTaskOpen, setIsCodexTaskOpen] = useState(false)
   const [prompt, setPrompt] = useState("")
   const [status, setStatus] = useState<GenerationStatus>("idle")
   const [statusDetail, setStatusDetail] = useState("")
@@ -379,6 +383,14 @@ export function AiCanvas() {
 
   const syncSelection = useCallback((editor: Editor) => {
     const nextSelection = getSelection(editor)
+    const nextSelectedShapeIds = editor.getSelectedShapeIds()
+    setSelectedShapeIds(nextSelectedShapeIds)
+    setSelectedAnnotationIds(
+      nextSelectedShapeIds.filter((id) => {
+        const shape = editor.getShape(id)
+        return Boolean(shape && ANNOTATION_TYPES.has(shape.type))
+      })
+    )
     setSelection(nextSelection)
 
     if (nextSelection?.kind === "holder") {
@@ -399,7 +411,6 @@ export function AiCanvas() {
 
     const selectedShape = editor.getOnlySelectedShape()
     const selectedMeta = shapeMeta(selectedShape)
-    const selectedShapeIds = editor.getSelectedShapeIds()
 
     if (
       selectedShape &&
@@ -447,8 +458,8 @@ export function AiCanvas() {
       }
     }
 
-    if (selectedShapeIds.length >= 2) {
-      const annotations = selectedShapeIds
+    if (nextSelectedShapeIds.length >= 2) {
+      const annotations = nextSelectedShapeIds
         .map((id) => resolveAnnotationForGeneration(editor, id as TLShapeId))
         .filter((annotation): annotation is ResolvedAnnotation => Boolean(annotation))
       const target = validateSameAnnotationTarget(annotations)
@@ -897,7 +908,21 @@ export function AiCanvas() {
           全部标注生成
         </Button>
       )}
-      <CanvasToolbar onCreateHolder={createHolder} onCreateAnnotation={createAiAnnotation} />
+      {isCodexTaskOpen && (
+        <CodexTaskPanel
+          selectedShapeIds={selectedShapeIds}
+          annotationIds={selectedAnnotationIds}
+          prompt={prompt}
+          width={holderSize.width}
+          height={holderSize.height}
+          onClose={() => setIsCodexTaskOpen(false)}
+        />
+      )}
+      <CanvasToolbar
+        onCreateHolder={createHolder}
+        onCreateAnnotation={createAiAnnotation}
+        onOpenCodexTask={() => setIsCodexTaskOpen(true)}
+      />
       <GenerationPanel
         selection={selection}
         holderSize={holderSize}

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ImagePlus, KeyRound, MousePointer2, PenLine, Sparkles, X } from "lucide-react"
+import { Bot, ImagePlus, KeyRound, MousePointer2, PenLine, Sparkles, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,9 +20,10 @@ import { IMAGE_VERSION_STORAGE_KEY } from "@/lib/canvas/persistence"
 type CanvasToolbarProps = {
   onCreateHolder: () => void
   onCreateAnnotation: () => void
+  onOpenCodexTask: () => void
 }
 
-export function CanvasToolbar({ onCreateHolder, onCreateAnnotation }: CanvasToolbarProps) {
+export function CanvasToolbar({ onCreateHolder, onCreateAnnotation, onOpenCodexTask }: CanvasToolbarProps) {
   const [isConfigOpen, setIsConfigOpen] = useState(false)
   const [cacheMessage, setCacheMessage] = useState("")
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
@@ -88,6 +89,10 @@ export function CanvasToolbar({ onCreateHolder, onCreateAnnotation }: CanvasTool
         <Button size="sm" variant="outline" onClick={onCreateAnnotation} className="gap-2 rounded-xl">
           <PenLine className="size-4" />
           AI 标注
+        </Button>
+        <Button size="sm" variant="secondary" onClick={onOpenCodexTask} className="gap-2 rounded-xl">
+          <Bot className="size-4" />
+          交给 Codex
         </Button>
         <div className="hidden items-center gap-1.5 text-xs text-muted-foreground lg:flex">
           <MousePointer2 className="size-3.5" />

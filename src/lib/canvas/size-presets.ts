@@ -38,7 +38,6 @@ export function resolveCanvasSizePreset(id: CanvasSizePresetId, currentSize: Can
   }
 
   const longestEdge = Math.max(currentSize.width, currentSize.height)
-  const isPortrait = preset.height >= preset.width
   const scale = longestEdge / preset.width
 
   return normalizeCanvasSize({
