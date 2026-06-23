@@ -46,40 +46,28 @@ export function CanvasSizeFloatingBar({
       style={{ left: x, top: y }}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <div className="flex h-12 items-center gap-2 border-r px-3">
-        <span className="size-5 rounded-full border bg-background" aria-hidden="true" />
-        <span className="size-5 rounded-full border-[6px] border-foreground bg-background" aria-hidden="true" />
-      </div>
-
-      <div className="flex h-12 items-center gap-2 border-r px-3">
-        <span className="text-sm text-muted-foreground">布局</span>
-        <div className="grid grid-cols-2 rounded-xl bg-muted p-0.5 text-sm">
-          <span className="rounded-lg px-4 py-1.5 text-muted-foreground">自动</span>
-          <span className="rounded-lg bg-background px-4 py-1.5 font-medium shadow-sm">手动</span>
-        </div>
-      </div>
-
-      <div className="relative flex h-12 items-center gap-2 border-r px-3">
+      <div className="relative flex h-10 items-center gap-2 border-r px-3">
+        <span className="text-sm text-muted-foreground">尺寸：</span>
         <Button
           type="button"
           variant="ghost"
-          className="h-9 gap-2 rounded-xl px-2 text-base"
+          className="h-8 gap-1.5 rounded-lg px-2 text-sm"
           aria-expanded={isPresetOpen}
           onClick={() => setIsPresetOpen((current) => !current)}
         >
-          <LayoutTemplate className="size-4" />
+          <LayoutTemplate className="size-3.5" />
           {selectedPreset.label}
-          <ChevronDown className={cn("size-4 transition-transform", isPresetOpen && "rotate-180")} />
+          <ChevronDown className={cn("size-3.5 transition-transform", isPresetOpen && "rotate-180")} />
         </Button>
 
         {isPresetOpen && (
-          <div className="absolute left-3 top-12 z-40 w-72 rounded-2xl border bg-background p-2 shadow-2xl">
+          <div className="absolute left-3 top-10 z-40 w-60 rounded-xl border bg-background p-1.5 shadow-2xl">
             {CANVAS_SIZE_PRESETS.filter((preset) => preset.id !== "custom").map((preset) => (
               <button
                 key={preset.id}
                 type="button"
                 className={cn(
-                  "flex h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-base transition-colors hover:bg-muted",
+                  "flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm transition-colors hover:bg-muted",
                   preset.id === presetId && "bg-muted"
                 )}
                 onClick={() => {
@@ -87,7 +75,7 @@ export function CanvasSizeFloatingBar({
                   setIsPresetOpen(false)
                 }}
               >
-                <Frame className="size-4 text-muted-foreground" />
+                <Frame className="size-3.5 text-muted-foreground" />
                 <span className="font-medium">{preset.label}</span>
                 {preset.width && preset.height && preset.group !== "ratio" ? (
                   <span className="text-muted-foreground">
@@ -101,7 +89,7 @@ export function CanvasSizeFloatingBar({
       </div>
 
       <form
-        className="flex h-12 items-center gap-3 px-3"
+        className="flex h-10 items-center gap-2.5 px-3"
         onSubmit={(event) => {
           event.preventDefault()
           commitDraftSize()
@@ -117,7 +105,7 @@ export function CanvasSizeFloatingBar({
               setDraftSize((current) => ({ ...current, width: sanitizeCanvasSizeInput(event.target.value) }))
             }
             onBlur={commitDraftSize}
-            className="h-9 w-20 border-0 bg-transparent px-1 text-base font-medium shadow-none focus-visible:ring-0"
+            className="h-8 w-16 border-0 bg-transparent px-1 text-sm font-medium shadow-none focus-visible:ring-0"
           />
         </label>
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -130,7 +118,7 @@ export function CanvasSizeFloatingBar({
               setDraftSize((current) => ({ ...current, height: sanitizeCanvasSizeInput(event.target.value) }))
             }
             onBlur={commitDraftSize}
-            className="h-9 w-20 border-0 bg-transparent px-1 text-base font-medium shadow-none focus-visible:ring-0"
+            className="h-8 w-16 border-0 bg-transparent px-1 text-sm font-medium shadow-none focus-visible:ring-0"
           />
         </label>
       </form>
