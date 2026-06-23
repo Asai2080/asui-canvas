@@ -93,7 +93,7 @@ export function CanvasSizeFloatingBar({
         </Button>
 
         {isPresetOpen && (
-          <div className="absolute left-0 top-10 z-40 w-72 rounded-2xl bg-background p-1.5 shadow-2xl">
+          <div className="absolute left-0 top-10 z-40 w-72 rounded-2xl bg-background p-1.5">
             {CANVAS_SIZE_PRESETS.filter((preset) => preset.id !== "custom").map((preset) => (
               <button
                 key={preset.id}

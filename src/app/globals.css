@@ -161,7 +161,7 @@
   }
 
   .canvas-size-floating-bar {
-    @apply absolute z-30 flex max-w-[calc(100vw-2rem)] items-center overflow-visible rounded-xl border bg-background/95 shadow-xl backdrop-blur;
+    @apply absolute z-30 flex max-w-[calc(100vw-2rem)] items-center overflow-visible rounded-xl border bg-background/95 backdrop-blur;
   }
 }
 
