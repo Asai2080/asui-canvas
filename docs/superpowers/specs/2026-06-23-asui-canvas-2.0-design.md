@@ -39,7 +39,17 @@ Codex-related capabilities are a side path. They must not replace, block, or wea
 
 ### User Experience
 
-The generation panel should include resolution choices, likely:
+Resolution and canvas size should move toward a floating canvas settings bar, similar to the provided reference image. The bar should feel attached to the selected image holder or canvas frame, rather than being buried only in the side panel.
+
+The floating settings bar should include:
+
+- Canvas/frame identity, such as the frame name.
+- Layout mode: auto or manual.
+- Size preset selector: custom, common social presets, 2K, and 4K.
+- Width and height fields.
+- A resize or fit affordance when useful.
+
+Resolution choices should include:
 
 - Auto
 - 1K
@@ -47,6 +57,18 @@ The generation panel should include resolution choices, likely:
 - 4K
 
 The selected resolution should affect the actual model request, not only the displayed canvas node size.
+
+### Floating Settings Behavior
+
+The floating settings bar should open from these triggers:
+
+- Click the canvas/frame name.
+- Create a new image holder or canvas frame.
+- Click the selected canvas/frame border.
+
+The floating settings bar should close when the user clicks outside the settings bar and outside the active canvas/frame interaction area.
+
+This interaction should preserve the current right-side generation panel. The floating bar owns frame layout, width, height, and resolution preset changes. The generation panel continues to own prompt entry, generation status, and generation actions unless later product work intentionally merges these surfaces.
 
 ### Technical Behavior
 
@@ -64,6 +86,13 @@ Current behavior to improve:
 - For providers that support quality or resolution tiers, map 2K and 4K to those documented tiers.
 - For providers that only support aspect ratio, send aspect ratio and return a clear capability note.
 - If 4K is unsupported, either warn and downgrade or block with a clear error. The preferred behavior should be chosen during implementation planning.
+
+Canvas/frame settings should be stored in metadata so they survive selection changes and reloads:
+
+- Layout mode.
+- Size preset.
+- Resolution preset.
+- Width and height.
 
 ## Feature Area 2: Multi-Annotation Generation
 
