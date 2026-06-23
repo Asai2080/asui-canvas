@@ -49,6 +49,14 @@ The floating settings bar should include:
 - Width and height fields.
 - A resize or fit affordance when useful.
 
+The size preset selector should behave like a design-tool dropdown. Example preset groups:
+
+- Aspect ratios: 1:1, 2:3, 9:16, 3:2, 16:9.
+- Print or document presets: A4.
+- Web presets: webpage or common banner/screen sizes.
+
+Choosing a preset should immediately update the active canvas/frame dimensions on the canvas. The user should see the blue selected frame resize in real time while the width and height fields update to the resolved pixel dimensions. Manual width and height edits should also resize the selected frame immediately after commit, such as on Enter, blur, or explicit apply depending on the final control behavior.
+
 Resolution choices should include:
 
 - Auto
