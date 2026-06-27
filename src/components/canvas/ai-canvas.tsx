@@ -5,13 +5,12 @@ import {
   AssetRecordType,
   createShapeId,
   Editor,
-  startEditingShapeWithRichText,
   Tldraw,
   TLShape,
   TLShapeId,
   toRichText,
 } from "tldraw"
-import { LoaderCircle, Sparkles } from "lucide-react"
+import { LoaderCircle, Scissors, Sparkles } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { CanvasSizeFloatingBar } from "@/components/canvas/canvas-size-floating-bar"
@@ -21,10 +20,11 @@ import { GenerationPanel } from "@/components/canvas/generation-panel"
 import {
   buildAnnotationFeedbackItems,
   validateSameAnnotationTarget,
+  type AnnotationFeedbackItem,
   type ResolvedAnnotation,
 } from "@/lib/canvas/annotations"
 import { readApiConfigFromSession } from "@/lib/canvas/api-config"
-import { expandBounds, findClearPlacement, intersects } from "@/lib/canvas/geometry"
+import { expandBounds, findClearPlacement, intersects, normalizeBounds } from "@/lib/canvas/geometry"
 import { CANVAS_PERSISTENCE_KEY, IMAGE_VERSION_STORAGE_KEY } from "@/lib/canvas/persistence"
 import { generatePoster } from "@/lib/canvas/poster-generator"
 import { resolveCanvasSizePreset, type CanvasSizePresetId } from "@/lib/canvas/size-presets"
@@ -34,10 +34,19 @@ import type { Bounds, CanvasSelection, CanvasSize, GenerationStatus, ImageVersio
 const DEFAULT_HOLDER_SIZE: CanvasSize = { width: 360, height: 480 }
 const ANNOTATION_TYPES = new Set(["arrow", "draw", "text", "highlight", "geo"])
 const ASUI_META_VERSION = 1
+const QIAOMU_FONT_URL = "/fonts/PingFangQiaoMuTi.ttf"
+const TLDRAW_ASSET_URLS = {
+  fonts: {
+    tldraw_draw: QIAOMU_FONT_URL,
+    tldraw_draw_bold: QIAOMU_FONT_URL,
+    tldraw_draw_italic: QIAOMU_FONT_URL,
+    tldraw_draw_italic_bold: QIAOMU_FONT_URL,
+  },
+}
 
 const shapeMeta = (shape?: TLShape | null) => (shape?.meta ?? {}) as Record<string, unknown>
 const isCanvasSizePresetId = (value: unknown): value is CanvasSizePresetId =>
-  typeof value === "string" && ["custom", "1:1", "2:3", "9:16", "3:2", "16:9", "a4", "web"].includes(value)
+  typeof value === "string" && ["custom", "1:1", "2:3", "3:4", "9:16", "3:2", "16:9", "a4", "web"].includes(value)
 
 const toBounds = (box: { x: number; y: number; w: number; h: number }): Bounds => ({
   x: box.x,
@@ -45,6 +54,208 @@ const toBounds = (box: { x: number; y: number; w: number; h: number }): Bounds =
   w: box.w,
   h: box.h,
 })
+
+function intersectionArea(a: Bounds, b: Bounds) {
+  const left = Math.max(a.x, b.x)
+  const top = Math.max(a.y, b.y)
+  const right = Math.min(a.x + a.w, b.x + b.w)
+  const bottom = Math.min(a.y + a.h, b.y + b.h)
+
+  return Math.max(0, right - left) * Math.max(0, bottom - top)
+}
+
+function centerDistance(a: Bounds, b: Bounds) {
+  const ax = a.x + a.w / 2
+  const ay = a.y + a.h / 2
+  const bx = b.x + b.w / 2
+  const by = b.y + b.h / 2
+
+  return Math.hypot(ax - bx, ay - by)
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error("图片导出失败"))
+    }
+    reader.onerror = () => reject(reader.error ?? new Error("图片导出失败"))
+    reader.readAsDataURL(blob)
+  })
+}
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+    image.crossOrigin = "anonymous"
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error("圈选区域图片读取失败"))
+    image.src = src
+  })
+}
+
+async function cropImageRegionToDataUrl(src: string, imageBounds: Bounds, regionBounds: Bounds) {
+  const image = await loadImage(src)
+  const normalized = normalizeBounds(imageBounds, regionBounds)
+  const sourceX = Math.max(0, Math.round(normalized.x * image.naturalWidth))
+  const sourceY = Math.max(0, Math.round(normalized.y * image.naturalHeight))
+  const sourceWidth = Math.max(1, Math.round(normalized.w * image.naturalWidth))
+  const sourceHeight = Math.max(1, Math.round(normalized.h * image.naturalHeight))
+  const canvas = document.createElement("canvas")
+  canvas.width = sourceWidth
+  canvas.height = sourceHeight
+  const context = canvas.getContext("2d")
+  if (!context) throw new Error("圈选区域图片裁剪失败")
+
+  context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight)
+
+  return {
+    src: canvas.toDataURL("image/png"),
+    width: sourceWidth,
+    height: sourceHeight,
+  }
+}
+
+async function exportAnnotatedReferenceImage(editor: Editor, imageId: TLShapeId, annotationIds: TLShapeId[]) {
+  const shapeIds = [imageId, ...annotationIds]
+  const { blob } = await editor.toImage(shapeIds, {
+    format: "png",
+    background: true,
+    padding: 0,
+    pixelRatio: 3,
+  })
+
+  return blobToDataUrl(blob)
+}
+
+function unionBounds(bounds: Bounds[]) {
+  const first = bounds[0]
+  if (!first) return null
+
+  const left = Math.min(...bounds.map((bound) => bound.x))
+  const top = Math.min(...bounds.map((bound) => bound.y))
+  const right = Math.max(...bounds.map((bound) => bound.x + bound.w))
+  const bottom = Math.max(...bounds.map((bound) => bound.y + bound.h))
+
+  return { x: left, y: top, w: right - left, h: bottom - top }
+}
+
+function getRelatedAnnotationIdsForReference(editor: Editor, imageId: TLShapeId, primaryIds: TLShapeId[]) {
+  const primaryBounds = primaryIds
+    .map((id) => editor.getShapePageBounds(id))
+    .filter((bounds): bounds is NonNullable<typeof bounds> => Boolean(bounds))
+    .map(toBounds)
+  const searchArea = unionBounds(primaryBounds)
+  const expandedSearchArea = searchArea ? expandBounds(searchArea, 80) : null
+  const ids = new Set<TLShapeId>(primaryIds)
+
+  if (!expandedSearchArea) return Array.from(ids)
+
+  for (const shape of editor.getCurrentPageShapes()) {
+    if (!ANNOTATION_TYPES.has(shape.type)) continue
+    const target = getGeneratedImageTargetForAnnotation(editor, shape.id as TLShapeId)
+    if (!target || target.imageId !== imageId) continue
+    const bounds = editor.getShapePageBounds(shape.id)
+    if (bounds && intersects(expandedSearchArea, toBounds(bounds))) {
+      ids.add(shape.id as TLShapeId)
+    }
+  }
+
+  return Array.from(ids)
+}
+
+function getFeedbackFromAnnotationGroup(editor: Editor, primaryId: TLShapeId, relatedIds: TLShapeId[]) {
+  const primaryText = getAnnotationText(editor, primaryId)
+  if (primaryText) return primaryText
+
+  const nearbyTexts = relatedIds
+    .filter((id) => id !== primaryId)
+    .map((id) => getAnnotationText(editor, id))
+    .filter(Boolean)
+
+  return nearbyTexts[0] ?? getAnnotationFeedback(editor, primaryId)
+}
+
+function getCutoutRegionBounds(editor: Editor, imageId: TLShapeId, annotationId: TLShapeId) {
+  const relatedIds = getRelatedAnnotationIdsForReference(editor, imageId, [annotationId])
+  const regionBounds = relatedIds
+    .filter((id) => !getAnnotationText(editor, id))
+    .map((id) => editor.getShapePageBounds(id))
+    .filter((bounds): bounds is NonNullable<typeof bounds> => Boolean(bounds))
+    .map(toBounds)
+  const annotationBounds = editor.getShapePageBounds(annotationId)
+
+  return unionBounds(regionBounds) ?? (annotationBounds ? toBounds(annotationBounds) : null)
+}
+
+function classifyAnnotationInstruction(text: string): AnnotationFeedbackItem["taskType"] {
+  if (/颜色|色彩|色调|红色|蓝色|绿色|黄色|黑色|白色|紫色|橙色|改红|变红|换色|上色/.test(text)) {
+    return "color edit"
+  }
+  if (/文字|标题|文案|字体|改字|替换文字|改成.*字|改为.*字/.test(text)) {
+    return "text replacement"
+  }
+  if (/改为|修改为|替换为|换成|变成/.test(text)) {
+    return "object replacement"
+  }
+  return "localized edit"
+}
+
+function buildUnderstoodAnnotationFeedbackItems(
+  editor: Editor,
+  imageId: TLShapeId,
+  annotations: ResolvedAnnotation[]
+): AnnotationFeedbackItem[] {
+  const sourceBounds = editor.getShapePageBounds(imageId)
+  if (!sourceBounds) return buildAnnotationFeedbackItems(annotations)
+  const source = toBounds(sourceBounds)
+
+  return annotations
+    .map((annotation, index) => {
+      const relatedIds = getRelatedAnnotationIdsForReference(editor, imageId, [annotation.annotationId as TLShapeId])
+      const regionBounds = relatedIds
+        .filter((id) => id !== annotation.annotationId && !getAnnotationText(editor, id))
+        .map((id) => editor.getShapePageBounds(id))
+        .filter((bounds): bounds is NonNullable<typeof bounds> => Boolean(bounds))
+        .map(toBounds)
+      const targetBounds = unionBounds(regionBounds) ?? editor.getShapePageBounds(annotation.annotationId as TLShapeId)
+      const normalizedBounds = targetBounds ? normalizeBounds(source, toBounds(targetBounds)) : annotation.bounds
+      const label = targetBounds ? getAnnotationLocationLabel(toBounds(targetBounds), source) : annotation.label?.trim() || `标注 ${index + 1}`
+      const taskType = classifyAnnotationInstruction(annotation.text)
+      const hasExplicitRegion = regionBounds.length > 0
+
+      return {
+        label,
+        text: annotation.text.trim(),
+        bounds: normalizedBounds,
+        taskType,
+        targetHint: hasExplicitRegion
+          ? "目标区域来自用户画出的圈/框/画笔区域，旁边手写文字只是修改指令"
+          : "目标区域来自该文字标注所在位置",
+      }
+    })
+    .filter((item) => item.text)
+}
+
+function resolveEditRequestSize(source: ImageVersion | undefined, sourceBounds: { w: number; h: number }): CanvasSize {
+  const width = source?.width ?? sourceBounds.w
+  const height = source?.height ?? sourceBounds.h
+  const longEdge = Math.max(width, height)
+
+  if (longEdge >= 1024) {
+    return { width, height }
+  }
+
+  const scale = 1024 / longEdge
+  return {
+    width: Math.round(width * scale),
+    height: Math.round(height * scale),
+  }
+}
 
 function getSelection(editor: Editor): CanvasSelection | null {
   const shape = editor.getOnlySelectedShape()
@@ -94,14 +305,31 @@ function getGeneratedImageTargetForAnnotation(editor: Editor, annotationId: TLSh
   if (!annotationBounds) return null
   const searchArea = expandBounds(toBounds(annotationBounds), 120)
 
-  const image = editor
+  const imageCandidates = editor
     .getCurrentPageShapes()
-    .find((shape) => {
+    .map((shape) => {
       const meta = shapeMeta(shape)
-      if (shape.type !== "image" || meta.kind !== "generated-image") return false
+      if (shape.type !== "image" || (meta.kind !== "generated-image" && meta.asuiNode !== "generated-image")) return null
       const imageBounds = editor.getShapePageBounds(shape.id)
-      return imageBounds ? intersects(searchArea, toBounds(imageBounds)) : false
+      if (!imageBounds) return null
+      const bounds = toBounds(imageBounds)
+      if (!intersects(searchArea, bounds)) return null
+
+      return {
+        shape,
+        bounds,
+        overlap: intersectionArea(searchArea, bounds),
+        distance: centerDistance(toBounds(annotationBounds), bounds),
+      }
     })
+    .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
+    .sort((a, b) => {
+      const overlapDifference = b.overlap - a.overlap
+      if (Math.abs(overlapDifference) > 1) return overlapDifference
+      return a.distance - b.distance
+    })
+
+  const image = imageCandidates[0]?.shape
 
   if (!image) return null
   const meta = shapeMeta(image)
@@ -115,12 +343,16 @@ function getGeneratedImageTargetForAnnotation(editor: Editor, annotationId: TLSh
   }
 }
 
-function getAnnotationFeedback(editor: Editor, annotationId: TLShapeId) {
+function getAnnotationText(editor: Editor, annotationId: TLShapeId) {
   const shape = editor.getShape(annotationId)
-  if (!shape) return "根据画布标注区域优化图片"
+  if (!shape) return ""
 
   const text = editor.getShapeUtil(shape).getText(shape)?.trim()
-  return text || "根据画布标注区域优化图片"
+  return text || ""
+}
+
+function getAnnotationFeedback(editor: Editor, annotationId: TLShapeId) {
+  return getAnnotationText(editor, annotationId) || "根据画布标注区域优化图片"
 }
 
 function getAnnotationLocationLabel(annotationBounds: Bounds, sourceBounds: Bounds) {
@@ -149,13 +381,15 @@ function resolveAnnotationForGeneration(editor: Editor, annotationId: TLShapeId)
   const target = getGeneratedImageTargetForAnnotation(editor, annotationId)
   if (!target) return null
   const sourceBounds = editor.getShapePageBounds(target.imageId)
+  if (!sourceBounds) return null
 
   return {
     annotationId,
     imageId: target.imageId,
     versionId: target.versionId,
-    text: getAnnotationFeedback(editor, annotationId),
-    label: sourceBounds ? getAnnotationLocationLabel(target.annotationBounds, toBounds(sourceBounds)) : "标注区域",
+    text: getAnnotationText(editor, annotationId),
+    label: getAnnotationLocationLabel(target.annotationBounds, toBounds(sourceBounds)),
+    bounds: normalizeBounds(toBounds(sourceBounds), target.annotationBounds),
   }
 }
 
@@ -165,7 +399,7 @@ function getImageAnnotationsForGeneration(editor: Editor, imageId: TLShapeId) {
     .filter((shape) => ANNOTATION_TYPES.has(shape.type))
     .map((shape) => resolveAnnotationForGeneration(editor, shape.id as TLShapeId))
     .filter((annotation): annotation is ResolvedAnnotation => {
-      return annotation !== null && annotation.imageId === imageId
+      return annotation !== null && annotation.imageId === imageId && annotation.text.trim().length > 0
     })
 }
 
@@ -272,13 +506,15 @@ async function generateImageVersion({
   feedbackItems,
   parentVersionId,
   bounds,
+  requestSize,
   sourceImageSrc,
 }: {
   prompt: string
   feedback?: string
-  feedbackItems?: Array<{ label: string; text: string }>
+  feedbackItems?: AnnotationFeedbackItem[]
   parentVersionId?: string
   bounds: Bounds
+  requestSize?: CanvasSize
   sourceImageSrc?: string
 }) {
   const apiConfig = readApiConfigFromSession()
@@ -302,8 +538,8 @@ async function generateImageVersion({
       feedbackItems,
       parentVersionId,
       sourceImageSrc,
-      width: bounds.w,
-      height: bounds.h,
+      width: requestSize?.width ?? bounds.w,
+      height: requestSize?.height ?? bounds.h,
     }),
   })
 
@@ -314,6 +550,38 @@ async function generateImageVersion({
 
   if (!response.ok || !payload.version) {
     throw new Error(payload.error ?? "图片生成失败")
+  }
+
+  return payload.version
+}
+
+async function generateCutoutVersion({
+  imageSrc,
+  width,
+  height,
+}: {
+  imageSrc: string
+  width: number
+  height: number
+}) {
+  const response = await fetch("/api/cutout", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      imageSrc,
+      width,
+      height,
+    }),
+  })
+  const payload = (await response.json().catch(() => ({}))) as {
+    version?: ImageVersion
+    error?: string
+  }
+
+  if (!response.ok || !payload.version) {
+    throw new Error(payload.error ?? "抠图失败")
   }
 
   return payload.version
@@ -461,7 +729,7 @@ export function AiCanvas() {
     if (nextSelectedShapeIds.length >= 2) {
       const annotations = nextSelectedShapeIds
         .map((id) => resolveAnnotationForGeneration(editor, id as TLShapeId))
-        .filter((annotation): annotation is ResolvedAnnotation => Boolean(annotation))
+        .filter((annotation): annotation is ResolvedAnnotation => Boolean(annotation) && annotation.text.trim().length > 0)
       const target = validateSameAnnotationTarget(annotations)
       if (target && annotations.length >= 2) {
         const firstBounds = editor.getShapePageBounds(annotations[0].annotationId as TLShapeId)
@@ -607,7 +875,6 @@ export function AiCanvas() {
     setStatus("generating")
     setStatusDetail("")
     try {
-      await new Promise((resolve) => window.setTimeout(resolve, 520))
       const imageBounds = toBounds(bounds)
       const version = await persistImageVersion(await generateImageVersion({ prompt, bounds: imageBounds }))
       const holderShape = editor.getShape(holderId)
@@ -674,12 +941,31 @@ export function AiCanvas() {
         obstacles,
         margin: 190,
       })
+      const relatedAnnotationIds = getRelatedAnnotationIdsForReference(editor, annotationAction.imageId, [
+        annotationAction.annotationId,
+      ])
+      const sourceImageSrc =
+        (await exportAnnotatedReferenceImage(editor, annotationAction.imageId, relatedAnnotationIds).catch((error) => {
+          console.warn("Failed to export annotated reference image", error)
+          return null
+        })) ??
+        source?.src ??
+        getImageShapeSource(editor, annotationAction.imageId) ??
+        undefined
       const version = await persistImageVersion(await generateImageVersion({
         prompt: source?.prompt ?? prompt,
-        feedback: getAnnotationFeedback(editor, annotationAction.annotationId),
+        feedbackItems: buildUnderstoodAnnotationFeedbackItems(editor, annotationAction.imageId, [
+          {
+            annotationId: annotationAction.annotationId,
+            imageId: annotationAction.imageId,
+            versionId: annotationAction.versionId,
+            text: getFeedbackFromAnnotationGroup(editor, annotationAction.annotationId, relatedAnnotationIds),
+          },
+        ]),
         parentVersionId: annotationAction.versionId,
         bounds: imageBounds,
-        sourceImageSrc: source?.src ?? getImageShapeSource(editor, annotationAction.imageId) ?? undefined,
+        requestSize: resolveEditRequestSize(source, sourceBounds),
+        sourceImageSrc,
       }))
       const imageId = createImageShape(editor, version, imageBounds)
       const arrowId = createShapeId()
@@ -716,6 +1002,54 @@ export function AiCanvas() {
     }
   }, [annotationAction, prompt, versions])
 
+  const cutoutFromAnnotation = useCallback(async () => {
+    const editor = editorRef.current
+    if (!editor || !annotationAction) return
+    const sourceBounds = editor.getShapePageBounds(annotationAction.imageId)
+    if (!sourceBounds) return
+    const sourceImageSrc = getImageShapeSource(editor, annotationAction.imageId)
+    const regionBounds = getCutoutRegionBounds(editor, annotationAction.imageId, annotationAction.annotationId)
+    if (!sourceImageSrc || !regionBounds) return
+
+    setStatus("editing")
+    setStatusDetail("正在抠取圈选区域主体")
+    try {
+      const cropped = await cropImageRegionToDataUrl(sourceImageSrc, toBounds(sourceBounds), regionBounds)
+      const version = await persistImageVersion(
+        await generateCutoutVersion({
+          imageSrc: cropped.src,
+          width: cropped.width,
+          height: cropped.height,
+        })
+      )
+      const obstacles = editor
+        .getCurrentPageShapes()
+        .filter((shape) => shape.id !== annotationAction.imageId)
+        .map((shape) => editor.getShapePageBounds(shape.id))
+        .filter((bounds): bounds is NonNullable<typeof bounds> => Boolean(bounds))
+        .map(toBounds)
+      const maxDisplayWidth = 320
+      const displayScale = Math.min(1, maxDisplayWidth / Math.max(1, regionBounds.w))
+      const imageBounds = findClearPlacement({
+        anchor: regionBounds,
+        width: Math.max(80, regionBounds.w * displayScale),
+        height: Math.max(80, regionBounds.h * displayScale),
+        obstacles,
+        margin: 80,
+      })
+      const imageId = createImageShape(editor, version, imageBounds)
+      editor.select(imageId)
+      editor.zoomToSelection({ animation: { duration: 240 } })
+      setVersions((current) => [...current, version])
+      setStatus("success")
+      setStatusDetail("")
+    } catch (error) {
+      console.error("Failed to cut out annotation region", error)
+      setStatus("error")
+      setStatusDetail(error instanceof Error ? error.message : "抠图失败")
+    }
+  }, [annotationAction])
+
   const editFromAllAnnotations = useCallback(async () => {
     const editor = editorRef.current
     if (!editor || !multiAnnotationAction) return
@@ -740,13 +1074,40 @@ export function AiCanvas() {
         obstacles,
         margin: 190,
       })
+      const relatedAnnotationIds = getRelatedAnnotationIdsForReference(
+        editor,
+        multiAnnotationAction.imageId,
+        multiAnnotationAction.annotations.map((annotation) => annotation.annotationId as TLShapeId)
+      )
+      const sourceImageSrc =
+        (await exportAnnotatedReferenceImage(editor, multiAnnotationAction.imageId, relatedAnnotationIds).catch((error) => {
+          console.warn("Failed to export annotated reference image", error)
+          return null
+        })) ??
+        source?.src ??
+        getImageShapeSource(editor, multiAnnotationAction.imageId) ??
+        undefined
+      console.info("[asui-canvas] multi annotation edit", {
+        imageId: multiAnnotationAction.imageId,
+        versionId: multiAnnotationAction.versionId,
+        annotationCount: multiAnnotationAction.annotations.length,
+        relatedAnnotationCount: relatedAnnotationIds.length,
+        annotations: multiAnnotationAction.annotations.map((annotation) => annotation.text),
+      })
+      setStatusDetail("正在整合多个标注")
+      const feedbackItems = buildUnderstoodAnnotationFeedbackItems(
+        editor,
+        multiAnnotationAction.imageId,
+        multiAnnotationAction.annotations
+      )
       const version = await persistImageVersion(
         await generateImageVersion({
           prompt: source?.prompt ?? prompt,
-          feedbackItems: buildAnnotationFeedbackItems(multiAnnotationAction.annotations),
+          feedbackItems,
           parentVersionId: multiAnnotationAction.versionId,
           bounds: imageBounds,
-          sourceImageSrc: source?.src ?? getImageShapeSource(editor, multiAnnotationAction.imageId) ?? undefined,
+          requestSize: resolveEditRequestSize(source, sourceBounds),
+          sourceImageSrc,
         })
       )
       const imageId = createImageShape(editor, version, imageBounds)
@@ -785,96 +1146,68 @@ export function AiCanvas() {
     }
   }, [multiAnnotationAction, prompt, versions])
 
-  const createAiAnnotation = useCallback(() => {
-    const editor = editorRef.current
-    if (!editor) return
-
-    const selectedShape = editor.getOnlySelectedShape()
-    const selectedMeta = shapeMeta(selectedShape)
-    const targetShape =
-      selectedShape?.type === "image" &&
-      (selectedMeta.kind === "generated-image" || selectedMeta.asuiNode === "generated-image")
-        ? selectedShape
-        : editor
-            .getCurrentPageShapes()
-            .find((shape) => shape.type === "image" && shapeMeta(shape).kind === "generated-image")
-
-    const targetBounds = targetShape ? editor.getShapePageBounds(targetShape.id) : null
-    const viewportCenter = editor.getViewportPageBounds().center
-    const x = targetBounds ? targetBounds.x + targetBounds.w * 0.62 : viewportCenter.x - 80
-    const y = targetBounds ? targetBounds.y + targetBounds.h * 0.26 : viewportCenter.y - 40
-    const annotationId = createShapeId()
-    const targetMeta = shapeMeta(targetShape)
-
-    editor.createShape({
-      id: annotationId,
-      type: "arrow",
-      x,
-      y,
-      props: {
-        start: { x: 0, y: 0 },
-        end: { x: 150, y: -64 },
-        color: "red",
-        labelColor: "red",
-        dash: "draw",
-        size: "m",
-        font: "draw",
-        arrowheadStart: "none",
-        arrowheadEnd: "arrow",
-        richText: toRichText("输入修改要求"),
-      },
-      meta: {
-        kind: "ai-annotation",
-        asuiNode: "annotation",
-        asuiMetaVersion: ASUI_META_VERSION,
-        sourceShapeId: targetShape?.id ?? null,
-        versionId: typeof targetMeta.versionId === "string" ? targetMeta.versionId : null,
-      },
-    })
-
-    editor.select(annotationId)
-    editor.timers.setTimeout(() => {
-      startEditingShapeWithRichText(editor, annotationId, { selectAll: true })
-    }, 80)
-    setStatus("idle")
-    setStatusDetail("")
-  }, [])
-
   const canGenerateFromAnnotation = Boolean(annotationAction) && status !== "editing"
   const canGenerateFromAllAnnotations = Boolean(multiAnnotationAction) && status !== "editing"
+  const canCutoutFromAnnotation = Boolean(annotationAction) && status !== "editing"
 
   return (
     <main className="canvas-app-shell">
       <div className="canvas-surface">
-        <Tldraw persistenceKey={CANVAS_PERSISTENCE_KEY} onMount={handleMount} />
+        <Tldraw
+          persistenceKey={CANVAS_PERSISTENCE_KEY}
+          assetUrls={TLDRAW_ASSET_URLS}
+          onMount={handleMount}
+        />
       </div>
       {annotationAction && (
-        <Button
-          type="button"
-          size="sm"
-          className="absolute z-30 h-8 gap-1.5 rounded-full px-3 text-xs shadow-xl"
+        <div
+          className="absolute z-30 flex gap-2"
           style={{
             left: annotationAction.x,
             top: annotationAction.y,
           }}
-          disabled={!canGenerateFromAnnotation}
           onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            void editFromAnnotation()
-          }}
         >
-          {status === "editing" ? (
-            <LoaderCircle className="size-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="size-3.5" />
-          )}
-          生成
-        </Button>
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 gap-1.5 rounded-full px-3 text-xs shadow-xl"
+            disabled={!canGenerateFromAnnotation}
+            onClick={(event) => {
+              event.stopPropagation()
+              void editFromAnnotation()
+            }}
+          >
+            {status === "editing" ? (
+              <LoaderCircle className="size-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="size-3.5" />
+            )}
+            生成
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="h-8 gap-1.5 rounded-full px-3 text-xs shadow-xl"
+            disabled={!canCutoutFromAnnotation}
+            onClick={(event) => {
+              event.stopPropagation()
+              void cutoutFromAnnotation()
+            }}
+          >
+            {status === "editing" ? (
+              <LoaderCircle className="size-3.5 animate-spin" />
+            ) : (
+              <Scissors className="size-3.5" />
+            )}
+            抠图
+          </Button>
+        </div>
       )}
       {selection?.kind === "holder" && sizeBar && (
         <CanvasSizeFloatingBar
-          key={`${selection.shapeId}:${holderSize.width}x${holderSize.height}`}
+          key={selection.shapeId}
           x={sizeBar.x}
           y={sizeBar.y}
           size={holderSize}
@@ -920,17 +1253,14 @@ export function AiCanvas() {
       )}
       <CanvasToolbar
         onCreateHolder={createHolder}
-        onCreateAnnotation={createAiAnnotation}
         onOpenCodexTask={() => setIsCodexTaskOpen(true)}
       />
       <GenerationPanel
         selection={selection}
-        holderSize={holderSize}
         prompt={prompt}
         status={status}
         statusDetail={statusDetail}
         versionCount={versions.length}
-        onHolderSizeChange={updateHolderSize}
         onPromptChange={setPrompt}
         onFill={fillHolder}
       />

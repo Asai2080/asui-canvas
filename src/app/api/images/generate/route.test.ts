@@ -176,21 +176,23 @@ describe("image generation route", () => {
     )
     const payload = (await response.json()) as { version: { src: string; prompt: string } }
     const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)) as {
-      modalities: string[]
-      image_config: { aspect_ratio: string }
+      prompt: string
+      aspect_ratio: string
+      output_format: string
     }
 
     expect(response.status).toBe(200)
     expect(payload.version.src).toBe("https://example.test/generated.png")
     expect(payload.version.prompt).toBe("revised openrouter prompt")
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      "https://openrouter.ai/api/v1/chat/completions",
+      "https://openrouter.ai/api/v1/images",
       expect.objectContaining({
         method: "POST",
       })
     )
-    expect(body.modalities).toEqual(["image", "text"])
-    expect(body.image_config.aspect_ratio).toBe("2:3")
+    expect(body.prompt).toBe("ramen poster")
+    expect(body.aspect_ratio).toBe("2:3")
+    expect(body.output_format).toBe("png")
   })
 
   it("maps arbitrary canvas sizes to the nearest OpenRouter-supported aspect ratio", async () => {
@@ -220,11 +222,11 @@ describe("image generation route", () => {
       })
     )
     const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)) as {
-      image_config: { aspect_ratio: string }
+      aspect_ratio: string
     }
 
     expect(response.status).toBe(200)
-    expect(body.image_config.aspect_ratio).toBe("4:3")
+    expect(body.aspect_ratio).toBe("4:3")
   })
 
   it("sends the source image and localized edit instructions for OpenRouter annotation edits", async () => {
@@ -256,22 +258,19 @@ describe("image generation route", () => {
       })
     )
     const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)) as {
-      messages: Array<{
-        content: Array<{
-          type: string
-          text?: string
-          image_url?: { url: string }
-        }>
+      prompt: string
+      input_references: Array<{
+        type: string
+        image_url: { url: string }
       }>
-      image_config: { aspect_ratio: string }
+      aspect_ratio: string
     }
 
     expect(response.status).toBe(200)
-    expect(body.image_config.aspect_ratio).toBe("9:16")
-    expect(body.messages[0]?.content[0]?.type).toBe("text")
-    expect(body.messages[0]?.content[0]?.text).toContain("Apply ONLY the requested annotation change")
-    expect(body.messages[0]?.content[0]?.text).toContain("把标题改成阿水拉面")
-    expect(body.messages[0]?.content[1]).toEqual({
+    expect(body.aspect_ratio).toBe("9:16")
+    expect(body.prompt).toContain("Apply ONLY the requested annotation change")
+    expect(body.prompt).toContain("把标题改成阿水拉面")
+    expect(body.input_references[0]).toEqual({
       type: "image_url",
       image_url: { url: "https://example.test/source.png" },
     })
@@ -300,8 +299,14 @@ describe("image generation route", () => {
         model: "openai/gpt-5.4-image-2-20260421",
         prompt: "ramen poster",
         feedbackItems: [
-          { label: "右上区域", text: "把天空改成傍晚" },
-          { label: "中间主体", text: "外套改成红色" },
+          { label: "右上区域", text: "把天空改成傍晚", bounds: { x: 0.6, y: 0.1, w: 0.2, h: 0.2 } },
+          {
+            label: "中间主体",
+            text: "外套改成红色",
+            taskType: "color edit",
+            targetHint: "目标区域来自用户画出的圈",
+            bounds: { x: 0.3, y: 0.4, w: 0.3, h: 0.3 },
+          },
         ],
         sourceImageSrc: "https://example.test/source.png",
         width: 900,
@@ -309,19 +314,26 @@ describe("image generation route", () => {
       })
     )
     const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)) as {
-      messages: Array<{
-        content: Array<{
-          type: string
-          text?: string
-        }>
-      }>
+      prompt: string
     }
-    const text = body.messages[0]?.content[0]?.text ?? ""
 
     expect(response.status).toBe(200)
-    expect(text).toContain("Apply the following canvas annotations")
-    expect(text).toContain("1. 右上区域: 把天空改成傍晚")
-    expect(text).toContain("2. 中间主体: 外套改成红色")
+    expect(body.prompt).toContain("Apply the following canvas annotations")
+    expect(body.prompt).toContain("There are 2 required annotation tasks")
+    expect(body.prompt).toContain("EVERY checklist item is completed")
+    expect(body.prompt).toContain("Different task types must not override each other")
+    expect(body.prompt).toContain("Handwritten annotation words, circles, arrows, and marks")
+    expect(body.prompt).toContain("For color edits, recolor the object inside the annotated region")
+    expect(body.prompt).toContain("For object replacement edits, replace the visual object inside the annotated region")
+    expect(body.prompt).toContain("replace the visible text in that annotated region with the exact requested text")
+    expect(body.prompt).toContain("If there are multiple numbered annotations, complete all of them")
+    expect(body.prompt).toContain(
+      '1. task_type=localized edit; target=右上区域, normalized region x=60%, y=10%, w=20%, h=20%; instruction="把天空改成傍晚"'
+    )
+    expect(body.prompt).toContain(
+      '2. task_type=color edit; target=中间主体, normalized region x=30%, y=40%, w=30%, h=30%; instruction="外套改成红色"'
+    )
+    expect(body.prompt).toContain('target_hint="目标区域来自用户画出的圈"')
   })
 
   it("summarizes unrecognized successful payloads", async () => {
@@ -346,6 +358,36 @@ describe("image generation route", () => {
 
     expect(response.status).toBe(502)
     expect(payload.error).toContain("data[0] 字段：status, id")
+  })
+
+  it("returns a friendly message for upstream safety rejections", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            message:
+              "Your request was rejected by the safety system. Include the request ID req_test123. safety_violations=[sexual].",
+          },
+        }),
+        { status: 400 }
+      )
+    )
+
+    const response = await POST(
+      createRequest({
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKey: "sk-test",
+        model: "openai/gpt-image-1",
+        prompt: "poster",
+      })
+    )
+    const payload = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(400)
+    expect(payload.error).toContain("模型安全系统拒绝了这次生成")
+    expect(payload.error).toContain("原因：sexual")
+    expect(payload.error).toContain("请求 ID：req_test123")
+    expect(payload.error).not.toContain("Your request was rejected")
   })
 
   it("reports upstream diagnostics when the model endpoint returns an empty body", async () => {

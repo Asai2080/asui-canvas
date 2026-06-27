@@ -5,9 +5,11 @@
 @font-face {
   font-family: "tldraw_draw";
   src:
-    local("HongLei"),
-    local("HongLei Regular"),
-    local("鸿雷板书简体（免费可商用）");
+    url("/fonts/PingFangQiaoMuTi.ttf") format("truetype"),
+    local("PingFang QiaoMuTi"),
+    local("平方乔木体"),
+    local("PingFangQiaoMuTi");
+  font-display: block;
   unicode-range:
     U+3000-303F,
     U+3400-4DBF,
@@ -135,6 +137,9 @@
   * {
     @apply border-border outline-ring/50;
   }
+  :root {
+    --tl-font-draw: "tldraw_draw", "PingFang QiaoMuTi", "平方乔木体", sans-serif;
+  }
   body {
     @apply bg-background text-foreground;
   }
@@ -153,7 +158,7 @@
   }
 
   .canvas-toolbar {
-    @apply absolute left-1/2 top-4 z-20 flex max-w-[calc(100vw-3rem)] -translate-x-1/2 items-center gap-3 rounded-2xl border bg-background/95 px-3 py-2 shadow-xl backdrop-blur;
+    @apply absolute left-1/2 top-3 z-20 h-10 w-[336px] -translate-x-1/2 overflow-hidden rounded-[12px] bg-black/80 text-white;
   }
 
   .generation-panel {
@@ -163,11 +168,26 @@
   .canvas-size-floating-bar {
     @apply absolute z-30 flex max-w-[calc(100vw-2rem)] items-center overflow-visible rounded-xl border bg-background/95 backdrop-blur;
   }
+
+  .canvas-surface .tlui-layout__top__right:has(.tlui-style-panel__wrapper) {
+    position: absolute;
+    left: 72px;
+    right: auto;
+    top: 72px;
+    height: auto;
+    align-items: flex-start;
+    z-index: 25;
+  }
+
+  .canvas-surface .tlui-layout__top__right:has(.tlui-style-panel__wrapper) .tlui-style-panel__wrapper {
+    margin: 0;
+    max-height: calc(100vh - 150px);
+  }
 }
 
 @media (max-width: 860px) {
   .canvas-toolbar {
-    @apply left-1/2 right-auto top-3 w-[calc(100vw-1.5rem)] -translate-x-1/2 flex-wrap justify-center;
+    @apply left-1/2 right-auto top-3 max-w-[calc(100vw-1.5rem)] -translate-x-1/2;
   }
 
   .generation-panel {
@@ -176,5 +196,14 @@
 
   .canvas-size-floating-bar {
     @apply left-3 right-3 max-w-[calc(100vw-1.5rem)] flex-wrap;
+  }
+
+  .canvas-surface .tlui-layout__top__right:has(.tlui-style-panel__wrapper) {
+    left: 12px;
+    top: 64px;
+  }
+
+  .canvas-surface .tlui-layout__top__right:has(.tlui-style-panel__wrapper) .tlui-style-panel__wrapper {
+    max-height: calc(100vh - 140px);
   }
 }

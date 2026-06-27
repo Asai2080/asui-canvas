@@ -1,7 +1,7 @@
 import { normalizeCanvasSize } from "./size"
 import type { CanvasSize } from "./types"
 
-export type CanvasSizePresetId = "custom" | "1:1" | "2:3" | "9:16" | "3:2" | "16:9" | "a4" | "web"
+export type CanvasSizePresetId = "custom" | "1:1" | "2:3" | "3:4" | "9:16" | "3:2" | "16:9" | "a4" | "web"
 
 export type CanvasSizePreset = {
   id: CanvasSizePresetId
@@ -15,6 +15,7 @@ export const CANVAS_SIZE_PRESETS: CanvasSizePreset[] = [
   { id: "custom", label: "自定义", group: "custom" },
   { id: "1:1", label: "1:1", group: "ratio", width: 1, height: 1 },
   { id: "2:3", label: "2:3", group: "ratio", width: 2, height: 3 },
+  { id: "3:4", label: "3:4", group: "ratio", width: 3, height: 4 },
   { id: "9:16", label: "9:16", group: "ratio", width: 9, height: 16 },
   { id: "3:2", label: "3:2", group: "ratio", width: 3, height: 2 },
   { id: "16:9", label: "16:9", group: "ratio", width: 16, height: 9 },

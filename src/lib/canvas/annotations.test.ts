@@ -32,6 +32,7 @@ describe("canvas annotation generation helpers", () => {
           imageId: "shape:image",
           versionId: "version-1",
           label: "右上区域",
+          bounds: { x: 0.5, y: 0.1, w: 0.2, h: 0.2 },
         },
         {
           annotationId: "shape:b",
@@ -41,7 +42,7 @@ describe("canvas annotation generation helpers", () => {
         },
       ])
     ).toEqual([
-      { label: "右上区域", text: "把天空改成傍晚" },
+      { label: "右上区域", text: "把天空改成傍晚", bounds: { x: 0.5, y: 0.1, w: 0.2, h: 0.2 } },
       { label: "标注 2", text: "外套改成红色" },
     ])
   })

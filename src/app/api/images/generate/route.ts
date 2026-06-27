@@ -12,6 +12,14 @@ type GenerateImageRequest = {
   feedbackItems?: Array<{
     label?: string
     text?: string
+    taskType?: "color edit" | "text replacement" | "object replacement" | "localized edit"
+    targetHint?: string
+    bounds?: {
+      x: number
+      y: number
+      w: number
+      h: number
+    }
   }>
   parentVersionId?: string
   sourceImageSrc?: string
@@ -58,11 +66,24 @@ type OpenAIImageResponse = {
   error?: {
     message?: string
   }
+  object?: string
 }
+
+type ImageProvider = "openai-compatible" | "openrouter"
 
 const normalizeBaseUrl = (baseUrl: string) => baseUrl.replace(/\/+$/, "")
 const truncate = (value: string, length = 500) => (value.length > length ? `${value.slice(0, length)}…` : value)
 const OPENROUTER_ASPECT_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"] as const
+
+function parseBaseUrl(baseUrl: string) {
+  try {
+    const url = new URL(normalizeBaseUrl(baseUrl))
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null
+    return url
+  } catch {
+    return null
+  }
+}
 
 function mimeTypeForPath(path: string) {
   switch (extname(path).toLowerCase()) {
@@ -80,12 +101,15 @@ function mimeTypeForPath(path: string) {
 
 function imageEndpointFor(baseUrl: string) {
   const normalized = normalizeBaseUrl(baseUrl)
-  const url = new URL(normalized)
+  const url = parseBaseUrl(baseUrl)
+  if (!url) {
+    return null
+  }
   const isOpenRouter = url.hostname === "openrouter.ai" || url.hostname.endsWith(".openrouter.ai")
 
   if (!isOpenRouter) {
     return {
-      provider: "openai-compatible" as const,
+      provider: "openai-compatible" as ImageProvider,
       targetUrl: `${normalized}/images/generations`,
     }
   }
@@ -93,8 +117,8 @@ function imageEndpointFor(baseUrl: string) {
   const apiBase = url.pathname.startsWith("/api/v1") ? normalized : `${url.origin}/api/v1`
 
   return {
-    provider: "openrouter" as const,
-    targetUrl: `${apiBase}/chat/completions`,
+    provider: "openrouter" as ImageProvider,
+    targetUrl: `${apiBase}/images`,
   }
 }
 
@@ -175,17 +199,54 @@ function composeFeedback(feedback?: string, feedbackItems?: GenerateImageRequest
     .map((item) => ({
       label: item.label?.trim() || "标注区域",
       text: item.text?.trim() ?? "",
+      taskType: item.taskType,
+      targetHint: item.targetHint?.trim(),
+      bounds: item.bounds,
     }))
     .filter((item) => item.text)
 
   if (items.length === 0) return feedback?.trim() || undefined
 
+  const describeBounds = (bounds?: { x: number; y: number; w: number; h: number }) => {
+    if (!bounds) return ""
+    const percent = (value: number) => `${Math.round(value * 100)}%`
+    return `, normalized region x=${percent(bounds.x)}, y=${percent(bounds.y)}, w=${percent(bounds.w)}, h=${percent(bounds.h)}`
+  }
+
+  const classifyTask = (text: string) => {
+    if (/颜色|色彩|色调|红色|蓝色|绿色|黄色|黑色|白色|紫色|橙色|改红|变红|换色|上色/.test(text)) {
+      return "color edit"
+    }
+    if (/文字|标题|文案|字体|改字|替换文字|改成.*字|改为.*字/.test(text)) {
+      return "text replacement"
+    }
+    if (/改为|修改为|替换为|换成|变成/.test(text)) {
+      return "object replacement"
+    }
+    return "localized edit"
+  }
+
   return [
     "Apply the following canvas annotations as one unified edit request.",
+    `There are ${items.length} required annotation tasks. Read all tasks first, then make one coherent final image that satisfies every task.`,
+    "Treat every numbered annotation as a required checklist item. The output is only acceptable if EVERY checklist item is completed in the same image.",
+    "Different task types must not override each other. For example, if one task changes an object color and another task changes text, perform both in the same final result.",
+    "Handwritten annotation words, circles, arrows, and marks in the reference image are instructions and location hints only. They must NOT be copied, rendered, or treated as design elements in the final image.",
+    "For text replacement requests, replace the visible text in that annotated region with the exact requested text. Do not paraphrase, invent a new title, translate, summarize, or change only one text region.",
+    "For Chinese poster text edits, behave like an OCR-aware retoucher: identify the exact annotated text block, preserve its visual style, and substitute the requested Chinese characters exactly.",
+    "For color edits, recolor the object inside the annotated region while preserving its structure, material detail, lighting, and shadows.",
+    "For object replacement edits, replace the visual object inside the annotated region with the requested object. Do not simply add the requested word as text.",
     "Only change the regions requested by these annotations. Preserve unannotated regions as much as possible.",
     "",
-    "Annotations:",
-    ...items.map((item, index) => `${index + 1}. ${item.label}: ${item.text}`),
+    "Structured required checklist:",
+    ...items.map(
+      (item, index) =>
+        `${index + 1}. task_type=${item.taskType ?? classifyTask(item.text)}; target=${item.label}${describeBounds(item.bounds)}; instruction="${item.text}"${
+          item.targetHint ? `; target_hint="${item.targetHint}"` : ""
+        }`
+    ),
+    "",
+    `Before producing the final image, internally verify that all ${items.length} checklist items are visible in the final result.`,
   ].join("\n")
 }
 
@@ -203,7 +264,12 @@ function composeImagePrompt({ prompt, feedback, hasSourceImage }: { prompt: stri
 
   return [
     "Use the attached image as the source image and visual base.",
-    "Apply ONLY the requested annotation change. Preserve the original subject, composition, camera angle, layout, aspect ratio, lighting, color palette, typography, and style unless the annotation explicitly asks to change them.",
+    "The attached source may include visible canvas annotations such as circles, handwritten notes, arrows, or selection marks. Use those marks only to locate the edit regions, and remove them from the final image.",
+    "Do not copy handwritten annotation text into the image. Treat annotation text as instructions only.",
+    "Apply ONLY the requested annotation changes. Preserve the original subject, composition, camera angle, layout, aspect ratio, lighting, color palette, typography, and style unless the annotation explicitly asks to change them.",
+    "If there are multiple numbered annotations, complete all of them. Do not stop after the first successful edit.",
+    "When an annotation asks to modify visible text, keep the surrounding typography style but use the exact requested replacement text.",
+    "For Chinese text on posters, do not invent alternate slogans or titles. The replacement text provided in the annotation is mandatory.",
     "Do not redesign or redraw the whole image. Keep all unannotated regions as unchanged as possible.",
     "Remove any annotation artifacts from the final output, including arrows, labels, selection outlines, handles, and UI chrome.",
     "Output only the revised clean image.",
@@ -350,6 +416,58 @@ function diagnosticMessage({
   return `已请求模型接口 ${targetUrl}，HTTP ${status}，content-type: ${contentType || "未知"}；${bodyHint}；${summarizePayloadShape(payload)}`
 }
 
+function friendlyUpstreamError(message?: string, fallback?: string) {
+  if (!message?.trim()) return fallback ?? "图片生成接口请求失败"
+
+  const safetyMatch = message.match(/safety_violations=\[([^\]]+)\]/i)
+  const requestIdMatch = message.match(/\breq_[A-Za-z0-9_-]+\b/)
+
+  if (safetyMatch) {
+    const reasons = safetyMatch[1]
+      .split(",")
+      .map((reason) => reason.trim())
+      .filter(Boolean)
+      .join("、")
+
+    return [
+      `模型安全系统拒绝了这次生成${reasons ? `（原因：${reasons}）` : ""}。`,
+      "请检查提示词、图片内容或标注文案，删掉容易被误判的词后再试。",
+      requestIdMatch ? `请求 ID：${requestIdMatch[0]}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  }
+
+  return message
+}
+
+function debugPromptSummary({
+  provider,
+  model,
+  width,
+  height,
+  hasSourceImage,
+  prompt,
+  feedback,
+}: {
+  provider: ImageProvider
+  model: string
+  width: number
+  height: number
+  hasSourceImage: boolean
+  prompt: string
+  feedback?: string
+}) {
+  return {
+    provider,
+    model,
+    size: `${width}x${height}`,
+    hasSourceImage,
+    promptPreview: truncate(prompt.replace(/\s+/g, " "), 180),
+    feedbackPreview: feedback ? truncate(feedback.replace(/\s+/g, " "), 260) : "",
+  }
+}
+
 const createVersion = ({
   prompt,
   feedback,
@@ -383,7 +501,7 @@ function bodyForProvider({
   height,
   sourceImageSrc,
 }: {
-  provider: ReturnType<typeof imageEndpointFor>["provider"]
+  provider: ImageProvider
   model: string
   composedPrompt: string
   width: number
@@ -393,29 +511,21 @@ function bodyForProvider({
   if (provider === "openrouter") {
     return {
       model,
-      messages: [
-        {
-          role: "user",
-          content: sourceImageSrc
-            ? [
-                {
-                  type: "text",
-                  text: composedPrompt,
+      prompt: composedPrompt,
+      aspect_ratio: nearestOpenRouterAspectRatio(width, height),
+      output_format: "png",
+      ...(sourceImageSrc
+        ? {
+            input_references: [
+              {
+                type: "image_url",
+                image_url: {
+                  url: sourceImageSrc,
                 },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: sourceImageSrc,
-                  },
-                },
-              ]
-            : composedPrompt,
-        },
-      ],
-      modalities: ["image", "text"],
-      image_config: {
-        aspect_ratio: nearestOpenRouterAspectRatio(width, height),
-      },
+              },
+            ],
+          }
+        : {}),
     }
   }
 
@@ -424,6 +534,53 @@ function bodyForProvider({
     prompt: composedPrompt,
     n: 1,
     size: openAiCompatibleSizeFor(model, width, height),
+  }
+}
+
+async function requestImageGeneration({
+  targetUrl,
+  apiKey,
+  provider,
+  model,
+  composedPrompt,
+  width,
+  height,
+  sourceImageSrc,
+}: {
+  targetUrl: string
+  apiKey: string
+  provider: ImageProvider
+  model: string
+  composedPrompt: string
+  width: number
+  height: number
+  sourceImageSrc?: string | null
+}) {
+  const upstream = await fetch(targetUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(bodyForProvider({ provider, model, composedPrompt, width, height, sourceImageSrc })),
+  })
+  const rawText = await upstream.text()
+  const payload = parseJsonBody(rawText)
+  const contentType = upstream.headers.get("content-type") ?? ""
+  const diagnostic = diagnosticMessage({
+    targetUrl,
+    status: upstream.status,
+    contentType,
+    rawText,
+    payload,
+  })
+
+  return {
+    upstream,
+    rawText,
+    payload,
+    contentType,
+    diagnostic,
   }
 }
 
@@ -440,52 +597,93 @@ export async function POST(request: Request) {
     return Response.json({ error: "缺少 Base URL 或 API Key" }, { status: 400 })
   }
 
-  const { provider, targetUrl } = imageEndpointFor(baseUrl)
-  const sourceImageSrc = provider === "openrouter" ? await sourceImageToModelUrl(body.sourceImageSrc) : null
-  const composedPrompt = composeImagePrompt({
-    prompt,
-    feedback: composeFeedback(body.feedback, body.feedbackItems),
-    hasSourceImage: Boolean(sourceImageSrc),
-  })
-  const upstream = await fetch(targetUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(bodyForProvider({ provider, model, composedPrompt, width, height, sourceImageSrc })),
-  })
-
-  const rawText = await upstream.text()
-  const payload = parseJsonBody(rawText)
-  const contentType = upstream.headers.get("content-type") ?? ""
-  const diagnostic = diagnosticMessage({
-    targetUrl,
-    status: upstream.status,
-    contentType,
-    rawText,
-    payload,
-  })
-
-  if (!upstream.ok) {
-    return Response.json(
-      {
-        error: payload.error?.message ?? `图片生成接口请求失败：${diagnostic}`,
-      },
-      { status: upstream.status }
-    )
+  const endpoint = imageEndpointFor(baseUrl)
+  if (!endpoint) {
+    return Response.json({ error: "Base URL 必须是 http/https 地址，不能填写 API Key" }, { status: 400 })
   }
 
-  const image = extractImageResult(payload)
+  const { provider, targetUrl } = endpoint
+  const sourceImageSrc = provider === "openrouter" ? await sourceImageToModelUrl(body.sourceImageSrc) : null
+  const feedback = composeFeedback(body.feedback, body.feedbackItems)
+  const feedbackItemCount = body.feedbackItems?.filter((item) => item.text?.trim()).length ?? 0
+  const composedPrompt = composeImagePrompt({
+    prompt,
+    feedback,
+    hasSourceImage: Boolean(sourceImageSrc),
+  })
+  let result: Awaited<ReturnType<typeof requestImageGeneration>>
 
-  if (!image?.src) {
+  try {
+    result = await requestImageGeneration({
+      targetUrl,
+      apiKey,
+      provider,
+      model,
+      composedPrompt,
+      width,
+      height,
+      sourceImageSrc,
+    })
+  } catch (error) {
     return Response.json(
       {
-        error: `图片生成接口没有返回可识别的图片数据（${diagnostic}）`,
+        error:
+          error instanceof Error
+            ? `图片生成接口连接中断或超时：${error.message}`
+            : "图片生成接口连接中断或超时",
       },
       { status: 502 }
     )
   }
+
+  if (!result.upstream.ok) {
+    const debug = debugPromptSummary({
+      provider,
+      model,
+      width,
+      height,
+      hasSourceImage: Boolean(sourceImageSrc),
+      prompt,
+      feedback,
+    })
+    console.warn("[asui-image-generate] upstream rejected", {
+      ...debug,
+      status: result.upstream.status,
+      error: result.payload.error?.message,
+    })
+
+    return Response.json(
+      {
+        error: friendlyUpstreamError(result.payload.error?.message, `图片生成接口请求失败：${result.diagnostic}`),
+        debug,
+      },
+      { status: result.upstream.status }
+    )
+  }
+
+  const image = extractImageResult(result.payload)
+
+  if (!image?.src) {
+    const chatCompletionHint =
+      result.payload.object === "chat.completion"
+        ? "；模型返回了聊天响应而不是图片，请确认模型支持 OpenRouter Image API 的图片输出"
+        : ""
+    return Response.json(
+      {
+        error: `图片生成接口没有返回可识别的图片数据${chatCompletionHint}（${result.diagnostic}）`,
+      },
+      { status: 502 }
+    )
+  }
+
+  console.info("[asui-image-generate] upstream success", {
+    provider,
+    model,
+    size: `${width}x${height}`,
+    hasSourceImage: Boolean(sourceImageSrc),
+    feedbackItemCount,
+    feedbackPreview: feedback ? truncate(feedback.replace(/\s+/g, " "), 260) : "",
+  })
 
   return Response.json({
     version: createVersion({

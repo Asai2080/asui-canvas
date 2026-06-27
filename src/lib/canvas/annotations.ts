@@ -1,14 +1,20 @@
+import type { NormalizedBounds } from "./types"
+
 export type ResolvedAnnotation = {
   annotationId: string
   imageId: string
   versionId: string
   text: string
   label?: string
+  bounds?: NormalizedBounds
 }
 
 export type AnnotationFeedbackItem = {
   label: string
   text: string
+  bounds?: NormalizedBounds
+  taskType?: "color edit" | "text replacement" | "object replacement" | "localized edit"
+  targetHint?: string
 }
 
 export function validateSameAnnotationTarget(annotations: ResolvedAnnotation[]) {
@@ -32,6 +38,7 @@ export function buildAnnotationFeedbackItems(annotations: ResolvedAnnotation[]):
     .map((annotation, index) => ({
       label: annotation.label?.trim() || `标注 ${index + 1}`,
       text: annotation.text.trim(),
+      bounds: annotation.bounds,
     }))
     .filter((item) => item.text)
 }

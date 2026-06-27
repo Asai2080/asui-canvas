@@ -5,6 +5,7 @@ export type ApiConfig = {
 }
 
 export const API_CONFIG_SESSION_KEY = "asui-ai-canvas:api-config"
+export const API_CONFIG_CHANGED_EVENT = "asui-ai-canvas:api-config-changed"
 
 export const DEFAULT_API_CONFIG: ApiConfig = {
   baseUrl: "",
@@ -39,11 +40,13 @@ export function readApiConfigFromSession(): ApiConfig {
 export function saveApiConfigToSession(config: ApiConfig) {
   window.localStorage.removeItem(API_CONFIG_SESSION_KEY)
   window.sessionStorage.setItem(API_CONFIG_SESSION_KEY, JSON.stringify(config))
+  window.dispatchEvent(new Event(API_CONFIG_CHANGED_EVENT))
 }
 
 export function clearApiConfig() {
   window.localStorage.removeItem(API_CONFIG_SESSION_KEY)
   window.sessionStorage.removeItem(API_CONFIG_SESSION_KEY)
+  window.dispatchEvent(new Event(API_CONFIG_CHANGED_EVENT))
 }
 
 export function maskApiKey(apiKey: string) {

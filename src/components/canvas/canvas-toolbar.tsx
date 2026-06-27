@@ -1,7 +1,9 @@
 "use client"
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useState } from "react"
-import { Bot, ImagePlus, KeyRound, MousePointer2, PenLine, Sparkles, X } from "lucide-react"
+import { KeyRound, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,15 +19,19 @@ import {
 } from "@/lib/canvas/api-config"
 import { IMAGE_VERSION_STORAGE_KEY } from "@/lib/canvas/persistence"
 
+const toolbarHolderIcon = "https://www.figma.com/api/mcp/asset/417f4ded-c27a-4bf6-b25b-5c7b11e8a4aa"
+const toolbarBrandIcon = "https://www.figma.com/api/mcp/asset/22fa355e-41c6-4d96-ab86-14a9e10c1c25"
+const toolbarCodexIcon = "https://www.figma.com/api/mcp/asset/8c5a88a0-2640-42a0-a55e-1e47c08bb8e5"
+
 type CanvasToolbarProps = {
   onCreateHolder: () => void
-  onCreateAnnotation: () => void
   onOpenCodexTask: () => void
 }
 
-export function CanvasToolbar({ onCreateHolder, onCreateAnnotation, onOpenCodexTask }: CanvasToolbarProps) {
+export function CanvasToolbar({ onCreateHolder, onOpenCodexTask }: CanvasToolbarProps) {
   const [isConfigOpen, setIsConfigOpen] = useState(false)
   const [cacheMessage, setCacheMessage] = useState("")
+  const [configMessage, setConfigMessage] = useState("")
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
     return readApiConfigFromSession()
   })
@@ -34,18 +40,26 @@ export function CanvasToolbar({ onCreateHolder, onCreateAnnotation, onOpenCodexT
   })
 
   const updateDraftConfig = (key: keyof ApiConfig, value: string) => {
+    setConfigMessage("")
     setDraftConfig((current) => ({ ...current, [key]: value }))
   }
 
   const openConfig = () => {
     setDraftConfig(apiConfig)
+    setConfigMessage("")
     setIsConfigOpen(true)
   }
 
   const saveConfig = () => {
+    const trimmedBaseUrl = draftConfig.baseUrl.trim()
+    if (trimmedBaseUrl && !/^https?:\/\//.test(trimmedBaseUrl)) {
+      setConfigMessage("Base URL 要填接口地址，例如 https://openrouter.ai/api/v1，API Key 请填到下面一栏。")
+      return
+    }
     saveApiConfigToSession(draftConfig)
     setApiConfig(draftConfig)
     setCacheMessage("")
+    setConfigMessage("")
     setIsConfigOpen(false)
   }
 
@@ -54,6 +68,7 @@ export function CanvasToolbar({ onCreateHolder, onCreateAnnotation, onOpenCodexT
     setApiConfig(DEFAULT_API_CONFIG)
     setDraftConfig(DEFAULT_API_CONFIG)
     setCacheMessage("")
+    setConfigMessage("")
   }
 
   const clearLegacyImageCache = () => {
@@ -69,35 +84,37 @@ export function CanvasToolbar({ onCreateHolder, onCreateAnnotation, onOpenCodexT
       <div className="canvas-toolbar">
         <button
           type="button"
-          className="flex items-center gap-2 rounded-xl px-1 py-0.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="absolute inset-y-0 left-0 w-[100px] rounded-l-[12px] transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45"
           onClick={openConfig}
           aria-label="打开 API 配置"
         >
-          <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-            <Sparkles className="size-4" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold leading-none">阿水画布</p>
-            <p className="mt-1 text-[11px] text-muted-foreground">AI IMAGE WORKSPACE</p>
-          </div>
+          <img src={toolbarBrandIcon} alt="" className="absolute left-4 top-3 size-4" />
+          <span className="absolute left-9 top-[11px] whitespace-nowrap text-xs leading-normal text-white">
+            阿水画布
+          </span>
         </button>
-        <div className="mx-2 h-8 w-px bg-border" />
-        <Button size="sm" onClick={onCreateHolder} className="gap-2 rounded-xl">
-          <ImagePlus className="size-4" />
-          新建生图节点
-        </Button>
-        <Button size="sm" variant="outline" onClick={onCreateAnnotation} className="gap-2 rounded-xl">
-          <PenLine className="size-4" />
-          AI 标注
-        </Button>
-        <Button size="sm" variant="secondary" onClick={onOpenCodexTask} className="gap-2 rounded-xl">
-          <Bot className="size-4" />
-          交给 Codex
-        </Button>
-        <div className="hidden items-center gap-1.5 text-xs text-muted-foreground lg:flex">
-          <MousePointer2 className="size-3.5" />
-          选中图片后点 AI 标注，输入要求后点标注旁“生成”
-        </div>
+        <div className="absolute left-[100px] top-0 h-10 w-px bg-[#5a5a5a]" />
+        <button
+          type="button"
+          onClick={onCreateHolder}
+          className="absolute inset-y-0 left-[101px] w-[124px] transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45"
+        >
+          <img src={toolbarHolderIcon} alt="" className="absolute left-4 top-3 size-4" />
+          <span className="absolute left-9 top-[11px] whitespace-nowrap text-xs leading-normal text-white">
+            新增生图节点
+          </span>
+        </button>
+        <div className="absolute left-[225px] top-0 h-10 w-px bg-[#5a5a5a]" />
+        <button
+          type="button"
+          onClick={onOpenCodexTask}
+          className="absolute inset-y-0 left-[226px] w-[110px] rounded-r-[12px] transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45"
+        >
+          <img src={toolbarCodexIcon} alt="" className="absolute left-4 top-3 size-4" />
+          <span className="absolute left-9 top-[11px] whitespace-nowrap text-xs leading-normal text-white">
+            交给codex
+          </span>
+        </button>
       </div>
 
       {isConfigOpen && (
@@ -161,9 +178,10 @@ export function CanvasToolbar({ onCreateHolder, onCreateAnnotation, onOpenCodexT
                   id="api-base-url"
                   value={draftConfig.baseUrl}
                   onChange={(event) => updateDraftConfig("baseUrl", event.target.value)}
-                  placeholder="https://api.openai.com/v1"
+                  placeholder="https://openrouter.ai/api/v1"
                   className="rounded-xl"
                 />
+                <p className="text-[11px] text-muted-foreground">这里填接口地址，不填 sk- 开头的 Key。</p>
               </div>
 
               <div className="space-y-1.5">
@@ -198,6 +216,11 @@ export function CanvasToolbar({ onCreateHolder, onCreateAnnotation, onOpenCodexT
               /api/images/generate；未配置时使用本地演示生成器。关闭标签页后 Key 自动失效，不会写入
               localStorage。
             </div>
+            {configMessage ? (
+              <div className="mt-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                {configMessage}
+              </div>
+            ) : null}
 
             <div className="mt-4 rounded-2xl border p-3">
               <div className="flex items-center justify-between gap-3">
