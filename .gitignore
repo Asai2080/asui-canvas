@@ -24,7 +24,7 @@
 .DS_Store
 *.pem
 /public/canvas-assets/
-.asui-codex/tasks/
+/.asui-codex/
 
 # debug
 npm-debug.log*

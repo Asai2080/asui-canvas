@@ -390,6 +390,36 @@ describe("image generation route", () => {
     expect(payload.error).not.toContain("Your request was rejected")
   })
 
+  it("returns a friendly message for generic upstream safety rejections", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            message:
+              "Your request was rejected by the safety system. If you believe this is an error, include the request ID db3fee52-e767-4778-8da5-6e4c3bd3605f.",
+          },
+        }),
+        { status: 400 }
+      )
+    )
+
+    const response = await POST(
+      createRequest({
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKey: "sk-test",
+        model: "openai/gpt-image-1",
+        prompt: "poster",
+      })
+    )
+    const payload = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(400)
+    expect(payload.error).toContain("模型安全系统拒绝了这次生成")
+    expect(payload.error).toContain("不是字体、画布尺寸或前端按钮导致")
+    expect(payload.error).toContain("请求 ID：db3fee52-e767-4778-8da5-6e4c3bd3605f")
+    expect(payload.error).not.toContain("Your request was rejected")
+  })
+
   it("reports upstream diagnostics when the model endpoint returns an empty body", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("", { status: 200 }))
 

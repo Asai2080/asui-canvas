@@ -34,6 +34,8 @@ import type { Bounds, CanvasSelection, CanvasSize, GenerationStatus, ImageVersio
 const DEFAULT_HOLDER_SIZE: CanvasSize = { width: 360, height: 480 }
 const ANNOTATION_TYPES = new Set(["arrow", "draw", "text", "highlight", "geo"])
 const ASUI_META_VERSION = 1
+const MAX_REFERENCE_IMAGE_BYTES = 18 * 1024 * 1024
+const MAX_REFERENCE_IMAGE_EDGE = 1800
 const QIAOMU_FONT_URL = "/fonts/PingFangQiaoMuTi.ttf"
 const TLDRAW_ASSET_URLS = {
   fonts: {
@@ -98,6 +100,33 @@ function loadImage(src: string) {
   })
 }
 
+async function compressReferenceBlob(blob: Blob) {
+  if (blob.size <= MAX_REFERENCE_IMAGE_BYTES) return blobToDataUrl(blob)
+
+  const image = await loadImage(URL.createObjectURL(blob))
+  try {
+    const scale = Math.min(1, MAX_REFERENCE_IMAGE_EDGE / Math.max(image.naturalWidth, image.naturalHeight))
+    const canvas = document.createElement("canvas")
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+    const context = canvas.getContext("2d")
+    if (!context) throw new Error("参考图压缩失败")
+    context.fillStyle = "#ffffff"
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+    for (const quality of [0.82, 0.72, 0.62]) {
+      const dataUrl = canvas.toDataURL("image/jpeg", quality)
+      const estimatedBytes = Math.ceil((dataUrl.length * 3) / 4)
+      if (estimatedBytes <= MAX_REFERENCE_IMAGE_BYTES) return dataUrl
+    }
+
+    return canvas.toDataURL("image/jpeg", 0.52)
+  } finally {
+    URL.revokeObjectURL(image.src)
+  }
+}
+
 async function cropImageRegionToDataUrl(src: string, imageBounds: Bounds, regionBounds: Bounds) {
   const image = await loadImage(src)
   const normalized = normalizeBounds(imageBounds, regionBounds)
@@ -126,10 +155,10 @@ async function exportAnnotatedReferenceImage(editor: Editor, imageId: TLShapeId,
     format: "png",
     background: true,
     padding: 0,
-    pixelRatio: 3,
+    pixelRatio: 1.5,
   })
 
-  return blobToDataUrl(blob)
+  return compressReferenceBlob(blob)
 }
 
 function unionBounds(bounds: Bounds[]) {
@@ -546,10 +575,25 @@ async function generateImageVersion({
   const payload = (await response.json().catch(() => ({}))) as {
     version?: ImageVersion
     error?: string
+    debug?: {
+      model?: string
+      hasSourceImage?: boolean
+      promptPreview?: string
+      feedbackPreview?: string
+    }
   }
 
   if (!response.ok || !payload.version) {
-    throw new Error(payload.error ?? "图片生成失败")
+    const debugHints = payload.debug
+      ? [
+          `模型：${payload.debug.model ?? "未知"}`,
+          `参考图：${payload.debug.hasSourceImage ? "已发送" : "未发送"}`,
+          payload.debug.feedbackPreview ? `标注摘要：${payload.debug.feedbackPreview}` : "",
+        ]
+          .filter(Boolean)
+          .join("；")
+      : ""
+    throw new Error(`${payload.error ?? "图片生成失败"}${debugHints ? `\n诊断：${debugHints}` : ""}`)
   }
 
   return payload.version
@@ -865,7 +909,7 @@ export function AiCanvas() {
     setStatusDetail("")
   }, [holderSize])
 
-  const fillHolder = useCallback(async () => {
+  const fillHolder = useCallback(async (options: { rethrow?: boolean } = {}) => {
     const editor = editorRef.current
     if (!editor || selection?.kind !== "holder") return
     const holderId = selection.shapeId as TLShapeId
@@ -914,10 +958,11 @@ export function AiCanvas() {
       editor.select(holderId)
       setStatus("error")
       setStatusDetail(error instanceof Error ? error.message : "图片生成失败")
+      if (options.rethrow) throw error
     }
   }, [prompt, selection])
 
-  const editFromAnnotation = useCallback(async () => {
+  const editFromAnnotation = useCallback(async (options: { rethrow?: boolean } = {}) => {
     const editor = editorRef.current
     if (!editor || !annotationAction) return
     const sourceBounds = editor.getShapePageBounds(annotationAction.imageId)
@@ -999,6 +1044,7 @@ export function AiCanvas() {
       console.error("Failed to generate from annotation", error)
       setStatus("error")
       setStatusDetail(error instanceof Error ? error.message : "图片生成失败")
+      if (options.rethrow) throw error
     }
   }, [annotationAction, prompt, versions])
 
@@ -1050,7 +1096,7 @@ export function AiCanvas() {
     }
   }, [annotationAction])
 
-  const editFromAllAnnotations = useCallback(async () => {
+  const editFromAllAnnotations = useCallback(async (options: { rethrow?: boolean } = {}) => {
     const editor = editorRef.current
     if (!editor || !multiAnnotationAction) return
     const sourceBounds = editor.getShapePageBounds(multiAnnotationAction.imageId)
@@ -1143,8 +1189,186 @@ export function AiCanvas() {
       console.error("Failed to generate from annotations", error)
       setStatus("error")
       setStatusDetail(error instanceof Error ? error.message : "图片生成失败")
+      if (options.rethrow) throw error
     }
   }, [multiAnnotationAction, prompt, versions])
+
+  const insertCodexResultVersion = useCallback(
+    async (version: ImageVersion) => {
+      const editor = editorRef.current
+      if (!editor) return
+
+      const savedVersion = await persistImageVersion(version)
+      const sourceImageId = multiAnnotationAction?.imageId ?? annotationAction?.imageId
+      const sourceBounds = sourceImageId ? editor.getShapePageBounds(sourceImageId) : null
+
+      if (sourceImageId && sourceBounds) {
+        const obstacles = editor
+          .getCurrentPageShapes()
+          .filter((shape) => shape.id !== sourceImageId)
+          .map((shape) => editor.getShapePageBounds(shape.id))
+          .filter((bounds): bounds is NonNullable<typeof bounds> => Boolean(bounds))
+          .map(toBounds)
+        const imageBounds = findClearPlacement({
+          anchor: toBounds(sourceBounds),
+          width: sourceBounds.w,
+          height: sourceBounds.h,
+          obstacles,
+          margin: 190,
+        })
+        const imageId = createImageShape(editor, savedVersion, imageBounds)
+        const arrowId = createShapeId()
+        editor.createShape({
+          id: arrowId,
+          type: "arrow",
+          x: sourceBounds.x + sourceBounds.w + 24,
+          y: sourceBounds.y + sourceBounds.h / 2,
+          props: {
+            start: { x: 0, y: 0 },
+            end: { x: Math.max(80, imageBounds.x - sourceBounds.x - sourceBounds.w - 48), y: 0 },
+            color: "red",
+            dash: "dashed",
+            size: "m",
+            arrowheadEnd: "arrow",
+            richText: toRichText(multiAnnotationAction ? "Codex 合并新版本" : "Codex 新版本"),
+          },
+          meta: {
+            kind: "version-link",
+            asuiNode: "version-link",
+            asuiMetaVersion: ASUI_META_VERSION,
+            sourceShapeId: sourceImageId,
+            targetShapeId: imageId,
+            sourceAnnotationIds: multiAnnotationAction?.annotations.map((annotation) => annotation.annotationId),
+          },
+        })
+        editor.select(imageId)
+        editor.zoomToSelection({ animation: { duration: 240 } })
+        setVersions((current) => [...current, savedVersion])
+        setStatus("success")
+        setStatusDetail("")
+        return
+      }
+
+      if (selection?.kind === "holder") {
+        const holderId = selection.shapeId as TLShapeId
+        const holderBounds = editor.getShapePageBounds(holderId)
+        if (holderBounds) {
+          const imageBounds = toBounds(holderBounds)
+          const holderShape = editor.getShape(holderId)
+          const imageId =
+            holderShape?.type === "frame"
+              ? createImageShape(
+                  editor,
+                  savedVersion,
+                  { x: 0, y: 0, w: imageBounds.w, h: imageBounds.h },
+                  { parentId: holderId }
+                )
+              : createImageShape(editor, savedVersion, imageBounds)
+          if (holderShape) {
+            editor.updateShape({
+              id: holderId,
+              type: holderShape.type,
+              meta: {
+                ...holderShape.meta,
+                kind: "image-holder",
+                asuiNode: "image-holder",
+                asuiMetaVersion: ASUI_META_VERSION,
+                latestImageShapeId: imageId,
+                latestVersionId: savedVersion.versionId,
+              },
+            })
+          }
+          editor.select(imageId)
+          setVersions((current) => [...current, savedVersion])
+          setStatus("success")
+          setStatusDetail("")
+          return
+        }
+      }
+
+      const viewport = editor.getViewportPageBounds()
+      const width = Math.min(savedVersion.width, Math.max(240, viewport.w * 0.4))
+      const height = Math.max(120, width * (savedVersion.height / Math.max(1, savedVersion.width)))
+      const imageId = createImageShape(editor, savedVersion, {
+        x: viewport.x + viewport.w / 2 - width / 2,
+        y: viewport.y + viewport.h / 2 - height / 2,
+        w: width,
+        h: height,
+      })
+      editor.select(imageId)
+      editor.zoomToSelection({ animation: { duration: 240 } })
+      setVersions((current) => [...current, savedVersion])
+      setStatus("success")
+      setStatusDetail("")
+    },
+    [annotationAction, multiAnnotationAction, selection]
+  )
+
+  const resolveCodexCanvasContext = useCallback(async () => {
+    const editor = editorRef.current
+    if (!editor) return {}
+
+    if (multiAnnotationAction) {
+      const relatedAnnotationIds = getRelatedAnnotationIdsForReference(
+        editor,
+        multiAnnotationAction.imageId,
+        multiAnnotationAction.annotations.map((annotation) => annotation.annotationId as TLShapeId)
+      )
+      const referenceImageSrc = await exportAnnotatedReferenceImage(
+        editor,
+        multiAnnotationAction.imageId,
+        relatedAnnotationIds
+      ).catch(() => null)
+
+      return {
+        sourceShapeId: multiAnnotationAction.imageId,
+        versionId: multiAnnotationAction.versionId,
+        sourceImageSrc: getImageShapeSource(editor, multiAnnotationAction.imageId) ?? undefined,
+        referenceImageSrc: referenceImageSrc ?? undefined,
+        feedbackItems: buildUnderstoodAnnotationFeedbackItems(
+          editor,
+          multiAnnotationAction.imageId,
+          multiAnnotationAction.annotations
+        ),
+      }
+    }
+
+    if (annotationAction) {
+      const relatedAnnotationIds = getRelatedAnnotationIdsForReference(editor, annotationAction.imageId, [
+        annotationAction.annotationId,
+      ])
+      const referenceImageSrc = await exportAnnotatedReferenceImage(
+        editor,
+        annotationAction.imageId,
+        relatedAnnotationIds
+      ).catch(() => null)
+
+      return {
+        sourceShapeId: annotationAction.imageId,
+        versionId: annotationAction.versionId,
+        sourceImageSrc: getImageShapeSource(editor, annotationAction.imageId) ?? undefined,
+        referenceImageSrc: referenceImageSrc ?? undefined,
+        feedbackItems: buildUnderstoodAnnotationFeedbackItems(editor, annotationAction.imageId, [
+          {
+            annotationId: annotationAction.annotationId,
+            imageId: annotationAction.imageId,
+            versionId: annotationAction.versionId,
+            text: getFeedbackFromAnnotationGroup(editor, annotationAction.annotationId, relatedAnnotationIds),
+          },
+        ]),
+      }
+    }
+
+    if (selection?.kind === "image") {
+      return {
+        sourceShapeId: selection.shapeId,
+        versionId: selection.versionId,
+        sourceImageSrc: getImageShapeSource(editor, selection.shapeId as TLShapeId) ?? undefined,
+      }
+    }
+
+    return {}
+  }, [annotationAction, multiAnnotationAction, selection])
 
   const canGenerateFromAnnotation = Boolean(annotationAction) && status !== "editing"
   const canGenerateFromAllAnnotations = Boolean(multiAnnotationAction) && status !== "editing"
@@ -1248,6 +1472,8 @@ export function AiCanvas() {
           prompt={prompt}
           width={holderSize.width}
           height={holderSize.height}
+          resolveCanvasContext={resolveCodexCanvasContext}
+          onInsertResult={insertCodexResultVersion}
           onClose={() => setIsCodexTaskOpen(false)}
         />
       )}

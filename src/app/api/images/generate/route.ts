@@ -420,7 +420,10 @@ function friendlyUpstreamError(message?: string, fallback?: string) {
   if (!message?.trim()) return fallback ?? "图片生成接口请求失败"
 
   const safetyMatch = message.match(/safety_violations=\[([^\]]+)\]/i)
-  const requestIdMatch = message.match(/\breq_[A-Za-z0-9_-]+\b/)
+  const requestIdMatch =
+    message.match(/\breq_[A-Za-z0-9_-]+\b/) ??
+    message.match(/\brequest ID\s+([A-Za-z0-9_-]{8,})/i) ??
+    message.match(/\brequest id[:：]?\s*([A-Za-z0-9_-]{8,})/i)
 
   if (safetyMatch) {
     const reasons = safetyMatch[1]
@@ -433,6 +436,17 @@ function friendlyUpstreamError(message?: string, fallback?: string) {
       `模型安全系统拒绝了这次生成${reasons ? `（原因：${reasons}）` : ""}。`,
       "请检查提示词、图片内容或标注文案，删掉容易被误判的词后再试。",
       requestIdMatch ? `请求 ID：${requestIdMatch[0]}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  }
+
+  if (/rejected by the safety system|safety system rejected|safety policy/i.test(message)) {
+    return [
+      "模型安全系统拒绝了这次生成。",
+      "这通常是提示词、参考图内容或标注文案被上游模型误判，不是字体、画布尺寸或前端按钮导致。",
+      "可以先删掉容易被误判的词，或换一张更明确的参考图后再试。",
+      requestIdMatch ? `请求 ID：${requestIdMatch[1] ?? requestIdMatch[0]}` : "",
     ]
       .filter(Boolean)
       .join(" ")
