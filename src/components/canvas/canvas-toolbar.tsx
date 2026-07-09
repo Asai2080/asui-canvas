@@ -1,9 +1,7 @@
 "use client"
 
-/* eslint-disable @next/next/no-img-element */
-
 import { useState } from "react"
-import { KeyRound, X } from "lucide-react"
+import { Bot, ChevronDown, ImagePlus, KeyRound, LoaderCircle, Sparkles, Video, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,21 +15,25 @@ import {
   saveApiConfigToSession,
   type ApiConfig,
 } from "@/lib/canvas/api-config"
-import { IMAGE_VERSION_STORAGE_KEY } from "@/lib/canvas/persistence"
 
-const toolbarHolderIcon = "https://www.figma.com/api/mcp/asset/417f4ded-c27a-4bf6-b25b-5c7b11e8a4aa"
-const toolbarBrandIcon = "https://www.figma.com/api/mcp/asset/22fa355e-41c6-4d96-ab86-14a9e10c1c25"
+type ApiConfigMode = "image" | "video"
 
 type CanvasToolbarProps = {
   onCreateHolder: () => void
+  onCreateVideoNode: () => void
   onOpenCodexTask: () => void
+  codexTaskStatus?: "idle" | "generating"
 }
 
-export function CanvasToolbar({ onCreateHolder, onOpenCodexTask }: CanvasToolbarProps) {
-  void onOpenCodexTask
-
+export function CanvasToolbar({
+  onCreateHolder,
+  onCreateVideoNode,
+  onOpenCodexTask,
+  codexTaskStatus = "idle",
+}: CanvasToolbarProps) {
   const [isConfigOpen, setIsConfigOpen] = useState(false)
-  const [cacheMessage, setCacheMessage] = useState("")
+  const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false)
+  const [configMode, setConfigMode] = useState<ApiConfigMode>("image")
   const [configMessage, setConfigMessage] = useState("")
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
     return readApiConfigFromSession()
@@ -52,14 +54,13 @@ export function CanvasToolbar({ onCreateHolder, onOpenCodexTask }: CanvasToolbar
   }
 
   const saveConfig = () => {
-    const trimmedBaseUrl = draftConfig.baseUrl.trim()
+    const trimmedBaseUrl = configMode === "image" ? draftConfig.baseUrl.trim() : draftConfig.videoBaseUrl.trim()
     if (trimmedBaseUrl && !/^https?:\/\//.test(trimmedBaseUrl)) {
       setConfigMessage("Base URL 要填接口地址，例如 https://openrouter.ai/api/v1，API Key 请填到下面一栏。")
       return
     }
     saveApiConfigToSession(draftConfig)
     setApiConfig(draftConfig)
-    setCacheMessage("")
     setConfigMessage("")
     setIsConfigOpen(false)
   }
@@ -68,28 +69,34 @@ export function CanvasToolbar({ onCreateHolder, onOpenCodexTask }: CanvasToolbar
     clearApiConfig()
     setApiConfig(DEFAULT_API_CONFIG)
     setDraftConfig(DEFAULT_API_CONFIG)
-    setCacheMessage("")
     setConfigMessage("")
   }
 
-  const clearLegacyImageCache = () => {
-    window.localStorage.removeItem(IMAGE_VERSION_STORAGE_KEY)
-    setCacheMessage("已清理旧图片版本缓存，画布内容不会被删除。")
-  }
-
-  const isApiReady = Boolean(apiConfig.baseUrl.trim() && apiConfig.apiKey.trim())
-  const isDraftApiReady = Boolean(draftConfig.baseUrl.trim() && draftConfig.apiKey.trim())
+  const isImageApiReady = Boolean(apiConfig.baseUrl.trim() && apiConfig.apiKey.trim())
+  const isVideoApiReady = Boolean(apiConfig.videoBaseUrl.trim() && apiConfig.videoApiKey.trim())
+  const isActiveApiReady = configMode === "image" ? isImageApiReady : isVideoApiReady
+  const activeBaseUrlKey = configMode === "image" ? "baseUrl" : "videoBaseUrl"
+  const activeApiKeyKey = configMode === "image" ? "apiKey" : "videoApiKey"
+  const activeModelKey = configMode === "image" ? "model" : "videoModel"
+  const activeApiKey = configMode === "image" ? apiConfig.apiKey : apiConfig.videoApiKey
+  const activeTitle = configMode === "image" ? "图片生成" : "视频生成"
+  const isCodexGenerating = codexTaskStatus === "generating"
 
   return (
     <>
-      <div className="canvas-toolbar">
+      <div
+        className="canvas-toolbar"
+        style={{ width: 350, zIndex: 1001 }}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
         <button
           type="button"
           className="absolute inset-y-0 left-0 w-[100px] rounded-l-[12px] transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45"
           onClick={openConfig}
           aria-label="打开 API 配置"
         >
-          <img src={toolbarBrandIcon} alt="" className="absolute left-4 top-3 size-4" />
+          <Sparkles className="absolute left-4 top-3 size-4" aria-hidden="true" />
           <span className="absolute left-9 top-[11px] whitespace-nowrap text-xs leading-normal text-white">
             阿水画布
           </span>
@@ -97,26 +104,76 @@ export function CanvasToolbar({ onCreateHolder, onOpenCodexTask }: CanvasToolbar
         <div className="absolute left-[100px] top-0 h-10 w-px bg-[#5a5a5a]" />
         <button
           type="button"
-          onClick={onCreateHolder}
+          onClick={() => setIsCreateMenuOpen((current) => !current)}
           className="absolute inset-y-0 left-[101px] w-[124px] transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45"
+          aria-haspopup="menu"
+          aria-expanded={isCreateMenuOpen}
         >
-          <img src={toolbarHolderIcon} alt="" className="absolute left-4 top-3 size-4" />
+          <ImagePlus className="absolute left-4 top-3 size-4" aria-hidden="true" />
           <span className="absolute left-9 top-[11px] whitespace-nowrap text-xs leading-normal text-white">
-            新增生图节点
+            新建节点
+          </span>
+          <ChevronDown className="absolute right-3 top-3 size-4 text-white/75" aria-hidden="true" />
+        </button>
+        <div className="absolute left-[225px] top-0 h-10 w-px bg-[#5a5a5a]" />
+        <button
+          type="button"
+          onClick={onOpenCodexTask}
+          className="absolute inset-y-0 left-[226px] w-[124px] rounded-r-[12px] transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45"
+          aria-label={isCodexGenerating ? "Codex 正在生成" : "交给 Codex"}
+        >
+          {isCodexGenerating ? (
+            <LoaderCircle className="absolute left-4 top-3 size-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Bot className="absolute left-4 top-3 size-4" aria-hidden="true" />
+          )}
+          <span className="absolute left-9 top-[11px] whitespace-nowrap text-xs leading-normal text-white">
+            {isCodexGenerating ? "生成中" : "交给 Codex"}
           </span>
         </button>
       </div>
 
+      {isCreateMenuOpen && (
+        <div
+          className="canvas-toolbar-create-menu"
+          role="menu"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setIsCreateMenuOpen(false)
+              onCreateHolder()
+            }}
+          >
+            <ImagePlus className="size-4" />
+            <span>图片节点</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setIsCreateMenuOpen(false)
+              onCreateVideoNode()
+            }}
+          >
+            <Video className="size-4" />
+            <span>视频节点</span>
+          </button>
+        </div>
+      )}
+
       {isConfigOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center bg-background/45 px-4 pt-24 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-background/45 px-4 pt-16 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-labelledby="api-config-title"
           onPointerDown={() => setIsConfigOpen(false)}
         >
           <form
-            className="flex max-h-[calc(100vh-9rem)] w-full max-w-md flex-col overflow-hidden rounded-3xl border bg-background shadow-2xl"
+            className="flex h-[min(550px,calc(100vh-6rem))] w-full max-w-md flex-col overflow-hidden rounded-3xl border bg-background shadow-2xl"
             onPointerDown={(event) => event.stopPropagation()}
             onSubmit={(event) => {
               event.preventDefault()
@@ -134,7 +191,7 @@ export function CanvasToolbar({ onCreateHolder, onOpenCodexTask }: CanvasToolbar
                       <h2 id="api-config-title" className="text-base font-semibold leading-none">
                         API 配置
                       </h2>
-                      <p className="mt-1 text-xs text-muted-foreground">Fill Image Holder 与批注生成会读取这里</p>
+                      <p className="mt-1 text-xs text-muted-foreground">图片生成和视频生成分别读取这里</p>
                     </div>
                   </div>
                 </div>
@@ -152,61 +209,78 @@ export function CanvasToolbar({ onCreateHolder, onOpenCodexTask }: CanvasToolbar
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
-              <div className="mb-5 grid gap-2 rounded-2xl border bg-muted/35 p-3 text-xs">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">当前生图模式</span>
-                  <span className="font-semibold">{isApiReady ? "API 生图" : "本地演示"}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">保存后模式</span>
-                  <span className="font-semibold">{isDraftApiReady ? "API 生图" : "本地演示"}</span>
-                </div>
+              <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-muted p-1 text-sm">
+                <button
+                  type="button"
+                  className={`h-9 rounded-xl font-medium transition-colors ${
+                    configMode === "image" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+                  }`}
+                  onClick={() => {
+                    setConfigMode("image")
+                    setConfigMessage("")
+                  }}
+                >
+                  图片生成
+                </button>
+                <button
+                  type="button"
+                  className={`h-9 rounded-xl font-medium transition-colors ${
+                    configMode === "video" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+                  }`}
+                  onClick={() => {
+                    setConfigMode("video")
+                    setConfigMessage("")
+                  }}
+                >
+                  视频生成
+                </button>
               </div>
 
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="api-base-url">Base URL</Label>
+                  <Label htmlFor="api-base-url">{activeTitle} Base URL</Label>
                   <Input
                     id="api-base-url"
-                    value={draftConfig.baseUrl}
-                    onChange={(event) => updateDraftConfig("baseUrl", event.target.value)}
-                    placeholder="https://openrouter.ai/api/v1"
+                    value={draftConfig[activeBaseUrlKey]}
+                    onChange={(event) => updateDraftConfig(activeBaseUrlKey, event.target.value)}
+                    placeholder={configMode === "image" ? "https://openrouter.ai/api/v1" : "https://api.video-provider.com/v1"}
                     className="rounded-xl"
                   />
                   <p className="text-[11px] text-muted-foreground">这里填接口地址，不填 sk- 开头的 Key。</p>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="api-key">API Key</Label>
+                  <Label htmlFor="api-key">{activeTitle} API Key</Label>
                   <Input
                     id="api-key"
                     type="password"
-                    value={draftConfig.apiKey}
-                    onChange={(event) => updateDraftConfig("apiKey", event.target.value)}
+                    value={draftConfig[activeApiKeyKey]}
+                    onChange={(event) => updateDraftConfig(activeApiKeyKey, event.target.value)}
                     placeholder="sk-..."
                     className="rounded-xl"
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    当前 Key：{maskApiKey(apiConfig.apiKey)}。仅保存在当前浏览器标签会话中。
+                    当前 Key：{maskApiKey(activeApiKey)}。仅保存在当前浏览器标签会话中。
                   </p>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="api-model">模型名</Label>
+                  <Label htmlFor="api-model">{activeTitle}模型名</Label>
                   <Input
                     id="api-model"
-                    value={draftConfig.model}
-                    onChange={(event) => updateDraftConfig("model", event.target.value)}
-                    placeholder="gpt-image-1"
+                    value={draftConfig[activeModelKey]}
+                    onChange={(event) => updateDraftConfig(activeModelKey, event.target.value)}
+                    placeholder={configMode === "image" ? "gpt-image-1" : "kling-v2.1"}
                     className="rounded-xl"
                   />
                 </div>
               </div>
 
               <div className="mt-5 rounded-2xl border border-dashed bg-muted/40 p-3 text-[11px] leading-relaxed text-muted-foreground">
-                说明：保存 Base URL + API Key 后，Fill Image Holder 和批注旁的生成按钮会调用
-                /api/images/generate；未配置时使用本地演示生成器。关闭标签页后 Key 自动失效，不会写入
-                localStorage。
+                {configMode === "image"
+                  ? "说明：图片节点和批注生成会读取图片生成配置；未配置时使用本地演示生成器。"
+                  : "说明：视频节点会读取视频生成配置；未配置时先停留在本地占位流程，后续接入真实图生视频接口。"}
+                关闭标签页后 Key 自动失效，不会写入 localStorage。
               </div>
               {configMessage ? (
                 <div className="mt-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
@@ -214,22 +288,10 @@ export function CanvasToolbar({ onCreateHolder, onOpenCodexTask }: CanvasToolbar
                 </div>
               ) : null}
 
-              <div className="mt-4 rounded-2xl border p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold">旧图片缓存</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">只清理历史生成版本缓存，不删除画布节点。</p>
-                  </div>
-                  <Button type="button" variant="outline" className="rounded-xl" onClick={clearLegacyImageCache}>
-                    清理
-                  </Button>
-                </div>
-                {cacheMessage ? <p className="mt-2 text-[11px] text-muted-foreground">{cacheMessage}</p> : null}
-              </div>
             </div>
 
             <div className="flex shrink-0 justify-end gap-2 border-t px-5 py-4">
-              {isApiReady ? (
+              {isActiveApiReady ? (
                 <Button type="button" variant="ghost" className="mr-auto rounded-xl" onClick={removeApiConfig}>
                   清除 API Key
                 </Button>

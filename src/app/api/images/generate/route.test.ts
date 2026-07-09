@@ -276,6 +276,113 @@ describe("image generation route", () => {
     })
   })
 
+  it("sends uploaded reference images as OpenRouter input references", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                images: [{ image_url: { url: "https://example.test/generated.png" } }],
+              },
+            },
+          ],
+        }),
+        { status: 200 }
+      )
+    )
+
+    const response = await POST(
+      createRequest({
+        baseUrl: "https://openrouter.ai",
+        apiKey: "sk-test",
+        model: "openai/gpt-5.4-image-2-20260421",
+        prompt: "make a poster using references",
+        referenceImageSrcs: ["https://example.test/ref-1.png", "https://example.test/ref-2.png"],
+        width: 1024,
+        height: 1024,
+      })
+    )
+    const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)) as {
+      prompt: string
+      input_references: Array<{
+        type: string
+        image_url: { url: string }
+      }>
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.prompt).toContain("uploaded reference images")
+    expect(body.prompt).toContain("Text prompt: make a poster using references")
+    expect(body.input_references).toEqual([
+      {
+        type: "image_url",
+        image_url: { url: "https://example.test/ref-1.png" },
+      },
+      {
+        type: "image_url",
+        image_url: { url: "https://example.test/ref-2.png" },
+      },
+    ])
+  })
+
+  it("classifies mixed reference assets and only sends images to the image model", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined)
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                images: [{ image_url: { url: "https://example.test/generated.png" } }],
+              },
+            },
+          ],
+        }),
+        { status: 200 }
+      )
+    )
+
+    const response = await POST(
+      createRequest({
+        baseUrl: "https://openrouter.ai",
+        apiKey: "sk-test",
+        model: "openai/gpt-5.4-image-2-20260421",
+        prompt: "turn this still into a cinematic video frame",
+        referenceAssets: [
+          {
+            src: "data:image/png;base64,abc123",
+            name: "upstream.png",
+          },
+          {
+            src: "data:video/mp4;base64,def456",
+            name: "motion.mp4",
+          },
+        ],
+        width: 1024,
+        height: 1024,
+      })
+    )
+    const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)) as {
+      input_references: Array<{
+        type: string
+        image_url: { url: string }
+      }>
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.input_references).toEqual([
+      {
+        type: "image_url",
+        image_url: { url: "data:image/png;base64,abc123" },
+      },
+    ])
+    expect(console.info).toHaveBeenCalledWith("[asui-image-generate] reference assets", {
+      imageCount: 1,
+      videoCount: 1,
+    })
+  })
+
   it("composes multiple annotation feedback items into one localized edit request", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(

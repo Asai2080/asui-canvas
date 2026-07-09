@@ -9,7 +9,11 @@ const TASK_STATUS_DIRS = ["queued", "received", "processing", "done", "failed"] 
 
 export type CodexTaskStatus = (typeof TASK_STATUS_DIRS)[number]
 
-export async function writeCodexTask(task: CodexTask, rootDir = process.cwd()) {
+function defaultRootDir() {
+  return process.env.ASUI_CODEX_TASK_ROOT_DIR || process.cwd()
+}
+
+export async function writeCodexTask(task: CodexTask, rootDir = defaultRootDir()) {
   const fileName = `${task.id}.json`
   const relativePath = `${CODEX_TASK_ROOT}/${QUEUED_TASK_DIR}/${fileName}`
   const directory = join(rootDir, CODEX_TASK_ROOT, "tasks", "queued")
@@ -46,7 +50,7 @@ async function readTaskFile(path: string) {
   return codexTaskSchema.parse(JSON.parse(await readFile(path, "utf8")))
 }
 
-export async function getCodexTask(taskId: string, rootDir = process.cwd()) {
+export async function getCodexTask(taskId: string, rootDir = defaultRootDir()) {
   const fileName = `${taskId}.json`
 
   for (const status of TASK_STATUS_DIRS) {
@@ -67,10 +71,13 @@ export async function getCodexTask(taskId: string, rootDir = process.cwd()) {
   return null
 }
 
-export async function receiveNextCodexTask(receiver = "codex-local-listener", rootDir = process.cwd()) {
+export async function receiveNextCodexTask(receiver = "codex-local-listener", rootDir = defaultRootDir()) {
   const queuedDir = taskDirectory(rootDir, "queued")
   await mkdir(queuedDir, { recursive: true })
-  const fileNames = (await readdir(queuedDir)).filter((fileName) => fileName.endsWith(".json")).sort()
+  const fileNames = (await readdir(queuedDir))
+    .filter((fileName) => fileName.endsWith(".json"))
+    .sort()
+    .reverse()
   const fileName = fileNames[0]
   if (!fileName) return null
 
@@ -102,7 +109,7 @@ export async function receiveNextCodexTask(receiver = "codex-local-listener", ro
 export async function updateCodexTask(
   taskId: string,
   patch: Pick<CodexTask, "status"> & Partial<Pick<CodexTask, "result" | "error">>,
-  rootDir = process.cwd()
+  rootDir = defaultRootDir()
 ) {
   const current = await getCodexTask(taskId, rootDir)
   if (!current) return null

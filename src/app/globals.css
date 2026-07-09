@@ -158,15 +158,341 @@
   }
 
   .canvas-toolbar {
-    @apply absolute left-1/2 top-3 z-20 h-10 w-[336px] -translate-x-1/2 overflow-hidden rounded-[12px] bg-black/80 text-white;
+    @apply absolute left-1/2 top-3 z-[1001] h-10 w-[350px] -translate-x-1/2 overflow-hidden rounded-[12px] bg-black/80 text-white;
+  }
+
+  .canvas-toolbar-create-menu {
+    @apply absolute left-1/2 top-[58px] z-[1002] w-36 -translate-x-1/2 rounded-xl border border-[#e9e9e9] bg-background p-1.5 text-sm text-[#222] shadow-xl;
+  }
+
+  .canvas-toolbar-create-menu button {
+    @apply flex h-9 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors hover:bg-muted;
+  }
+
+  .canvas-toast {
+    @apply pointer-events-auto absolute right-6 top-20 z-[1100] flex max-h-[220px] max-w-[420px] items-start gap-3 overflow-hidden rounded-2xl border border-red-200 bg-white px-4 py-3 text-sm leading-6 text-red-600 shadow-2xl;
+  }
+
+  .canvas-toast p {
+    @apply min-w-0 flex-1 overflow-y-auto break-words;
+  }
+
+  .canvas-toast button {
+    @apply flex size-6 shrink-0 items-center justify-center rounded-full text-lg leading-none text-red-500 transition-colors hover:bg-red-50;
   }
 
   .generation-panel {
-    @apply absolute right-4 top-4 z-20 w-[340px] rounded-3xl border bg-background/95 p-4 shadow-2xl backdrop-blur;
+    @apply absolute z-30 h-[234px] w-[683px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[22px] bg-background text-foreground shadow-2xl;
+  }
+
+  .generation-panel-tools-row {
+    @apply absolute left-5 right-5 top-5 flex h-12 items-start gap-3 overflow-hidden;
+  }
+
+  .generation-panel-prompt-wrap {
+    @apply absolute left-5 right-5 top-[76px];
+  }
+
+  .generation-panel-footer {
+    @apply absolute bottom-5 left-5 right-5 flex h-8 items-center gap-4 text-[13px];
+  }
+
+  .generation-panel-tool {
+    @apply flex size-12 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-[#e5e6ec] bg-background text-[10px] leading-3 text-[#525252] transition-colors hover:bg-muted hover:text-foreground;
+  }
+
+  .generation-panel-reference-strip {
+    @apply flex min-w-0 flex-1 items-center gap-2 overflow-x-auto overflow-y-hidden pb-1;
+  }
+
+  .generation-panel-reference-strip::-webkit-scrollbar {
+    @apply h-1;
+  }
+
+  .generation-panel-reference-strip::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-black/15;
+  }
+
+  .generation-panel-reference-thumb {
+    @apply relative size-12 shrink-0 overflow-hidden rounded-lg bg-muted;
+  }
+
+  .generation-panel-reference-thumb img,
+  .generation-panel-reference-thumb video {
+    @apply size-full object-cover;
+  }
+
+  .generation-panel-reference-type {
+    @apply absolute bottom-0.5 left-0.5 flex size-4 items-center justify-center rounded-full bg-black/55 text-white;
+  }
+
+  .generation-panel-reference-badge {
+    @apply absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-black/55 text-[10px] font-medium leading-none text-white;
+  }
+
+  .generation-panel-reference-remove {
+    @apply absolute inset-0 hidden items-center justify-center bg-black/35 text-white;
+  }
+
+  .generation-panel-reference-thumb:hover .generation-panel-reference-remove {
+    @apply flex;
+  }
+
+  .generation-panel-prompt {
+    @apply h-[98px] resize-none rounded-[10px] border border-[#e8e8e8] bg-transparent px-[10px] py-2 font-sans text-sm leading-[25px] tracking-[-0.15px] text-foreground shadow-none outline-none placeholder:text-[#919191] focus-visible:ring-0;
+  }
+
+  .generation-panel-status-message {
+    @apply mt-2 max-h-8 overflow-y-auto break-words rounded-lg px-2 py-1 text-xs leading-5;
+  }
+
+  .generation-panel-bottom-item {
+    @apply flex h-8 min-w-0 items-center gap-1 whitespace-nowrap text-[#141414];
+  }
+
+  .generation-panel-model-item {
+    @apply max-w-[260px] overflow-hidden text-ellipsis text-[15px];
+  }
+
+  .generation-panel-model-item span {
+    @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap;
+  }
+
+  .generation-panel-video-options {
+    @apply flex min-w-0 flex-1 items-center gap-3 overflow-hidden text-[13px] text-[#555];
+  }
+
+  .generation-panel-video-duration {
+    @apply flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-[#e5e5e5] px-2;
+  }
+
+  .generation-panel-video-duration input {
+    @apply h-6 w-9 bg-transparent text-center text-sm font-medium text-[#141414] outline-none;
+  }
+
+  .generation-panel-video-resolution {
+    @apply flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap;
+  }
+
+  .generation-panel-video-resolution > span {
+    @apply shrink-0;
+  }
+
+  .generation-panel-video-resolution button {
+    @apply h-7 shrink-0 rounded-md px-2 text-xs font-medium text-[#555] transition-colors hover:bg-muted;
+  }
+
+  .generation-panel-video-resolution button.is-active {
+    @apply bg-[#141414] text-white;
+  }
+
+  .generation-panel-send-button {
+    @apply ml-auto size-7 shrink-0 rounded-lg bg-[#898989] text-white hover:bg-[#747474];
   }
 
   .canvas-size-floating-bar {
     @apply absolute z-30 flex max-w-[calc(100vw-2rem)] items-center overflow-visible rounded-xl border bg-background/95 backdrop-blur;
+  }
+
+  .canvas-generation-status-overlay {
+    @apply pointer-events-none absolute z-30 flex items-center justify-center overflow-hidden rounded-sm;
+    background:
+      radial-gradient(circle, rgba(17, 24, 39, 0.08) 1.5px, transparent 2px) 0 0 / 28px 28px,
+      rgba(246, 247, 249, 0.76);
+  }
+
+  .canvas-generation-status-overlay::before {
+    content: "";
+    @apply absolute inset-0;
+    background: linear-gradient(
+      115deg,
+      transparent 0%,
+      transparent 28%,
+      rgba(255, 255, 255, 0.2) 38%,
+      rgba(255, 255, 255, 0.82) 50%,
+      rgba(255, 255, 255, 0.2) 62%,
+      transparent 72%,
+      transparent 100%
+    );
+    animation: canvas-generation-status-sweep 2400ms cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  }
+
+  .canvas-generation-status-overlay__field {
+    @apply absolute inset-0;
+    background:
+      radial-gradient(circle, rgba(17, 24, 39, 0.06) 0 2px, transparent 2.5px) 0 0 / 28px 28px,
+      radial-gradient(circle, rgba(17, 24, 39, 0.035) 0 2px, transparent 2.5px) 14px 14px / 28px 28px;
+    animation: canvas-generation-status-pulse 2200ms ease-in-out infinite;
+  }
+
+  .canvas-generation-status-overlay__content {
+    @apply relative z-10 flex items-center justify-center rounded-full border border-black/5 bg-white/70 px-4 py-2 text-center text-sm font-semibold text-[#111] shadow-lg backdrop-blur-sm;
+  }
+
+  .node-connector-button {
+    @apply absolute z-[1000] flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[#d9d9d9] bg-background text-[#555] shadow-md transition-colors hover:border-[#bdbdbd] hover:bg-muted hover:text-foreground;
+  }
+
+  .node-connector-drag-line {
+    @apply pointer-events-none fixed inset-0 z-[999] size-full overflow-visible;
+  }
+
+  .node-connector-drag-line path {
+    fill: none;
+    stroke: #a7c7f9;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  .node-connector-drag-line circle {
+    fill: #ffffff;
+    stroke: #8a8a8a;
+    stroke-width: 1.5;
+  }
+
+  .video-node-link-layer {
+    @apply pointer-events-none fixed inset-0 z-20 size-full overflow-visible;
+  }
+
+  .video-node-link-layer__base {
+    fill: none;
+    stroke: rgba(92, 92, 92, 0.14);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .video-node-link-layer__glow {
+    fill: none;
+    stroke: rgba(168, 214, 255, 0.2);
+    stroke-width: 12;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 72 520;
+    filter: blur(4px);
+    animation: video-node-link-flow 2200ms linear infinite;
+  }
+
+  .video-node-link-layer__pulse {
+    fill: none;
+    stroke: rgba(201, 231, 255, 0.86);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 44 548;
+    filter: drop-shadow(0 0 7px rgba(123, 198, 255, 0.45));
+    animation: video-node-link-flow 2200ms linear infinite;
+  }
+
+  @keyframes video-node-link-flow {
+    from {
+      stroke-dashoffset: 620;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  .node-connector-menu {
+    @apply absolute z-[1001] min-w-28 -translate-y-1/2 rounded-xl border border-[#e9e9e9] bg-background p-1.5 text-sm shadow-xl;
+  }
+
+  .node-connector-menu button {
+    @apply flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[#222] transition-colors hover:bg-muted;
+  }
+
+  .canvas-generation-status-overlay__light {
+    fill: #ffffff;
+    opacity: 0;
+    animation: canvas-generation-status-scan 2200ms cubic-bezier(0.25, 1, 0.5, 1) infinite both;
+  }
+
+  .canvas-generation-status-overlay__light.d00 {
+    animation-delay: 0ms;
+  }
+
+  .canvas-generation-status-overlay__light.d01,
+  .canvas-generation-status-overlay__light.d10 {
+    animation-delay: 183ms;
+  }
+
+  .canvas-generation-status-overlay__light.d02,
+  .canvas-generation-status-overlay__light.d11,
+  .canvas-generation-status-overlay__light.d20 {
+    animation-delay: 367ms;
+  }
+
+  .canvas-generation-status-overlay__light.d03,
+  .canvas-generation-status-overlay__light.d12,
+  .canvas-generation-status-overlay__light.d21,
+  .canvas-generation-status-overlay__light.d30 {
+    animation-delay: 550ms;
+  }
+
+  .canvas-generation-status-overlay__light.d04,
+  .canvas-generation-status-overlay__light.d13,
+  .canvas-generation-status-overlay__light.d22,
+  .canvas-generation-status-overlay__light.d31,
+  .canvas-generation-status-overlay__light.d40 {
+    animation-delay: 733ms;
+  }
+
+  .canvas-generation-status-overlay__light.d14,
+  .canvas-generation-status-overlay__light.d23,
+  .canvas-generation-status-overlay__light.d32,
+  .canvas-generation-status-overlay__light.d41 {
+    animation-delay: 917ms;
+  }
+
+  .canvas-generation-status-overlay__light.d24,
+  .canvas-generation-status-overlay__light.d33,
+  .canvas-generation-status-overlay__light.d42 {
+    animation-delay: 1100ms;
+  }
+
+  .canvas-generation-status-overlay__light.d34,
+  .canvas-generation-status-overlay__light.d43 {
+    animation-delay: 1283ms;
+  }
+
+  .canvas-generation-status-overlay__light.d44 {
+    animation-delay: 1467ms;
+  }
+
+  @keyframes canvas-generation-status-scan {
+    0% {
+      opacity: 0;
+    }
+    8% {
+      opacity: 1;
+    }
+    36% {
+      opacity: 0.05;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes canvas-generation-status-sweep {
+    0% {
+      transform: translateX(-140%);
+    }
+
+    100% {
+      transform: translateX(140%);
+    }
+  }
+
+  @keyframes canvas-generation-status-pulse {
+    0%,
+    100% {
+      opacity: 0.45;
+    }
+
+    50% {
+      opacity: 0.9;
+    }
   }
 
   .canvas-surface .tlui-layout__top__right:has(.tlui-style-panel__wrapper) {
@@ -185,13 +511,33 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .canvas-generation-status-overlay__light {
+    animation: none;
+    opacity: 0.45;
+  }
+
+  .canvas-generation-status-overlay::before,
+  .canvas-generation-status-overlay__field {
+    animation: none;
+  }
+}
+
 @media (max-width: 860px) {
   .canvas-toolbar {
     @apply left-1/2 right-auto top-3 max-w-[calc(100vw-1.5rem)] -translate-x-1/2;
   }
 
   .generation-panel {
-    @apply bottom-3 left-3 right-3 top-auto max-h-[46vh] w-auto overflow-y-auto rounded-2xl;
+    @apply h-[234px] max-h-[52vh] w-[calc(100vw-1.5rem)] rounded-2xl;
+  }
+
+  .generation-panel-prompt {
+    @apply h-20 text-base;
+  }
+
+  .generation-panel-bottom-item {
+    @apply text-xs;
   }
 
   .canvas-size-floating-bar {

@@ -15,6 +15,28 @@ describe("api config", () => {
     })
   })
 
+  it("parses video generation config separately from image config", () => {
+    expect(
+      parseApiConfig(
+        JSON.stringify({
+          baseUrl: "https://image.example.com/v1",
+          apiKey: "sk-image",
+          model: "gpt-image-1",
+          videoBaseUrl: "https://video.example.com/v1",
+          videoApiKey: "sk-video",
+          videoModel: "kling-v2.1",
+        })
+      )
+    ).toEqual({
+      baseUrl: "https://image.example.com/v1",
+      apiKey: "sk-image",
+      model: "gpt-image-1",
+      videoBaseUrl: "https://video.example.com/v1",
+      videoApiKey: "sk-video",
+      videoModel: "kling-v2.1",
+    })
+  })
+
   it("masks saved API keys", () => {
     expect(maskApiKey("")).toBe("未配置")
     expect(maskApiKey("short")).toBe("已配置")

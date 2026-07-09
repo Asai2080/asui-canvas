@@ -26,12 +26,14 @@ const mimeToExtension = (mimeType: string) => {
 }
 
 const parseDataUrl = (src: string) => {
-  const match = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/.exec(src)
+  const match = /^data:([^,]*),([\s\S]*)$/.exec(src)
   if (!match) return null
 
-  const mimeType = match[1] || "application/octet-stream"
-  const isBase64 = Boolean(match[2])
-  const encoded = match[3]
+  const metadata = match[1] || "application/octet-stream"
+  const parts = metadata.split(";").filter(Boolean)
+  const mimeType = parts[0] && !parts[0].includes("=") ? parts[0] : "application/octet-stream"
+  const isBase64 = parts.some((part) => part.toLowerCase() === "base64")
+  const encoded = match[2]
   const buffer = isBase64 ? Buffer.from(encoded, "base64") : Buffer.from(decodeURIComponent(encoded))
 
   return { buffer, mimeType }

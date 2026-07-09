@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "asui-canvas-card": {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "./mcp/asui-card-server.mjs"
+      ]
+    }
+  }
+}

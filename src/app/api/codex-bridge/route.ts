@@ -25,7 +25,7 @@ export async function POST(request: Request) {
           visible: false,
           bridgeError,
         },
-        message: "任务已加入 Codex 本地队列，等待 Codex 接收。",
+        message: "任务已加入 Codex 本地队列，但当前 Codex 会话尚未接收。",
       })
     }
   } catch (error) {

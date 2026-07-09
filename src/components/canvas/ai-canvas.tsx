@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from "react"
 import {
   AssetRecordType,
   createShapeId,
@@ -8,15 +8,15 @@ import {
   Tldraw,
   TLShape,
   TLShapeId,
-  toRichText,
 } from "tldraw"
-import { LoaderCircle, Scissors, Sparkles } from "lucide-react"
+import { LoaderCircle, Plus, Scissors, Sparkles, Video } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { CanvasGenerationStatusOverlay } from "@/components/canvas/canvas-generation-status-overlay"
 import { CanvasSizeFloatingBar } from "@/components/canvas/canvas-size-floating-bar"
 import { CanvasToolbar } from "@/components/canvas/canvas-toolbar"
-import { CodexTaskPanel } from "@/components/canvas/codex-task-panel"
-import { GenerationPanel } from "@/components/canvas/generation-panel"
+import { CodexTaskPanel, type ResolvedCodexCanvasContext } from "@/components/canvas/codex-task-panel"
+import { GenerationPanel, type VideoResolution } from "@/components/canvas/generation-panel"
 import {
   buildAnnotationFeedbackItems,
   validateSameAnnotationTarget,
@@ -29,7 +29,7 @@ import { CANVAS_PERSISTENCE_KEY, IMAGE_VERSION_STORAGE_KEY } from "@/lib/canvas/
 import { generatePoster } from "@/lib/canvas/poster-generator"
 import { resolveCanvasSizePreset, type CanvasSizePresetId } from "@/lib/canvas/size-presets"
 import { normalizeCanvasSize } from "@/lib/canvas/size"
-import type { Bounds, CanvasSelection, CanvasSize, GenerationStatus, ImageVersion } from "@/lib/canvas/types"
+import type { Bounds, CanvasSelection, CanvasSize, GenerationStatus, ImageVersion, ReferenceImage } from "@/lib/canvas/types"
 
 const DEFAULT_HOLDER_SIZE: CanvasSize = { width: 360, height: 480 }
 const ANNOTATION_TYPES = new Set(["arrow", "draw", "text", "highlight", "geo"])
@@ -47,8 +47,26 @@ const TLDRAW_ASSET_URLS = {
 }
 
 const shapeMeta = (shape?: TLShape | null) => (shape?.meta ?? {}) as Record<string, unknown>
+const isImageHolderShape = (shape?: TLShape | null) => {
+  const meta = shapeMeta(shape)
+  return meta.kind === "image-holder" || meta.asuiNode === "image-holder"
+}
+const isVideoNodeShape = (shape?: TLShape | null) => {
+  const meta = shapeMeta(shape)
+  return meta.kind === "video-node" || meta.asuiNode === "video-node"
+}
+const externalVersionIdForShape = (shapeId: string) => `external:${shapeId}`
+const isExternalVersionId = (versionId?: string) => Boolean(versionId?.startsWith("external:"))
+const parentVersionIdFromCanvasVersionId = (versionId?: string) =>
+  versionId && !isExternalVersionId(versionId) ? versionId : undefined
+const getCanvasImageVersionId = (shape: TLShape) => {
+  const meta = shapeMeta(shape)
+  return typeof meta.versionId === "string" ? meta.versionId : externalVersionIdForShape(shape.id)
+}
 const isCanvasSizePresetId = (value: unknown): value is CanvasSizePresetId =>
   typeof value === "string" && ["custom", "1:1", "2:3", "3:4", "9:16", "3:2", "16:9", "a4", "web"].includes(value)
+
+const errorMessage = (error: unknown, fallback: string) => (error instanceof Error ? error.message : fallback)
 
 const toBounds = (box: { x: number; y: number; w: number; h: number }): Bounds => ({
   x: box.x,
@@ -56,6 +74,190 @@ const toBounds = (box: { x: number; y: number; w: number; h: number }): Bounds =
   w: box.w,
   h: box.h,
 })
+
+type FloatingPanelPosition = {
+  x: number
+  y: number
+}
+
+type ConnectorSide = "left" | "right"
+
+type NodeConnectorMenu = {
+  x: number
+  y: number
+  sourceShapeId: TLShapeId
+  side: ConnectorSide
+  pagePoint?: { x: number; y: number }
+}
+
+type NodeConnectorDrag = {
+  sourceShapeId: TLShapeId
+  side: ConnectorSide
+  start: { x: number; y: number }
+  current: { x: number; y: number }
+  active: boolean
+}
+
+type CanvasNodeLink = {
+  id: string
+  source: { x: number; y: number }
+  target: { x: number; y: number }
+}
+
+function getViewportShapeBounds(editor: Editor, shapeId: TLShapeId): Bounds | null {
+  const bounds = editor.getShapePageBounds(shapeId)
+  if (!bounds) return null
+
+  const topLeft = editor.pageToViewport({ x: bounds.x, y: bounds.y })
+  const bottomRight = editor.pageToViewport({ x: bounds.x + bounds.w, y: bounds.y + bounds.h })
+
+  return {
+    x: topLeft.x,
+    y: topLeft.y,
+    w: Math.max(1, bottomRight.x - topLeft.x),
+    h: Math.max(1, bottomRight.y - topLeft.y),
+  }
+}
+
+function getFloatingPanelPosition(bounds: Bounds): FloatingPanelPosition {
+  const panelWidth = 683
+  const panelHeight = 234
+  const margin = 16
+  const viewportWidth = typeof window === "undefined" ? 1440 : window.innerWidth
+  const viewportHeight = typeof window === "undefined" ? 900 : window.innerHeight
+  const preferredX = bounds.x + bounds.w / 2 - panelWidth / 2
+  const preferredBelowY = bounds.y + bounds.h + 14
+  const preferredAboveY = bounds.y - panelHeight - 14
+  const x = Math.min(Math.max(margin, preferredX), Math.max(margin, viewportWidth - panelWidth - margin))
+  const y =
+    preferredBelowY + panelHeight <= viewportHeight - margin ? preferredBelowY : Math.max(margin, preferredAboveY)
+
+  return { x, y }
+}
+
+function getPagePointFromViewportPoint(editor: Editor, point: { x: number; y: number }) {
+  const viewportPageBounds = editor.getViewportPageBounds()
+  const topLeft = editor.pageToViewport({ x: viewportPageBounds.x, y: viewportPageBounds.y })
+  const bottomRight = editor.pageToViewport({
+    x: viewportPageBounds.x + viewportPageBounds.w,
+    y: viewportPageBounds.y + viewportPageBounds.h,
+  })
+  const viewportWidth = Math.max(1, bottomRight.x - topLeft.x)
+  const viewportHeight = Math.max(1, bottomRight.y - topLeft.y)
+
+  return {
+    x: viewportPageBounds.x + ((point.x - topLeft.x) / viewportWidth) * viewportPageBounds.w,
+    y: viewportPageBounds.y + ((point.y - topLeft.y) / viewportHeight) * viewportPageBounds.h,
+  }
+}
+
+function getHolderAtPagePoint(editor: Editor, point: { x: number; y: number }) {
+  return (
+    editor
+      .getCurrentPageShapes()
+      .map((shape) => {
+        const meta = shapeMeta(shape)
+        const isHolder = meta.kind === "image-holder" || meta.asuiNode === "image-holder"
+        if (!isHolder || (shape.type !== "frame" && shape.type !== "geo")) return null
+        const bounds = editor.getShapePageBounds(shape.id)
+        if (!bounds) return null
+        const normalizedBounds = toBounds(bounds)
+        const containsPoint =
+          point.x >= normalizedBounds.x &&
+          point.x <= normalizedBounds.x + normalizedBounds.w &&
+          point.y >= normalizedBounds.y &&
+          point.y <= normalizedBounds.y + normalizedBounds.h
+        if (!containsPoint) return null
+
+        return {
+          id: shape.id as TLShapeId,
+          area: normalizedBounds.w * normalizedBounds.h,
+        }
+      })
+      .filter((candidate): candidate is { id: TLShapeId; area: number } => Boolean(candidate))
+      .sort((a, b) => a.area - b.area)[0]?.id ?? null
+  )
+}
+
+function connectorAnchor(bounds: Bounds, side: ConnectorSide) {
+  return {
+    x: side === "left" ? bounds.x : bounds.x + bounds.w,
+    y: bounds.y + bounds.h / 2,
+  }
+}
+
+function getVideoNodeLinks(editor: Editor): CanvasNodeLink[] {
+  return editor
+    .getCurrentPageShapes()
+    .map((shape) => {
+      const meta = shapeMeta(shape)
+      if (meta.kind !== "video-node" && meta.asuiNode !== "video-node") return null
+      if (typeof meta.sourceShapeId !== "string") return null
+
+      const sourceBounds = getViewportShapeBounds(editor, meta.sourceShapeId as TLShapeId)
+      const targetBounds = getViewportShapeBounds(editor, shape.id as TLShapeId)
+      if (!sourceBounds || !targetBounds) return null
+
+      const sourceIsLeft = sourceBounds.x + sourceBounds.w / 2 < targetBounds.x + targetBounds.w / 2
+      return {
+        id: `${meta.sourceShapeId}-${shape.id}`,
+        source: connectorAnchor(sourceBounds, sourceIsLeft ? "right" : "left"),
+        target: connectorAnchor(targetBounds, sourceIsLeft ? "left" : "right"),
+      }
+    })
+    .filter((link): link is CanvasNodeLink => Boolean(link))
+}
+
+function getVersionNodeLinks(editor: Editor): CanvasNodeLink[] {
+  return editor
+    .getCurrentPageShapes()
+    .map((shape) => {
+      const meta = shapeMeta(shape)
+      if (meta.kind !== "generated-image" && meta.asuiNode !== "generated-image") return null
+      if (typeof meta.sourceShapeId !== "string") return null
+
+      const sourceBounds = getViewportShapeBounds(editor, meta.sourceShapeId as TLShapeId)
+      const targetBounds = getViewportShapeBounds(editor, shape.id as TLShapeId)
+      if (!sourceBounds || !targetBounds) return null
+
+      const sourceIsLeft = sourceBounds.x + sourceBounds.w / 2 < targetBounds.x + targetBounds.w / 2
+      return {
+        id: `version-${meta.sourceShapeId}-${shape.id}`,
+        source: connectorAnchor(sourceBounds, sourceIsLeft ? "right" : "left"),
+        target: connectorAnchor(targetBounds, sourceIsLeft ? "left" : "right"),
+      }
+    })
+    .filter((link): link is CanvasNodeLink => Boolean(link))
+}
+
+function migrateVersionLinkArrows(editor: Editor) {
+  const arrowsToDelete: TLShapeId[] = []
+
+  for (const shape of editor.getCurrentPageShapes()) {
+    const meta = shapeMeta(shape)
+    if (shape.type !== "arrow") continue
+    if (meta.kind !== "version-link" && meta.asuiNode !== "version-link") continue
+    if (typeof meta.sourceShapeId !== "string" || typeof meta.targetShapeId !== "string") continue
+
+    const targetShape = editor.getShape(meta.targetShapeId as TLShapeId)
+    if (targetShape) {
+      editor.updateShape({
+        id: targetShape.id,
+        type: targetShape.type,
+        meta: {
+          ...targetShape.meta,
+          sourceShapeId: meta.sourceShapeId,
+          sourceAnnotationIds: Array.isArray(meta.sourceAnnotationIds) ? meta.sourceAnnotationIds : [],
+        },
+      })
+    }
+    arrowsToDelete.push(shape.id as TLShapeId)
+  }
+
+  if (arrowsToDelete.length > 0) {
+    editor.deleteShapes(arrowsToDelete)
+  }
+}
 
 function intersectionArea(a: Bounds, b: Bounds) {
   const left = Math.max(a.x, b.x)
@@ -289,21 +491,83 @@ function resolveEditRequestSize(source: ImageVersion | undefined, sourceBounds: 
 function getSelection(editor: Editor): CanvasSelection | null {
   const shape = editor.getOnlySelectedShape()
   if (!shape) return null
-  const meta = shapeMeta(shape)
 
-  if (meta.kind === "image-holder" || meta.asuiNode === "image-holder" || shape.type === "frame") {
+  if (isVideoNodeShape(shape)) {
+    return { shapeId: shape.id, kind: "video" }
+  }
+
+  if (isImageHolderShape(shape)) {
     return { shapeId: shape.id, kind: "holder" }
   }
 
-  if (shape.type === "image" && (meta.kind === "generated-image" || meta.asuiNode === "generated-image")) {
+  if (shape.type === "image") {
     return {
       shapeId: shape.id,
-      versionId: typeof meta.versionId === "string" ? meta.versionId : undefined,
+      versionId: getCanvasImageVersionId(shape),
       kind: "image",
     }
   }
 
   return { shapeId: shape.id, kind: "other" }
+}
+
+function getLatestImageShapeIdFromHolder(editor: Editor, holderId: TLShapeId) {
+  const holder = editor.getShape(holderId)
+  const meta = shapeMeta(holder)
+  const latestImageShapeId =
+    typeof meta.latestImageShapeId === "string" ? (meta.latestImageShapeId as TLShapeId) : null
+
+  if (latestImageShapeId) {
+    const latestImage = editor.getShape(latestImageShapeId)
+    if (latestImage?.type === "image") return latestImageShapeId
+  }
+
+  const childImages = editor
+    .getCurrentPageShapes()
+    .filter((shape) => shape.type === "image" && shape.parentId === holderId)
+    .map((shape) => shape.id as TLShapeId)
+
+  return childImages[childImages.length - 1] ?? null
+}
+
+function getCodexSourceImageFromSelection(editor: Editor, selection: CanvasSelection | null) {
+  if (!selection) return null
+
+  if (selection.kind === "image") {
+    const imageShape = editor.getShape(selection.shapeId as TLShapeId)
+    const imageBounds = editor.getShapePageBounds(selection.shapeId as TLShapeId)
+    if (!imageShape || imageShape.type !== "image" || !imageBounds) return null
+    const meta = shapeMeta(imageShape)
+
+    return {
+      imageId: imageShape.id as TLShapeId,
+      versionId: typeof meta.versionId === "string" ? meta.versionId : selection.versionId,
+      bounds: toBounds(imageBounds),
+    }
+  }
+
+  if (selection.kind === "holder") {
+    const holderShape = editor.getShape(selection.shapeId as TLShapeId)
+    const holderBounds = editor.getShapePageBounds(selection.shapeId as TLShapeId)
+    const imageId = getLatestImageShapeIdFromHolder(editor, selection.shapeId as TLShapeId)
+    if (!holderShape || !holderBounds || !imageId) return null
+    const imageShape = editor.getShape(imageId)
+    const imageMeta = shapeMeta(imageShape)
+    const holderMeta = shapeMeta(holderShape)
+
+    return {
+      imageId,
+      versionId:
+        typeof imageMeta.versionId === "string"
+          ? imageMeta.versionId
+          : typeof holderMeta.latestVersionId === "string"
+            ? holderMeta.latestVersionId
+            : undefined,
+      bounds: toBounds(holderBounds),
+    }
+  }
+
+  return null
 }
 
 function getGeneratedImageTargetForAnnotation(editor: Editor, annotationId: TLShapeId) {
@@ -316,15 +580,10 @@ function getGeneratedImageTargetForAnnotation(editor: Editor, annotationId: TLSh
     const sourceShape = editor.getShape(sourceShapeId)
     const sourceMeta = shapeMeta(sourceShape)
     const annotationBounds = editor.getShapePageBounds(annotationId)
-    if (
-      sourceShape?.type === "image" &&
-      annotationBounds &&
-      (sourceMeta.kind === "generated-image" || sourceMeta.asuiNode === "generated-image") &&
-      typeof sourceMeta.versionId === "string"
-    ) {
+    if (sourceShape?.type === "image" && annotationBounds && getImageShapeSource(editor, sourceShape.id as TLShapeId)) {
       return {
         imageId: sourceShape.id as TLShapeId,
-        versionId: sourceMeta.versionId,
+        versionId: typeof sourceMeta.versionId === "string" ? sourceMeta.versionId : externalVersionIdForShape(sourceShape.id),
         annotationBounds: toBounds(annotationBounds),
       }
     }
@@ -337,8 +596,7 @@ function getGeneratedImageTargetForAnnotation(editor: Editor, annotationId: TLSh
   const imageCandidates = editor
     .getCurrentPageShapes()
     .map((shape) => {
-      const meta = shapeMeta(shape)
-      if (shape.type !== "image" || (meta.kind !== "generated-image" && meta.asuiNode !== "generated-image")) return null
+      if (shape.type !== "image" || !getImageShapeSource(editor, shape.id as TLShapeId)) return null
       const imageBounds = editor.getShapePageBounds(shape.id)
       if (!imageBounds) return null
       const bounds = toBounds(imageBounds)
@@ -362,8 +620,7 @@ function getGeneratedImageTargetForAnnotation(editor: Editor, annotationId: TLSh
 
   if (!image) return null
   const meta = shapeMeta(image)
-  const versionId = typeof meta.versionId === "string" ? meta.versionId : undefined
-  if (!versionId) return null
+  const versionId = typeof meta.versionId === "string" ? meta.versionId : externalVersionIdForShape(image.id)
 
   return {
     imageId: image.id as TLShapeId,
@@ -430,6 +687,18 @@ function getImageAnnotationsForGeneration(editor: Editor, imageId: TLShapeId) {
     .filter((annotation): annotation is ResolvedAnnotation => {
       return annotation !== null && annotation.imageId === imageId && annotation.text.trim().length > 0
     })
+}
+
+function getPromptFromSelectedAnnotationShapes(editor: Editor, shapeIds: string[]) {
+  return shapeIds
+    .map((id) => {
+      const shape = editor.getShape(id as TLShapeId)
+      if (!shape || !ANNOTATION_TYPES.has(shape.type)) return ""
+      return getAnnotationText(editor, shape.id as TLShapeId)
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim()
 }
 
 const extensionFromSrc = (src: string) => {
@@ -508,6 +777,155 @@ function createImageShape(
   return shapeId
 }
 
+function attachVersionLinkToImage(
+  editor: Editor,
+  imageId: TLShapeId,
+  sourceShapeId: TLShapeId,
+  sourceAnnotationIds?: Array<string | TLShapeId>
+) {
+  const imageShape = editor.getShape(imageId)
+  if (!imageShape) return
+
+  editor.updateShape({
+    id: imageId,
+    type: imageShape.type,
+    meta: {
+      ...imageShape.meta,
+      sourceShapeId,
+      sourceAnnotationIds: sourceAnnotationIds ?? [],
+    },
+  })
+}
+
+function findImageShapeByVersionId(editor: Editor, versionId?: string) {
+  if (!versionId) return null
+
+  const shape = editor.getCurrentPageShapes().find((shape) => {
+    const meta = shapeMeta(shape)
+    return shape.type === "image" && meta.versionId === versionId
+  })
+
+  return shape?.id as TLShapeId | null
+}
+
+function createImageHolderWithImage(editor: Editor, version: ImageVersion, bounds: Bounds) {
+  const holderId = createShapeId()
+
+  editor.createShape({
+    id: holderId,
+    type: "frame",
+    x: bounds.x,
+    y: bounds.y,
+    props: {
+      w: bounds.w,
+      h: bounds.h,
+      name: `AI Image Holder · ${Math.round(bounds.w)}×${Math.round(bounds.h)}`,
+      color: "blue",
+    },
+    meta: {
+      kind: "image-holder",
+      asuiNode: "image-holder",
+      asuiMetaVersion: ASUI_META_VERSION,
+      size: { width: Math.round(bounds.w), height: Math.round(bounds.h) },
+      sizePreset: "custom",
+      layoutMode: "manual",
+      latestVersionId: version.versionId,
+    },
+  })
+
+  const imageId = createImageShape(
+    editor,
+    version,
+    {
+      x: 0,
+      y: 0,
+      w: bounds.w,
+      h: bounds.h,
+    },
+    { parentId: holderId }
+  )
+  const holderShape = editor.getShape(holderId)
+  if (holderShape) {
+    editor.updateShape({
+      id: holderId,
+      type: holderShape.type,
+      meta: {
+        ...holderShape.meta,
+        latestImageShapeId: imageId,
+      },
+    })
+  }
+
+  return { holderId, imageId }
+}
+
+function createVideoShape(
+  editor: Editor,
+  {
+    src,
+    prompt,
+    bounds,
+    parentId,
+    taskId,
+  }: {
+    src: string
+    prompt: string
+    bounds: Bounds
+    parentId?: TLShapeId
+    taskId?: string
+  }
+) {
+  const assetId = AssetRecordType.createId()
+  const shapeId = createShapeId()
+
+  editor.createAssets([
+    {
+      id: assetId,
+      typeName: "asset",
+      type: "video",
+      props: {
+        w: Math.round(bounds.w),
+        h: Math.round(bounds.h),
+        name: `${taskId ?? shapeId}.mp4`,
+        isAnimated: true,
+        mimeType: "video/mp4",
+        src,
+      },
+      meta: {
+        asuiNode: "video-asset",
+        asuiMetaVersion: ASUI_META_VERSION,
+        taskId: taskId ?? null,
+      },
+    },
+  ])
+
+  editor.createShape({
+    id: shapeId,
+    type: "video",
+    x: bounds.x,
+    y: bounds.y,
+    parentId,
+    props: {
+      w: bounds.w,
+      h: bounds.h,
+      time: 0,
+      playing: true,
+      autoplay: true,
+      url: "",
+      assetId,
+      altText: prompt,
+    },
+    meta: {
+      kind: "generated-video",
+      asuiNode: "generated-video",
+      asuiMetaVersion: ASUI_META_VERSION,
+      taskId: taskId ?? null,
+    },
+  })
+
+  return shapeId
+}
+
 async function persistImageVersion(version: ImageVersion) {
   const response = await fetch("/api/canvas-assets", {
     method: "POST",
@@ -537,6 +955,7 @@ async function generateImageVersion({
   bounds,
   requestSize,
   sourceImageSrc,
+  referenceImageSrcs,
 }: {
   prompt: string
   feedback?: string
@@ -545,6 +964,7 @@ async function generateImageVersion({
   bounds: Bounds
   requestSize?: CanvasSize
   sourceImageSrc?: string
+  referenceImageSrcs?: string[]
 }) {
   const apiConfig = readApiConfigFromSession()
 
@@ -567,6 +987,7 @@ async function generateImageVersion({
       feedbackItems,
       parentVersionId,
       sourceImageSrc,
+      referenceImageSrcs,
       width: requestSize?.width ?? bounds.w,
       height: requestSize?.height ?? bounds.h,
     }),
@@ -597,6 +1018,134 @@ async function generateImageVersion({
   }
 
   return payload.version
+}
+
+async function generateVideoResult({
+  prompt,
+  sourceImageSrc,
+  referenceAssets,
+  durationSeconds,
+  resolution,
+}: {
+  prompt: string
+  sourceImageSrc?: string
+  referenceAssets: ReferenceImage[]
+  durationSeconds: number
+  resolution: VideoResolution
+}) {
+  const apiConfig = readApiConfigFromSession()
+  const createResponse = await fetch("/api/videos/generate", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...apiConfig,
+      action: "create",
+      prompt,
+      sourceImageSrc,
+      referenceAssets,
+      durationSeconds,
+      resolution,
+    }),
+  })
+  const createPayload = (await createResponse.json().catch(() => ({}))) as {
+    task?: {
+      taskId: string
+      status?: string
+    }
+    error?: string
+  }
+  if (!createResponse.ok || !createPayload.task?.taskId) {
+    throw new Error(createPayload.error ?? "视频任务创建失败")
+  }
+
+  return {
+    taskId: createPayload.task.taskId,
+    poll: () => pollVideoTaskResult({ taskId: createPayload.task!.taskId, durationSeconds, resolution }),
+  }
+}
+
+async function pollVideoTaskResult({
+  taskId,
+  durationSeconds,
+  resolution,
+}: {
+  taskId: string
+  durationSeconds: number
+  resolution: VideoResolution
+}) {
+  const apiConfig = readApiConfigFromSession()
+  let response: Response
+  try {
+    response = await fetch("/api/videos/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...apiConfig,
+        action: "poll",
+        taskId,
+        durationSeconds,
+        resolution,
+      }),
+    })
+  } catch {
+    return {
+      video: null,
+      status: "network-retry",
+      statusText: "连接重试中",
+    }
+  }
+  const payload = (await response.json().catch(() => ({}))) as {
+    video?: {
+      src: string
+      taskId?: string
+      status?: string
+    }
+    task?: {
+      taskId: string
+      status?: string
+      statusText?: string
+    }
+    error?: string
+  }
+  if (!response.ok) {
+    throw new Error(payload.error ?? "视频任务查询失败")
+  }
+  if (payload.video?.src) {
+    return {
+      video: payload.video,
+      status: payload.video.status ?? "succeeded",
+      statusText: "视频已生成",
+    }
+  }
+  return {
+    video: null,
+    status: payload.task?.status ?? "running",
+    statusText: payload.task?.statusText ?? `任务状态：${payload.task?.status ?? "running"}`,
+  }
+}
+
+function formatVideoGenerationError(error: unknown) {
+  const message = error instanceof Error ? error.message : "视频生成失败"
+  const requestId = /request id[:：]\s*([a-zA-Z0-9_-]+)/i.exec(message)?.[1]
+  const suffix = requestId ? ` 请求 ID：${requestId}` : ""
+
+  if (/real person|person|human/i.test(message)) {
+    return `视频模型拒绝了这次生成：参考图可能包含真实人物。可以换成非真人图、卡通图，或去掉人物参考后再试。${suffix}`
+  }
+
+  if (/copyright|intellectual property|trademark|brand/i.test(message)) {
+    return `视频模型拒绝了这次生成：输出视频可能涉及版权、品牌或 IP 限制。建议换成原创素材，或去掉明显品牌、游戏界面、影视/动漫角色等参考后再试。${suffix}`
+  }
+
+  if (/safety|policy|rejected|blocked/i.test(message)) {
+    return `视频模型安全系统拒绝了这次生成。请检查参考图和提示词后重试。${suffix}`
+  }
+
+  return message
 }
 
 async function generateCutoutVersion({
@@ -642,9 +1191,38 @@ function getImageShapeSource(editor: Editor, shapeId: TLShapeId) {
   return asset?.type === "image" ? asset.props.src : null
 }
 
+function getVideoNodeReferenceImages(editor: Editor, videoShapeId: TLShapeId): ReferenceImage[] {
+  const videoShape = editor.getShape(videoShapeId)
+  const sourceShapeId = shapeMeta(videoShape).sourceShapeId
+  if (typeof sourceShapeId !== "string") return []
+
+  const sourceShape = editor.getShape(sourceShapeId as TLShapeId)
+  const sourceMeta = shapeMeta(sourceShape)
+  const imageShapeId =
+    sourceShape?.type === "image"
+      ? (sourceShape.id as TLShapeId)
+      : typeof sourceMeta.latestImageShapeId === "string"
+        ? (sourceMeta.latestImageShapeId as TLShapeId)
+        : null
+  if (!imageShapeId) return []
+
+  const src = getImageShapeSource(editor, imageShapeId)
+  if (!src) return []
+
+  return [
+    {
+      id: `video-reference-${imageShapeId}`,
+      name: "上游图片",
+      src,
+      mediaType: "image",
+    },
+  ]
+}
+
 export function AiCanvas() {
   const editorRef = useRef<Editor | null>(null)
   const unlistenRef = useRef<(() => void) | null>(null)
+  const pendingHolderSelectionRef = useRef<TLShapeId | null>(null)
   const [selection, setSelection] = useState<CanvasSelection | null>(null)
   const [annotationAction, setAnnotationAction] = useState<{
     annotationId: TLShapeId
@@ -665,23 +1243,61 @@ export function AiCanvas() {
     y: number
     presetId: CanvasSizePresetId
   } | null>(null)
+  const [generationPanelPosition, setGenerationPanelPosition] = useState<FloatingPanelPosition | null>(null)
+  const [holderViewportBounds, setHolderViewportBounds] = useState<Bounds | null>(null)
+  const [nodeConnectorMenu, setNodeConnectorMenu] = useState<NodeConnectorMenu | null>(null)
+  const [nodeConnectorDrag, setNodeConnectorDrag] = useState<NodeConnectorDrag | null>(null)
+  const [videoNodeLinks, setVideoNodeLinks] = useState<CanvasNodeLink[]>([])
+  const [versionNodeLinks, setVersionNodeLinks] = useState<CanvasNodeLink[]>([])
   const [holderSize, setHolderSize] = useState<CanvasSize>(DEFAULT_HOLDER_SIZE)
+  const [floatingSize, setFloatingSize] = useState<CanvasSize>(DEFAULT_HOLDER_SIZE)
   const [selectedShapeIds, setSelectedShapeIds] = useState<string[]>([])
   const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<string[]>([])
   const [isCodexTaskOpen, setIsCodexTaskOpen] = useState(false)
+  const [codexTaskStatus, setCodexTaskStatus] = useState<"idle" | "generating">("idle")
+  const [codexTaskId, setCodexTaskId] = useState("")
   const [prompt, setPrompt] = useState("")
+  const [videoPrompt, setVideoPrompt] = useState("")
+  const [videoDurationSeconds, setVideoDurationSeconds] = useState(4)
+  const [videoResolution, setVideoResolution] = useState<VideoResolution>("720p")
+  const [referenceImages, setReferenceImages] = useState<ReferenceImage[]>([])
+  const [videoReferenceImages, setVideoReferenceImages] = useState<ReferenceImage[]>([])
+  const [videoUploadedReferences, setVideoUploadedReferences] = useState<ReferenceImage[]>([])
   const [status, setStatus] = useState<GenerationStatus>("idle")
   const [statusDetail, setStatusDetail] = useState("")
+  const [toastMessage, setToastMessage] = useState("")
   const [versions, setVersions] = useState<ImageVersion[]>([])
+  const [generationOverlay, setGenerationOverlay] = useState<{
+    shapeId: TLShapeId
+    bounds: Bounds
+    label: string
+  } | null>(null)
+  const codexPollingTaskRef = useRef("")
+  const codexResultContextRef = useRef<ResolvedCodexCanvasContext | null>(null)
+  const videoPollingTaskRef = useRef("")
 
   useEffect(() => {
     return () => unlistenRef.current?.()
   }, [])
 
   useEffect(() => {
+    if (!toastMessage) return
+    const timeout = window.setTimeout(() => setToastMessage(""), 5200)
+    return () => window.clearTimeout(timeout)
+  }, [toastMessage])
+
+  useEffect(() => {
     const closeSizeBar = (event: PointerEvent) => {
       const target = event.target
       if (target instanceof Element && target.closest("[data-canvas-size-bar]")) return
+      const editor = editorRef.current
+      if (editor) {
+        const holderId = getHolderAtPagePoint(
+          editor,
+          getPagePointFromViewportPoint(editor, { x: event.clientX, y: event.clientY })
+        )
+        if (holderId) return
+      }
       setSizeBar(null)
     }
 
@@ -694,8 +1310,25 @@ export function AiCanvas() {
   }, [])
 
   const syncSelection = useCallback((editor: Editor) => {
-    const nextSelection = getSelection(editor)
+    const rawSelection = getSelection(editor)
+    const pendingHolderId = pendingHolderSelectionRef.current
+    const pendingHolderShape = pendingHolderId ? editor.getShape(pendingHolderId) : null
+    const pendingHolderMeta = shapeMeta(pendingHolderShape)
+    const pendingHolderSelection =
+      pendingHolderId &&
+      pendingHolderShape &&
+      (pendingHolderMeta.kind === "image-holder" || pendingHolderMeta.asuiNode === "image-holder")
+        ? ({ shapeId: pendingHolderId, kind: "holder" } satisfies CanvasSelection)
+        : null
+    const nextSelection = rawSelection ?? pendingHolderSelection
     const nextSelectedShapeIds = editor.getSelectedShapeIds()
+
+    if (rawSelection) {
+      pendingHolderSelectionRef.current = null
+    }
+
+    setVideoNodeLinks(getVideoNodeLinks(editor))
+    setVersionNodeLinks(getVersionNodeLinks(editor))
     setSelectedShapeIds(nextSelectedShapeIds)
     setSelectedAnnotationIds(
       nextSelectedShapeIds.filter((id) => {
@@ -712,13 +1345,44 @@ export function AiCanvas() {
         const shape = editor.getShape(nextSelection.shapeId as TLShapeId)
         const meta = shapeMeta(shape)
         const anchor = editor.pageToViewport({ x: bounds.x, y: bounds.y })
+        const viewportBounds = getViewportShapeBounds(editor, nextSelection.shapeId as TLShapeId)
         setHolderSize(normalizedSize)
+        setFloatingSize(normalizedSize)
+        setSizeBar({
+          x: Math.max(16, anchor.x),
+          y: Math.max(16, anchor.y - 64),
+          presetId: isCanvasSizePresetId(meta.sizePreset) ? meta.sizePreset : "custom",
+        })
+        setGenerationPanelPosition(viewportBounds ? getFloatingPanelPosition(viewportBounds) : null)
+        setHolderViewportBounds(viewportBounds)
+      }
+    } else if (nextSelection?.kind === "image") {
+      setGenerationPanelPosition(null)
+      setSizeBar(null)
+      setHolderViewportBounds(getViewportShapeBounds(editor, nextSelection.shapeId as TLShapeId))
+    } else if (nextSelection?.kind === "video") {
+      const bounds = editor.getShapePageBounds(nextSelection.shapeId as TLShapeId)
+      const viewportBounds = getViewportShapeBounds(editor, nextSelection.shapeId as TLShapeId)
+      if (bounds) {
+        const normalizedSize = normalizeCanvasSize({ width: bounds.w, height: bounds.h })
+        const shape = editor.getShape(nextSelection.shapeId as TLShapeId)
+        const meta = shapeMeta(shape)
+        const anchor = editor.pageToViewport({ x: bounds.x, y: bounds.y })
+        setFloatingSize(normalizedSize)
         setSizeBar({
           x: Math.max(16, anchor.x),
           y: Math.max(16, anchor.y - 64),
           presetId: isCanvasSizePresetId(meta.sizePreset) ? meta.sizePreset : "custom",
         })
       }
+      setGenerationPanelPosition(viewportBounds ? getFloatingPanelPosition(viewportBounds) : null)
+      setHolderViewportBounds(null)
+      setVideoReferenceImages(getVideoNodeReferenceImages(editor, nextSelection.shapeId as TLShapeId))
+    } else {
+      setGenerationPanelPosition(null)
+      setHolderViewportBounds(null)
+      setNodeConnectorMenu(null)
+      setVideoReferenceImages([])
     }
 
     const selectedShape = editor.getOnlySelectedShape()
@@ -773,7 +1437,10 @@ export function AiCanvas() {
     if (nextSelectedShapeIds.length >= 2) {
       const annotations = nextSelectedShapeIds
         .map((id) => resolveAnnotationForGeneration(editor, id as TLShapeId))
-        .filter((annotation): annotation is ResolvedAnnotation => Boolean(annotation) && annotation.text.trim().length > 0)
+        .filter((annotation): annotation is ResolvedAnnotation => {
+          if (!annotation) return false
+          return annotation.text.trim().length > 0
+        })
       const target = validateSameAnnotationTarget(annotations)
       if (target && annotations.length >= 2) {
         const firstBounds = editor.getShapePageBounds(annotations[0].annotationId as TLShapeId)
@@ -792,12 +1459,51 @@ export function AiCanvas() {
     setMultiAnnotationAction(null)
   }, [])
 
+  const showGenerationOverlay = useCallback((shapeId: TLShapeId, label: string) => {
+    const editor = editorRef.current
+    if (!editor) return
+
+    const bounds = getViewportShapeBounds(editor, shapeId)
+    if (!bounds) return
+
+    setGenerationOverlay({ shapeId, bounds, label })
+  }, [])
+
+  const clearGenerationOverlay = useCallback(() => {
+    setGenerationOverlay(null)
+  }, [])
+
   const handleMount = useCallback(
     (editor: Editor) => {
       editorRef.current = editor
+      migrateVersionLinkArrows(editor)
+      const staleVideoLinks = editor
+        .getCurrentPageShapes()
+        .filter((shape) => {
+          const meta = shapeMeta(shape)
+          return (
+            shape.type === "arrow" &&
+            (meta.kind === "video-link" ||
+              meta.asuiNode === "video-link" ||
+              meta.kind === "version-link" ||
+              meta.asuiNode === "version-link")
+          )
+        })
+        .map((shape) => shape.id)
+      if (staleVideoLinks.length > 0) {
+        editor.deleteShapes(staleVideoLinks)
+      }
       syncSelection(editor)
       unlistenRef.current?.()
-      unlistenRef.current = editor.store.listen(() => syncSelection(editor), {
+      unlistenRef.current = editor.store.listen(() => {
+        syncSelection(editor)
+        window.requestAnimationFrame(() => syncSelection(editor))
+        setGenerationOverlay((current) => {
+          if (!current) return current
+          const bounds = getViewportShapeBounds(editor, current.shapeId)
+          return bounds ? { ...current, bounds } : null
+        })
+      }, {
         source: "all",
         scope: "all",
       })
@@ -805,10 +1511,177 @@ export function AiCanvas() {
     [syncSelection]
   )
 
+  const handleCanvasPointerDownCapture = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return
+      const editor = editorRef.current
+      if (!editor) return
+      if (editor.getCurrentToolId() !== "select") return
+
+      const viewportPoint = { x: event.clientX, y: event.clientY }
+      const pagePoint = getPagePointFromViewportPoint(editor, viewportPoint)
+      const holderId = getHolderAtPagePoint(editor, pagePoint)
+      if (!holderId) {
+        pendingHolderSelectionRef.current = null
+        return
+      }
+
+      const currentSelection = getSelection(editor)
+      if (currentSelection && currentSelection.kind !== "holder") return
+      if (currentSelection?.shapeId === holderId) return
+
+      pendingHolderSelectionRef.current = holderId
+      editor.select(holderId)
+      syncSelection(editor)
+      event.preventDefault()
+      event.stopPropagation()
+
+      window.setTimeout(() => {
+        const holderId = pendingHolderSelectionRef.current
+        if (!holderId) return
+
+        const currentSelection = getSelection(editor)
+        if (currentSelection && currentSelection.kind !== "holder") {
+          pendingHolderSelectionRef.current = null
+          return
+        }
+        if (currentSelection?.shapeId === holderId) {
+          pendingHolderSelectionRef.current = null
+          return
+        }
+
+        editor.select(holderId)
+        pendingHolderSelectionRef.current = null
+      }, 0)
+    },
+    [syncSelection]
+  )
+
+  const openNodeConnectorMenu = useCallback(
+    ({
+      sourceShapeId,
+      side,
+      viewportPoint,
+      pagePoint,
+    }: {
+      sourceShapeId: TLShapeId
+      side: ConnectorSide
+      viewportPoint: { x: number; y: number }
+      pagePoint?: { x: number; y: number }
+    }) => {
+      setNodeConnectorMenu({
+        x: viewportPoint.x,
+        y: viewportPoint.y,
+        sourceShapeId,
+        side,
+        pagePoint,
+      })
+    },
+    []
+  )
+
+  const createVideoNodeFromConnector = useCallback(() => {
+    const editor = editorRef.current
+    const menu = nodeConnectorMenu
+    if (!editor || !menu) return
+
+    const sourceBounds = editor.getShapePageBounds(menu.sourceShapeId)
+    if (!sourceBounds) return
+
+    const videoWidth = 360
+    const videoHeight = 220
+    const source = toBounds(sourceBounds)
+    const targetCenter =
+      menu.pagePoint ??
+      (menu.side === "right"
+        ? { x: source.x + source.w + 260, y: source.y + source.h / 2 }
+        : { x: source.x - 260, y: source.y + source.h / 2 })
+    const videoId = createShapeId()
+    const videoX = targetCenter.x - videoWidth / 2
+    const videoY = targetCenter.y - videoHeight / 2
+
+    editor.createShape({
+      id: videoId,
+      type: "frame",
+      x: videoX,
+      y: videoY,
+      props: {
+        w: videoWidth,
+        h: videoHeight,
+        name: "AI Video Holder",
+      },
+      meta: {
+        kind: "video-node",
+        asuiNode: "video-node",
+        asuiMetaVersion: ASUI_META_VERSION,
+        sourceShapeId: menu.sourceShapeId,
+        status: "draft",
+      },
+    })
+
+    editor.select(videoId)
+    setVideoNodeLinks(getVideoNodeLinks(editor))
+    window.requestAnimationFrame(() => setVideoNodeLinks(getVideoNodeLinks(editor)))
+    setNodeConnectorMenu(null)
+  }, [nodeConnectorMenu])
+
+  const startNodeConnector = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>, side: ConnectorSide) => {
+      if (selection?.kind !== "holder" && selection?.kind !== "image") return
+      event.preventDefault()
+      event.stopPropagation()
+      event.currentTarget.setPointerCapture(event.pointerId)
+      setNodeConnectorMenu(null)
+      setNodeConnectorDrag({
+        sourceShapeId: selection.shapeId as TLShapeId,
+        side,
+        start: { x: event.clientX, y: event.clientY },
+        current: { x: event.clientX, y: event.clientY },
+        active: false,
+      })
+    },
+    [selection]
+  )
+
+  const updateNodeConnector = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    setNodeConnectorDrag((current) => {
+      if (!current) return current
+      const next = { x: event.clientX, y: event.clientY }
+      const distance = Math.hypot(next.x - current.start.x, next.y - current.start.y)
+      return {
+        ...current,
+        current: next,
+        active: current.active || distance > 8,
+      }
+    })
+  }, [])
+
+  const endNodeConnector = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      const drag = nodeConnectorDrag
+      if (!drag) return
+
+      const editor = editorRef.current
+      const viewportPoint = drag.active ? { x: event.clientX, y: event.clientY } : drag.start
+      const pagePoint = editor ? getPagePointFromViewportPoint(editor, viewportPoint) : undefined
+      openNodeConnectorMenu({
+        sourceShapeId: drag.sourceShapeId,
+        side: drag.side,
+        viewportPoint,
+        pagePoint: drag.active ? pagePoint : undefined,
+      })
+      setNodeConnectorDrag(null)
+    },
+    [nodeConnectorDrag, openNodeConnectorMenu]
+  )
+
   const updateHolderSize = useCallback(
     (nextSize: CanvasSize, nextPreset: CanvasSizePresetId = "custom") => {
       const normalizedSize = normalizeCanvasSize(nextSize)
       setHolderSize(normalizedSize)
+      setFloatingSize(normalizedSize)
 
       const editor = editorRef.current
       if (!editor || selection?.kind !== "holder") return
@@ -870,16 +1743,70 @@ export function AiCanvas() {
     [selection]
   )
 
-  const applyHolderPreset = useCallback(
-    (presetId: CanvasSizePresetId) => {
-      updateHolderSize(resolveCanvasSizePreset(presetId, holderSize), presetId)
+  const updateVideoNodeSize = useCallback(
+    (nextSize: CanvasSize, nextPreset: CanvasSizePresetId = "custom") => {
+      const normalizedSize = normalizeCanvasSize(nextSize)
+      setFloatingSize(normalizedSize)
+
+      const editor = editorRef.current
+      if (!editor || selection?.kind !== "video") return
+
+      const videoId = selection.shapeId as TLShapeId
+      const videoShape = editor.getShape(videoId)
+      if (!videoShape || videoShape.type !== "frame") return
+
+      const bounds = editor.getShapePageBounds(videoId)
+      if (!bounds) return
+
+      const nextX = bounds.x + bounds.w / 2 - normalizedSize.width / 2
+      const nextY = bounds.y + bounds.h / 2 - normalizedSize.height / 2
+
+      editor.updateShape({
+        id: videoId,
+        type: "frame",
+        x: nextX,
+        y: nextY,
+        props: {
+          w: normalizedSize.width,
+          h: normalizedSize.height,
+          name: `AI Video Holder · ${normalizedSize.width}×${normalizedSize.height}`,
+        },
+        meta: {
+          ...videoShape.meta,
+          kind: "video-node",
+          asuiNode: "video-node",
+          asuiMetaVersion: ASUI_META_VERSION,
+          size: normalizedSize,
+          sizePreset: nextPreset,
+        },
+      })
+      setVideoNodeLinks(getVideoNodeLinks(editor))
     },
-    [holderSize, updateHolderSize]
+    [selection]
+  )
+
+  const updateSelectedCanvasSize = useCallback(
+    (nextSize: CanvasSize, nextPreset: CanvasSizePresetId = "custom") => {
+      if (selection?.kind === "video") {
+        updateVideoNodeSize(nextSize, nextPreset)
+        return
+      }
+      updateHolderSize(nextSize, nextPreset)
+    },
+    [selection?.kind, updateHolderSize, updateVideoNodeSize]
+  )
+
+  const applySelectedPreset = useCallback(
+    (presetId: CanvasSizePresetId) => {
+      updateSelectedCanvasSize(resolveCanvasSizePreset(presetId, floatingSize), presetId)
+    },
+    [floatingSize, updateSelectedCanvasSize]
   )
 
   const createHolder = useCallback(() => {
     const editor = editorRef.current
     if (!editor) return
+    clearGenerationOverlay()
     const center = editor.getViewportPageBounds().center
     const id = createShapeId()
 
@@ -907,7 +1834,45 @@ export function AiCanvas() {
     editor.zoomToSelection({ animation: { duration: 220 } })
     setStatus("idle")
     setStatusDetail("")
-  }, [holderSize])
+  }, [clearGenerationOverlay, holderSize])
+
+  const createStandaloneVideoNode = useCallback(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    clearGenerationOverlay()
+
+    const center = editor.getViewportPageBounds().center
+    const videoWidth = 360
+    const videoHeight = 220
+    const videoId = createShapeId()
+
+    editor.createShape({
+      id: videoId,
+      type: "frame",
+      x: center.x - videoWidth / 2,
+      y: center.y - videoHeight / 2,
+      props: {
+        w: videoWidth,
+        h: videoHeight,
+        name: "AI Video Holder",
+      },
+      meta: {
+        kind: "video-node",
+        asuiNode: "video-node",
+        asuiMetaVersion: ASUI_META_VERSION,
+        status: "draft",
+        creationMode: "standalone",
+      },
+    })
+
+    setVideoPrompt("")
+    setVideoReferenceImages([])
+    setVideoUploadedReferences([])
+    editor.select(videoId)
+    editor.zoomToSelection({ animation: { duration: 220 } })
+    setStatus("idle")
+    setStatusDetail("")
+  }, [clearGenerationOverlay])
 
   const fillHolder = useCallback(async (options: { rethrow?: boolean } = {}) => {
     const editor = editorRef.current
@@ -916,11 +1881,18 @@ export function AiCanvas() {
     const bounds = editor.getShapePageBounds(holderId)
     if (!bounds) return
 
+    showGenerationOverlay(holderId, "正在生成图片")
     setStatus("generating")
     setStatusDetail("")
     try {
       const imageBounds = toBounds(bounds)
-      const version = await persistImageVersion(await generateImageVersion({ prompt, bounds: imageBounds }))
+      const version = await persistImageVersion(
+        await generateImageVersion({
+          prompt,
+          bounds: imageBounds,
+          referenceImageSrcs: referenceImages.map((image) => image.src),
+        })
+      )
       const holderShape = editor.getShape(holderId)
       const imageId =
         holderShape?.type === "frame"
@@ -953,14 +1925,18 @@ export function AiCanvas() {
       editor.select(imageId)
       setVersions((current) => [...current, version])
       setStatus("success")
+      clearGenerationOverlay()
     } catch (error) {
       console.error("Failed to fill image holder", error)
+      const message = errorMessage(error, "图片生成失败")
       editor.select(holderId)
       setStatus("error")
-      setStatusDetail(error instanceof Error ? error.message : "图片生成失败")
+      setStatusDetail(message)
+      setToastMessage(message)
+      clearGenerationOverlay()
       if (options.rethrow) throw error
     }
-  }, [prompt, selection])
+  }, [clearGenerationOverlay, prompt, referenceImages, selection, showGenerationOverlay])
 
   const editFromAnnotation = useCallback(async (options: { rethrow?: boolean } = {}) => {
     const editor = editorRef.current
@@ -969,6 +1945,7 @@ export function AiCanvas() {
     if (!sourceBounds) return
     const source = versions.find((version) => version.versionId === annotationAction.versionId)
 
+    showGenerationOverlay(annotationAction.imageId, "正在生成新版本")
     setStatus("editing")
     setStatusDetail("")
     try {
@@ -1007,46 +1984,29 @@ export function AiCanvas() {
             text: getFeedbackFromAnnotationGroup(editor, annotationAction.annotationId, relatedAnnotationIds),
           },
         ]),
-        parentVersionId: annotationAction.versionId,
+        parentVersionId: parentVersionIdFromCanvasVersionId(annotationAction.versionId),
         bounds: imageBounds,
         requestSize: resolveEditRequestSize(source, sourceBounds),
         sourceImageSrc,
       }))
-      const imageId = createImageShape(editor, version, imageBounds)
-      const arrowId = createShapeId()
-      editor.createShape({
-        id: arrowId,
-        type: "arrow",
-        x: sourceBounds.x + sourceBounds.w + 24,
-        y: sourceBounds.y + sourceBounds.h / 2,
-        props: {
-          start: { x: 0, y: 0 },
-          end: { x: Math.max(80, imageBounds.x - sourceBounds.x - sourceBounds.w - 48), y: 0 },
-          color: "red",
-          dash: "dashed",
-          size: "m",
-          arrowheadEnd: "arrow",
-          richText: toRichText("AI 新版本"),
-        },
-        meta: {
-          kind: "version-link",
-          asuiNode: "version-link",
-          asuiMetaVersion: ASUI_META_VERSION,
-          sourceShapeId: annotationAction.imageId,
-          targetShapeId: imageId,
-        },
-      })
-      editor.select(imageId)
+      const { holderId, imageId } = createImageHolderWithImage(editor, version, imageBounds)
+      attachVersionLinkToImage(editor, imageId, annotationAction.imageId, [annotationAction.annotationId])
+      setVersionNodeLinks(getVersionNodeLinks(editor))
+      editor.select(holderId)
       editor.zoomToSelection({ animation: { duration: 240 } })
       setVersions((current) => [...current, version])
       setStatus("success")
+      clearGenerationOverlay()
     } catch (error) {
       console.error("Failed to generate from annotation", error)
+      const message = errorMessage(error, "图片生成失败")
       setStatus("error")
-      setStatusDetail(error instanceof Error ? error.message : "图片生成失败")
+      setStatusDetail(message)
+      setToastMessage(message)
+      clearGenerationOverlay()
       if (options.rethrow) throw error
     }
-  }, [annotationAction, prompt, versions])
+  }, [annotationAction, clearGenerationOverlay, prompt, showGenerationOverlay, versions])
 
   const cutoutFromAnnotation = useCallback(async () => {
     const editor = editorRef.current
@@ -1091,8 +2051,10 @@ export function AiCanvas() {
       setStatusDetail("")
     } catch (error) {
       console.error("Failed to cut out annotation region", error)
+      const message = errorMessage(error, "抠图失败")
       setStatus("error")
-      setStatusDetail(error instanceof Error ? error.message : "抠图失败")
+      setStatusDetail(message)
+      setToastMessage(message)
     }
   }, [annotationAction])
 
@@ -1103,6 +2065,7 @@ export function AiCanvas() {
     if (!sourceBounds) return
     const source = versions.find((version) => version.versionId === multiAnnotationAction.versionId)
 
+    showGenerationOverlay(multiAnnotationAction.imageId, "正在整合多个标注")
     setStatus("editing")
     setStatusDetail("")
     try {
@@ -1150,48 +2113,35 @@ export function AiCanvas() {
         await generateImageVersion({
           prompt: source?.prompt ?? prompt,
           feedbackItems,
-          parentVersionId: multiAnnotationAction.versionId,
+          parentVersionId: parentVersionIdFromCanvasVersionId(multiAnnotationAction.versionId),
           bounds: imageBounds,
           requestSize: resolveEditRequestSize(source, sourceBounds),
           sourceImageSrc,
         })
       )
-      const imageId = createImageShape(editor, version, imageBounds)
-      const arrowId = createShapeId()
-      editor.createShape({
-        id: arrowId,
-        type: "arrow",
-        x: sourceBounds.x + sourceBounds.w + 24,
-        y: sourceBounds.y + sourceBounds.h / 2,
-        props: {
-          start: { x: 0, y: 0 },
-          end: { x: Math.max(80, imageBounds.x - sourceBounds.x - sourceBounds.w - 48), y: 0 },
-          color: "red",
-          dash: "dashed",
-          size: "m",
-          arrowheadEnd: "arrow",
-          richText: toRichText("AI 合并新版本"),
-        },
-        meta: {
-          kind: "version-link",
-          asuiNode: "version-link",
-          asuiMetaVersion: ASUI_META_VERSION,
-          sourceShapeId: multiAnnotationAction.imageId,
-          targetShapeId: imageId,
-          sourceAnnotationIds: multiAnnotationAction.annotations.map((annotation) => annotation.annotationId),
-        },
-      })
-      editor.select(imageId)
+      const { holderId, imageId } = createImageHolderWithImage(editor, version, imageBounds)
+      attachVersionLinkToImage(
+        editor,
+        imageId,
+        multiAnnotationAction.imageId,
+        multiAnnotationAction.annotations.map((annotation) => annotation.annotationId)
+      )
+      setVersionNodeLinks(getVersionNodeLinks(editor))
+      editor.select(holderId)
       editor.zoomToSelection({ animation: { duration: 240 } })
       setVersions((current) => [...current, version])
       setStatus("success")
+      clearGenerationOverlay()
     } catch (error) {
       console.error("Failed to generate from annotations", error)
+      const message = errorMessage(error, "图片生成失败")
       setStatus("error")
-      setStatusDetail(error instanceof Error ? error.message : "图片生成失败")
+      setStatusDetail(message)
+      setToastMessage(message)
+      clearGenerationOverlay()
       if (options.rethrow) throw error
     }
-  }, [multiAnnotationAction, prompt, versions])
+  }, [clearGenerationOverlay, multiAnnotationAction, prompt, showGenerationOverlay, versions])
 
   const insertCodexResultVersion = useCallback(
     async (version: ImageVersion) => {
@@ -1199,8 +2149,17 @@ export function AiCanvas() {
       if (!editor) return
 
       const savedVersion = await persistImageVersion(version)
-      const sourceImageId = multiAnnotationAction?.imageId ?? annotationAction?.imageId
+      const codexContext = codexResultContextRef.current
+      const sourceImageId =
+        (typeof codexContext?.sourceShapeId === "string" ? (codexContext.sourceShapeId as TLShapeId) : null) ??
+        multiAnnotationAction?.imageId ??
+        annotationAction?.imageId ??
+        findImageShapeByVersionId(editor, savedVersion.parentVersionId)
       const sourceBounds = sourceImageId ? editor.getShapePageBounds(sourceImageId) : null
+      const sourceAnnotationIds =
+        codexContext?.annotationIds ??
+        multiAnnotationAction?.annotations.map((annotation) => annotation.annotationId) ??
+        (annotationAction ? [annotationAction.annotationId] : [])
 
       if (sourceImageId && sourceBounds) {
         const obstacles = editor
@@ -1216,31 +2175,14 @@ export function AiCanvas() {
           obstacles,
           margin: 190,
         })
-        const imageId = createImageShape(editor, savedVersion, imageBounds)
-        const arrowId = createShapeId()
-        editor.createShape({
-          id: arrowId,
-          type: "arrow",
-          x: sourceBounds.x + sourceBounds.w + 24,
-          y: sourceBounds.y + sourceBounds.h / 2,
-          props: {
-            start: { x: 0, y: 0 },
-            end: { x: Math.max(80, imageBounds.x - sourceBounds.x - sourceBounds.w - 48), y: 0 },
-            color: "red",
-            dash: "dashed",
-            size: "m",
-            arrowheadEnd: "arrow",
-            richText: toRichText(multiAnnotationAction ? "Codex 合并新版本" : "Codex 新版本"),
-          },
-          meta: {
-            kind: "version-link",
-            asuiNode: "version-link",
-            asuiMetaVersion: ASUI_META_VERSION,
-            sourceShapeId: sourceImageId,
-            targetShapeId: imageId,
-            sourceAnnotationIds: multiAnnotationAction?.annotations.map((annotation) => annotation.annotationId),
-          },
-        })
+        const { imageId } = createImageHolderWithImage(editor, savedVersion, imageBounds)
+        attachVersionLinkToImage(
+          editor,
+          imageId,
+          sourceImageId,
+          sourceAnnotationIds
+        )
+        setVersionNodeLinks(getVersionNodeLinks(editor))
         editor.select(imageId)
         editor.zoomToSelection({ animation: { duration: 240 } })
         setVersions((current) => [...current, savedVersion])
@@ -1252,9 +2194,9 @@ export function AiCanvas() {
       if (selection?.kind === "holder") {
         const holderId = selection.shapeId as TLShapeId
         const holderBounds = editor.getShapePageBounds(holderId)
-        if (holderBounds) {
+        const holderShape = editor.getShape(holderId)
+        if (holderBounds && isImageHolderShape(holderShape)) {
           const imageBounds = toBounds(holderBounds)
-          const holderShape = editor.getShape(holderId)
           const imageId =
             holderShape?.type === "frame"
               ? createImageShape(
@@ -1289,7 +2231,7 @@ export function AiCanvas() {
       const viewport = editor.getViewportPageBounds()
       const width = Math.min(savedVersion.width, Math.max(240, viewport.w * 0.4))
       const height = Math.max(120, width * (savedVersion.height / Math.max(1, savedVersion.width)))
-      const imageId = createImageShape(editor, savedVersion, {
+      const { imageId } = createImageHolderWithImage(editor, savedVersion, {
         x: viewport.x + viewport.w / 2 - width / 2,
         y: viewport.y + viewport.h / 2 - height / 2,
         w: width,
@@ -1303,6 +2245,61 @@ export function AiCanvas() {
     },
     [annotationAction, multiAnnotationAction, selection]
   )
+
+  const waitForCodexTaskResult = useCallback(
+    async (taskId: string) => {
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1200))
+        const response = await fetch(`/api/codex-tasks?taskId=${encodeURIComponent(taskId)}`)
+        if (!response.ok) continue
+        const payload = (await response.json()) as {
+          task?: {
+            status?: string
+            error?: string
+            result?: {
+              message?: string
+              version?: ImageVersion
+            }
+          }
+        }
+
+        if (payload.task?.status === "done") {
+          if (payload.task.result?.version) {
+            await insertCodexResultVersion(payload.task.result.version)
+            setToastMessage(payload.task.result.message ?? "Codex 图片任务已完成，结果已插回画布。")
+          } else {
+            setToastMessage("Codex 图片任务已完成，但没有返回可插入的图片结果。")
+          }
+          setCodexTaskStatus("idle")
+          setCodexTaskId("")
+          codexResultContextRef.current = null
+          return
+        }
+
+        if (payload.task?.status === "failed") {
+          setToastMessage(payload.task.error ?? "Codex 图片任务处理失败。")
+          setCodexTaskStatus("idle")
+          setCodexTaskId("")
+          codexResultContextRef.current = null
+          return
+        }
+      }
+
+      setToastMessage("Codex 图片任务仍在处理中；请确认 codex:image-runner 正在运行。")
+    },
+    [insertCodexResultVersion]
+  )
+
+  useEffect(() => {
+    if (!codexTaskId || codexTaskStatus !== "generating" || codexPollingTaskRef.current === codexTaskId) return
+
+    codexPollingTaskRef.current = codexTaskId
+    void waitForCodexTaskResult(codexTaskId).finally(() => {
+      if (codexPollingTaskRef.current === codexTaskId) {
+        codexPollingTaskRef.current = ""
+      }
+    })
+  }, [codexTaskId, codexTaskStatus, waitForCodexTaskResult])
 
   const resolveCodexCanvasContext = useCallback(async () => {
     const editor = editorRef.current
@@ -1360,29 +2357,350 @@ export function AiCanvas() {
     }
 
     if (selection?.kind === "image") {
+      const source = getCodexSourceImageFromSelection(editor, selection)
+      if (!source) return {}
+      const annotations = getImageAnnotationsForGeneration(editor, source.imageId)
+      const annotationIds = annotations.map((annotation) => annotation.annotationId as TLShapeId)
+      const relatedAnnotationIds = annotationIds.length
+        ? getRelatedAnnotationIdsForReference(editor, source.imageId, annotationIds)
+        : []
+      const referenceImageSrc = relatedAnnotationIds.length
+        ? await exportAnnotatedReferenceImage(editor, source.imageId, relatedAnnotationIds).catch(() => null)
+        : null
+
       return {
-        sourceShapeId: selection.shapeId,
-        versionId: selection.versionId,
-        sourceImageSrc: getImageShapeSource(editor, selection.shapeId as TLShapeId) ?? undefined,
+        sourceShapeId: source.imageId,
+        versionId: source.versionId,
+        annotationIds,
+        sourceImageSrc: getImageShapeSource(editor, source.imageId) ?? undefined,
+        referenceImageSrc: referenceImageSrc ?? undefined,
+        feedbackItems: annotations.length
+          ? buildUnderstoodAnnotationFeedbackItems(editor, source.imageId, annotations)
+          : undefined,
+        width: Math.round(source.bounds.w),
+        height: Math.round(source.bounds.h),
+      }
+    }
+
+    if (selection?.kind === "holder") {
+      const source = getCodexSourceImageFromSelection(editor, selection)
+      if (!source) return {}
+      const annotations = getImageAnnotationsForGeneration(editor, source.imageId)
+      const annotationIds = annotations.map((annotation) => annotation.annotationId as TLShapeId)
+      const relatedAnnotationIds = annotationIds.length
+        ? getRelatedAnnotationIdsForReference(editor, source.imageId, annotationIds)
+        : []
+      const referenceImageSrc = relatedAnnotationIds.length
+        ? await exportAnnotatedReferenceImage(editor, source.imageId, relatedAnnotationIds).catch(() => null)
+        : null
+
+      return {
+        sourceShapeId: source.imageId,
+        versionId: source.versionId,
+        annotationIds,
+        sourceImageSrc: getImageShapeSource(editor, source.imageId) ?? undefined,
+        referenceImageSrc: referenceImageSrc ?? undefined,
+        feedbackItems: annotations.length
+          ? buildUnderstoodAnnotationFeedbackItems(editor, source.imageId, annotations)
+          : undefined,
+        width: Math.round(source.bounds.w),
+        height: Math.round(source.bounds.h),
+      }
+    }
+
+    const selectedPrompt = getPromptFromSelectedAnnotationShapes(editor, editor.getSelectedShapeIds())
+    if (selectedPrompt) {
+      return {
+        annotationIds: editor
+          .getSelectedShapeIds()
+          .filter((id) => {
+            const shape = editor.getShape(id as TLShapeId)
+            return Boolean(shape && ANNOTATION_TYPES.has(shape.type))
+          }),
+        prompt: selectedPrompt,
+        width: holderSize.width,
+        height: holderSize.height,
       }
     }
 
     return {}
-  }, [annotationAction, multiAnnotationAction, selection])
+  }, [annotationAction, holderSize.height, holderSize.width, multiAnnotationAction, selection])
 
   const canGenerateFromAnnotation = Boolean(annotationAction) && status !== "editing"
   const canGenerateFromAllAnnotations = Boolean(multiAnnotationAction) && status !== "editing"
   const canCutoutFromAnnotation = Boolean(annotationAction) && status !== "editing"
+  const fillVideoNode = useCallback(async () => {
+    const editor = editorRef.current
+    if (selection?.kind !== "video") return
+    const videoShape = editor?.getShape(selection.shapeId as TLShapeId)
+    if (!editor || !videoShape || videoShape.type !== "frame") return
+
+    const videoBounds = editor.getShapePageBounds(videoShape.id)
+    if (!videoBounds) return
+
+    const sourceImageSrc = videoReferenceImages.find((reference) => reference.mediaType !== "video")?.src
+    const imageReferenceCount = [...videoReferenceImages, ...videoUploadedReferences].filter(
+      (reference) => reference.mediaType !== "video"
+    ).length
+    const videoReferenceCount = videoUploadedReferences.filter((reference) => reference.mediaType === "video").length
+    const currentMeta = shapeMeta(videoShape)
+    const existingTaskId = typeof currentMeta.videoTaskId === "string" ? currentMeta.videoTaskId : ""
+    const isResumableTask =
+      Boolean(existingTaskId) &&
+      (currentMeta.status === "video-task-created" || currentMeta.status === "generating-video")
+    const activeDurationSeconds =
+      isResumableTask && typeof currentMeta.durationSeconds === "number"
+        ? currentMeta.durationSeconds
+        : videoDurationSeconds
+    const activeResolution =
+      isResumableTask &&
+      (currentMeta.resolution === "480p" ||
+        currentMeta.resolution === "720p" ||
+        currentMeta.resolution === "1080p" ||
+        currentMeta.resolution === "4K")
+        ? (currentMeta.resolution as VideoResolution)
+        : videoResolution
+    const activePrompt = isResumableTask && typeof currentMeta.prompt === "string" ? currentMeta.prompt : videoPrompt.trim()
+    const nextMeta = {
+      ...currentMeta,
+      status: "generating-video",
+      prompt: activePrompt,
+      durationSeconds: activeDurationSeconds,
+      resolution: activeResolution,
+      imageReferenceCount,
+      videoReferenceCount,
+      updatedAt: new Date().toISOString(),
+    }
+
+    if (existingTaskId && videoPollingTaskRef.current === existingTaskId) return
+    if (existingTaskId) videoPollingTaskRef.current = existingTaskId
+    setStatus("generating")
+    setStatusDetail(isResumableTask ? "正在恢复视频任务" : "正在提交任务")
+    editor.updateShape({
+      id: videoShape.id,
+      type: "frame",
+      props: {
+        name: `AI Video Holder · ${activeDurationSeconds}s · ${activeResolution}`,
+      },
+      meta: nextMeta,
+    })
+
+    try {
+      const task = isResumableTask
+        ? {
+            taskId: existingTaskId,
+            poll: () =>
+              pollVideoTaskResult({
+                taskId: existingTaskId,
+                durationSeconds: activeDurationSeconds,
+                resolution: activeResolution,
+              }),
+          }
+        : await generateVideoResult({
+            prompt: activePrompt,
+            sourceImageSrc,
+            referenceAssets: [...videoReferenceImages, ...videoUploadedReferences],
+            durationSeconds: activeDurationSeconds,
+            resolution: activeResolution,
+          })
+      videoPollingTaskRef.current = task.taskId
+      editor.updateShape({
+        id: videoShape.id,
+        type: "frame",
+        meta: {
+          ...nextMeta,
+          status: "video-task-created",
+          videoTaskId: task.taskId,
+        },
+      })
+      setStatusDetail("视频生成中，请稍等")
+
+      let video: Awaited<ReturnType<typeof task.poll>>["video"] | null = null
+      for (let attempt = 1; attempt <= 240; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, attempt <= 2 ? 1200 : 2500))
+        const pollResult = await task.poll()
+        setStatusDetail(pollResult.statusText || "视频生成中，请稍等")
+        const currentVideoShape = editor.getShape(videoShape.id)
+        if (currentVideoShape) {
+          editor.updateShape({
+            id: videoShape.id,
+            type: "frame",
+            meta: {
+              ...shapeMeta(currentVideoShape),
+              status: "video-task-created",
+              videoTaskId: task.taskId,
+              pollStatus: pollResult.status,
+              statusText: pollResult.statusText,
+              pollAttempt: attempt,
+              updatedAt: new Date().toISOString(),
+            },
+          })
+        }
+        video = pollResult.video
+        if (video) break
+      }
+
+      if (!video) {
+        throw new Error(`视频生成超时，任务 ID：${task.taskId}`)
+      }
+
+      const videoId = createVideoShape(editor, {
+        src: video.src,
+        prompt: videoPrompt.trim(),
+        bounds: {
+          x: 0,
+          y: 0,
+          w: toBounds(videoBounds).w,
+          h: toBounds(videoBounds).h,
+        },
+        parentId: videoShape.id,
+        taskId: video.taskId,
+      })
+      editor.updateShape({
+        id: videoShape.id,
+        type: "frame",
+        meta: {
+          ...nextMeta,
+          status: "generated-video",
+          latestVideoShapeId: videoId,
+          videoTaskId: video.taskId ?? task.taskId,
+          videoSrc: video.src,
+        },
+      })
+      videoPollingTaskRef.current = ""
+      editor.select(videoId)
+      setStatus("success")
+      setStatusDetail(`${activeDurationSeconds}s · ${activeResolution} · 已生成`)
+    } catch (error) {
+      console.error("Failed to generate video", error)
+      videoPollingTaskRef.current = ""
+      const failedMessage = formatVideoGenerationError(error)
+      const currentVideoShape = editor.getShape(videoShape.id)
+      if (currentVideoShape) {
+        editor.updateShape({
+          id: videoShape.id,
+          type: "frame",
+          meta: {
+            ...shapeMeta(currentVideoShape),
+            status: "failed-video",
+            error: failedMessage,
+            updatedAt: new Date().toISOString(),
+          },
+        })
+      }
+      editor.select(videoShape.id)
+      setStatus("error")
+      setStatusDetail("")
+      setToastMessage(failedMessage)
+    }
+  }, [selection, videoDurationSeconds, videoPrompt, videoReferenceImages, videoResolution, videoUploadedReferences])
+
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor || selection?.kind !== "video" || status === "generating") return
+
+    const videoShape = editor.getShape(selection.shapeId as TLShapeId)
+    const meta = shapeMeta(videoShape)
+    const taskId = typeof meta.videoTaskId === "string" ? meta.videoTaskId : ""
+    const shouldResume =
+      taskId &&
+      videoPollingTaskRef.current !== taskId &&
+      (meta.status === "video-task-created" || meta.status === "generating-video")
+
+    if (!shouldResume) return
+    void fillVideoNode()
+  }, [fillVideoNode, selection, status])
 
   return (
     <main className="canvas-app-shell">
-      <div className="canvas-surface">
+      <div className="canvas-surface" onPointerDownCapture={handleCanvasPointerDownCapture}>
         <Tldraw
           persistenceKey={CANVAS_PERSISTENCE_KEY}
           assetUrls={TLDRAW_ASSET_URLS}
           onMount={handleMount}
         />
       </div>
+      {generationOverlay && (
+        <CanvasGenerationStatusOverlay bounds={generationOverlay.bounds} label={generationOverlay.label} />
+      )}
+      {toastMessage && (
+        <div className="canvas-toast" role="status" aria-live="polite">
+          <p>{toastMessage}</p>
+          <button type="button" aria-label="关闭提示" onClick={() => setToastMessage("")}>
+            ×
+          </button>
+        </div>
+      )}
+      {videoNodeLinks.length + versionNodeLinks.length > 0 && (
+        <svg className="video-node-link-layer" aria-hidden="true">
+          {[...videoNodeLinks, ...versionNodeLinks].map((link) => {
+            const controlOffset = Math.max(80, Math.abs(link.target.x - link.source.x) * 0.45)
+            const sourceDirection = link.source.x <= link.target.x ? 1 : -1
+            const d = `M ${link.source.x} ${link.source.y} C ${link.source.x + controlOffset * sourceDirection} ${
+              link.source.y
+            }, ${link.target.x - controlOffset * sourceDirection} ${link.target.y}, ${link.target.x} ${
+              link.target.y
+            }`
+            return (
+              <g key={link.id}>
+                <path className="video-node-link-layer__base" d={d} />
+                <path className="video-node-link-layer__glow" d={d} />
+                <path className="video-node-link-layer__pulse" d={d} />
+              </g>
+            )
+          })}
+        </svg>
+      )}
+      {(selection?.kind === "holder" || selection?.kind === "image") && holderViewportBounds && (
+        <>
+          {(["left", "right"] as const).map((side) => {
+            const anchor = connectorAnchor(holderViewportBounds, side)
+            const outwardOffset = side === "left" ? -14 : 14
+            return (
+              <button
+                key={side}
+                type="button"
+                className="node-connector-button"
+                style={{
+                  left: anchor.x + outwardOffset,
+                  top: anchor.y,
+                }}
+                aria-label={side === "left" ? "从左侧新增节点" : "从右侧新增节点"}
+                onPointerDown={(event) => startNodeConnector(event, side)}
+                onPointerMove={updateNodeConnector}
+                onPointerUp={endNodeConnector}
+                onPointerCancel={() => setNodeConnectorDrag(null)}
+              >
+                <Plus className="size-3" />
+              </button>
+            )
+          })}
+        </>
+      )}
+      {nodeConnectorDrag?.active && (
+        <svg className="node-connector-drag-line" aria-hidden="true">
+          <path
+            d={`M ${nodeConnectorDrag.start.x} ${nodeConnectorDrag.start.y} C ${
+              (nodeConnectorDrag.start.x + nodeConnectorDrag.current.x) / 2
+            } ${nodeConnectorDrag.start.y}, ${
+              (nodeConnectorDrag.start.x + nodeConnectorDrag.current.x) / 2
+            } ${nodeConnectorDrag.current.y}, ${nodeConnectorDrag.current.x} ${nodeConnectorDrag.current.y}`}
+          />
+          <circle cx={nodeConnectorDrag.current.x} cy={nodeConnectorDrag.current.y} r="7" />
+        </svg>
+      )}
+      {nodeConnectorMenu && (
+        <div
+          className="node-connector-menu"
+          style={{ left: nodeConnectorMenu.x, top: nodeConnectorMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button type="button" onClick={createVideoNodeFromConnector}>
+            <Video className="size-4" />
+            <span>视频</span>
+          </button>
+        </div>
+      )}
       {annotationAction && (
         <div
           className="absolute z-30 flex gap-2"
@@ -1429,15 +2747,15 @@ export function AiCanvas() {
           </Button>
         </div>
       )}
-      {selection?.kind === "holder" && sizeBar && (
+      {(selection?.kind === "holder" || selection?.kind === "video") && sizeBar && (
         <CanvasSizeFloatingBar
-          key={selection.shapeId}
+          key={`${selection.kind}-${selection.shapeId}`}
           x={sizeBar.x}
           y={sizeBar.y}
-          size={holderSize}
+          size={floatingSize}
           presetId={sizeBar.presetId}
-          onPresetChange={applyHolderPreset}
-          onSizeChange={(nextSize) => updateHolderSize(nextSize, "custom")}
+          onPresetChange={applySelectedPreset}
+          onSizeChange={(nextSize) => updateSelectedCanvasSize(nextSize, "custom")}
         />
       )}
       {multiAnnotationAction && (
@@ -1474,22 +2792,54 @@ export function AiCanvas() {
           height={holderSize.height}
           resolveCanvasContext={resolveCodexCanvasContext}
           onInsertResult={insertCodexResultVersion}
+          onTaskQueued={(taskId, context) => {
+            codexResultContextRef.current = context
+            setCodexTaskId(taskId)
+            setCodexTaskStatus("generating")
+          }}
           onClose={() => setIsCodexTaskOpen(false)}
         />
       )}
       <CanvasToolbar
         onCreateHolder={createHolder}
+        onCreateVideoNode={createStandaloneVideoNode}
         onOpenCodexTask={() => setIsCodexTaskOpen(true)}
+        codexTaskStatus={codexTaskStatus}
       />
-      <GenerationPanel
-        selection={selection}
-        prompt={prompt}
-        status={status}
-        statusDetail={statusDetail}
-        versionCount={versions.length}
-        onPromptChange={setPrompt}
-        onFill={fillHolder}
-      />
+      {selection?.kind === "holder" && generationPanelPosition && (
+        <GenerationPanel
+          selection={selection}
+          x={generationPanelPosition.x}
+          y={generationPanelPosition.y}
+          prompt={prompt}
+          status={status}
+          statusDetail={statusDetail}
+          referenceImages={referenceImages}
+          onPromptChange={setPrompt}
+          onReferenceImagesChange={setReferenceImages}
+          onFill={fillHolder}
+        />
+      )}
+      {selection?.kind === "video" && generationPanelPosition && (
+        <GenerationPanel
+          mode="video"
+          selection={selection}
+          x={generationPanelPosition.x}
+          y={generationPanelPosition.y}
+          prompt={videoPrompt}
+          status={status}
+          statusDetail={statusDetail}
+          referenceImages={videoUploadedReferences}
+          lockedReferenceImages={videoReferenceImages}
+          videoDurationSeconds={videoDurationSeconds}
+          videoResolution={videoResolution}
+          onPromptChange={setVideoPrompt}
+          onReferenceImagesChange={setVideoUploadedReferences}
+          onVideoDurationChange={setVideoDurationSeconds}
+          onVideoResolutionChange={setVideoResolution}
+          onFill={fillVideoNode}
+        />
+      )}
     </main>
   )
 }

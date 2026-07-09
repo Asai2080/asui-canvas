@@ -23,6 +23,13 @@ type GenerateImageRequest = {
   }>
   parentVersionId?: string
   sourceImageSrc?: string
+  referenceImageSrcs?: string[]
+  referenceAssets?: Array<{
+    src?: string
+    name?: string
+    mediaType?: "image" | "video"
+    mimeType?: string
+  }>
   width?: number
   height?: number
 }
@@ -250,15 +257,39 @@ function composeFeedback(feedback?: string, feedbackItems?: GenerateImageRequest
   ].join("\n")
 }
 
-function composeImagePrompt({ prompt, feedback, hasSourceImage }: { prompt: string; feedback?: string; hasSourceImage: boolean }) {
-  if (!feedback?.trim()) return prompt
+function composeImagePrompt({
+  prompt,
+  feedback,
+  hasSourceImage,
+  referenceImageCount,
+}: {
+  prompt: string
+  feedback?: string
+  hasSourceImage: boolean
+  referenceImageCount: number
+}) {
+  const feedbackText = feedback?.trim() ?? ""
+  const hasFeedback = Boolean(feedbackText)
+
+  if (!hasSourceImage && referenceImageCount > 0) {
+    return [
+      `Use the ${referenceImageCount} uploaded reference image${referenceImageCount > 1 ? "s" : ""} as visual references for subject, style, composition, materials, colors, and details.`,
+      "Generate a new clean image from the user's text prompt. Do not copy UI chrome, upload thumbnails, selection handles, or canvas controls.",
+      "If multiple references are provided, synthesize their useful visual traits coherently instead of producing separate images.",
+      "Follow the text prompt as the primary instruction when it conflicts with a reference image.",
+      "",
+      `Text prompt: ${prompt}`,
+    ].join("\n")
+  }
+
+  if (!hasFeedback) return prompt
 
   if (!hasSourceImage) {
     return [
       prompt,
       "",
       "请根据以下画布批注修改图片，但尽量保持原始主体、构图、比例、视角、光线和整体风格；只修改批注明确要求的部分，不要随意重画整张图。",
-      feedback.trim(),
+      feedbackText,
     ].join("\n")
   }
 
@@ -276,7 +307,7 @@ function composeImagePrompt({ prompt, feedback, hasSourceImage }: { prompt: stri
     "",
     `Original image intent: ${prompt}`,
     "",
-    `Annotation edit request: ${feedback.trim()}`,
+    `Annotation edit request: ${feedbackText}`,
   ].join("\n")
 }
 
@@ -293,6 +324,39 @@ async function sourceImageToModelUrl(sourceImageSrc?: string) {
   const filePath = join(process.cwd(), "public", "canvas-assets", fileName)
   const buffer = await readFile(filePath)
   return `data:${mimeTypeForPath(fileName)};base64,${buffer.toString("base64")}`
+}
+
+function detectReferenceMediaType(asset: {
+  src?: string
+  name?: string
+  mediaType?: "image" | "video"
+  mimeType?: string
+}) {
+  if (asset.mediaType === "image" || asset.mediaType === "video") return asset.mediaType
+  if (asset.mimeType?.startsWith("video/")) return "video"
+  if (asset.mimeType?.startsWith("image/")) return "image"
+  if (asset.src?.startsWith("data:video/")) return "video"
+  if (asset.src?.startsWith("data:image/")) return "image"
+
+  const nameOrUrl = `${asset.name ?? ""} ${asset.src ?? ""}`.toLowerCase()
+  if (/\.(mp4|mov|webm|m4v)(\?|#|$)/.test(nameOrUrl)) return "video"
+  return "image"
+}
+
+function normalizeReferenceAssets(body: GenerateImageRequest) {
+  const legacyImages = (body.referenceImageSrcs ?? []).map((src) => ({
+    src,
+    mediaType: "image" as const,
+  }))
+  const explicitAssets = (body.referenceAssets ?? []).filter((asset) => asset.src)
+
+  return [...legacyImages, ...explicitAssets]
+    .slice(0, 20)
+    .map((asset) => ({
+      ...asset,
+      src: asset.src ?? "",
+      mediaType: detectReferenceMediaType(asset),
+    }))
 }
 
 function extractImageResult(payload: OpenAIImageResponse) {
@@ -419,6 +483,10 @@ function diagnosticMessage({
 function friendlyUpstreamError(message?: string, fallback?: string) {
   if (!message?.trim()) return fallback ?? "图片生成接口请求失败"
 
+  if (/insufficient credits|add more using|settings\/credits/i.test(message)) {
+    return "图片模型账户余额不足，OpenRouter 返回 Insufficient credits。请先充值或切换到有额度的图片模型后再试。"
+  }
+
   const safetyMatch = message.match(/safety_violations=\[([^\]]+)\]/i)
   const requestIdMatch =
     message.match(/\breq_[A-Za-z0-9_-]+\b/) ??
@@ -514,6 +582,7 @@ function bodyForProvider({
   width,
   height,
   sourceImageSrc,
+  referenceImageSrcs,
 }: {
   provider: ImageProvider
   model: string
@@ -521,25 +590,25 @@ function bodyForProvider({
   width: number
   height: number
   sourceImageSrc?: string | null
+  referenceImageSrcs?: string[]
 }) {
+  const inputReferences = [sourceImageSrc, ...(referenceImageSrcs ?? [])]
+    .filter((src): src is string => Boolean(src))
+    .slice(0, 20)
+    .map((src) => ({
+      type: "image_url",
+      image_url: {
+        url: src,
+      },
+    }))
+
   if (provider === "openrouter") {
     return {
       model,
       prompt: composedPrompt,
       aspect_ratio: nearestOpenRouterAspectRatio(width, height),
       output_format: "png",
-      ...(sourceImageSrc
-        ? {
-            input_references: [
-              {
-                type: "image_url",
-                image_url: {
-                  url: sourceImageSrc,
-                },
-              },
-            ],
-          }
-        : {}),
+      ...(inputReferences.length ? { input_references: inputReferences } : {}),
     }
   }
 
@@ -560,6 +629,7 @@ async function requestImageGeneration({
   width,
   height,
   sourceImageSrc,
+  referenceImageSrcs,
 }: {
   targetUrl: string
   apiKey: string
@@ -569,6 +639,7 @@ async function requestImageGeneration({
   width: number
   height: number
   sourceImageSrc?: string | null
+  referenceImageSrcs?: string[]
 }) {
   const upstream = await fetch(targetUrl, {
     method: "POST",
@@ -576,7 +647,9 @@ async function requestImageGeneration({
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify(bodyForProvider({ provider, model, composedPrompt, width, height, sourceImageSrc })),
+    body: JSON.stringify(
+      bodyForProvider({ provider, model, composedPrompt, width, height, sourceImageSrc, referenceImageSrcs })
+    ),
   })
   const rawText = await upstream.text()
   const payload = parseJsonBody(rawText)
@@ -618,12 +691,28 @@ export async function POST(request: Request) {
 
   const { provider, targetUrl } = endpoint
   const sourceImageSrc = provider === "openrouter" ? await sourceImageToModelUrl(body.sourceImageSrc) : null
+  const referenceAssets = normalizeReferenceAssets(body)
+  const referenceImageAssets = referenceAssets.filter((asset) => asset.mediaType === "image")
+  const referenceVideoAssets = referenceAssets.filter((asset) => asset.mediaType === "video")
+  const referenceImageSrcs =
+    provider === "openrouter"
+      ? (
+          await Promise.all(
+            referenceImageAssets.map((asset) => sourceImageToModelUrl(asset.src))
+          )
+        ).filter((src): src is string => Boolean(src))
+      : []
   const feedback = composeFeedback(body.feedback, body.feedbackItems)
   const feedbackItemCount = body.feedbackItems?.filter((item) => item.text?.trim()).length ?? 0
   const composedPrompt = composeImagePrompt({
     prompt,
     feedback,
     hasSourceImage: Boolean(sourceImageSrc),
+    referenceImageCount: referenceImageSrcs.length,
+  })
+  console.info("[asui-image-generate] reference assets", {
+    imageCount: referenceImageAssets.length,
+    videoCount: referenceVideoAssets.length,
   })
   let result: Awaited<ReturnType<typeof requestImageGeneration>>
 
@@ -637,14 +726,13 @@ export async function POST(request: Request) {
       width,
       height,
       sourceImageSrc,
+      referenceImageSrcs,
     })
   } catch (error) {
+    const detail = error instanceof Error ? error.message : ""
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? `图片生成接口连接中断或超时：${error.message}`
-            : "图片生成接口连接中断或超时",
+        error: `图片生成接口连接中断或超时。请检查 Base URL、网络代理和模型服务是否可访问${detail ? `：${detail}` : ""}`,
       },
       { status: 502 }
     )
@@ -656,7 +744,7 @@ export async function POST(request: Request) {
       model,
       width,
       height,
-      hasSourceImage: Boolean(sourceImageSrc),
+      hasSourceImage: Boolean(sourceImageSrc || referenceImageSrcs.length),
       prompt,
       feedback,
     })
@@ -694,7 +782,7 @@ export async function POST(request: Request) {
     provider,
     model,
     size: `${width}x${height}`,
-    hasSourceImage: Boolean(sourceImageSrc),
+    hasSourceImage: Boolean(sourceImageSrc || referenceImageSrcs.length),
     feedbackItemCount,
     feedbackPreview: feedback ? truncate(feedback.replace(/\s+/g, " "), 260) : "",
   })

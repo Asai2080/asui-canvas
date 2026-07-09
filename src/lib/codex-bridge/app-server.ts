@@ -27,6 +27,14 @@ export type CodexBridgeResult = {
   turnId?: string
   visible: boolean
   notifications: string[]
+  cardTool: {
+    name: "open_asui_canvas_card"
+    taskId: string
+  }
+}
+
+export function buildCodexCardOpenInstruction(taskId: string) {
+  return `请调用 ASUI Canvas Card 工具 open_asui_canvas_card，并传入 taskId: ${taskId}。只打开任务卡片，不执行代码修改。`
 }
 
 export function buildCodexTaskMessage(task: CodexTask) {
@@ -45,7 +53,7 @@ export function buildCodexTaskMessage(task: CodexTask) {
     context.selectedShapeIds.length ? `选中节点：${context.selectedShapeIds.join(", ")}` : "",
     context.annotationIds.length ? `标注节点：${context.annotationIds.join(", ")}` : "",
     "",
-    "请先只回复：已收到 ASUI 生图/改图任务，等待用户确认。不要执行代码修改。",
+    buildCodexCardOpenInstruction(task.id),
   ]
 
   return lines.filter(Boolean).join("\n")
@@ -77,6 +85,10 @@ export async function sendCodexTaskToAppServer(task: CodexTask): Promise<CodexBr
       turnId: turn.id,
       visible: true,
       notifications: client.notifications,
+      cardTool: {
+        name: "open_asui_canvas_card",
+        taskId: task.id,
+      },
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -85,11 +97,11 @@ export async function sendCodexTaskToAppServer(task: CodexTask): Promise<CodexBr
       message.includes("failed to connect") ||
       message.includes("No such file or directory")
     ) {
-      throw new Error("Codex 桌面桥接未连接：当前没有可用的 Codex app-server daemon，网页任务已备份到本地队列，但无法直接显示到 Codex 输入框。")
+      throw new Error("Codex 桌面桥接未连接：当前没有可用的 Codex app-server daemon，网页任务已备份到本地队列，可稍后用 ASUI 卡片工具打开。")
     }
     if (message.includes("Codex app-server 请求超时：initialize")) {
       throw new Error(
-        "Codex daemon 已启动，但 app-server proxy 没有响应网页的会话协议；任务已备份到本地队列，暂时还不能直接显示到 Codex 输入框。"
+        "Codex daemon 已启动，但桌面 app-server proxy 没有响应当前会话投递协议；任务已备份到本地队列，但不会自动出现在当前 Codex 输入框。"
       )
     }
     throw error

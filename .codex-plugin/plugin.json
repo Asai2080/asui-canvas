@@ -1,0 +1,36 @@
+{
+  "name": "asui-canvas-card",
+  "version": "0.1.0",
+  "description": "Render ASUI Canvas image and video tasks as Codex-native task cards.",
+  "author": {
+    "name": "ASUI Canvas"
+  },
+  "license": "MIT",
+  "keywords": [
+    "asui",
+    "canvas",
+    "image-generation",
+    "video-generation",
+    "mcp"
+  ],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "ASUI Canvas Card",
+    "shortDescription": "Open ASUI canvas tasks as native Codex cards",
+    "longDescription": "ASUI Canvas Card renders image, annotation, and image-to-video tasks from ASUI Canvas as native Codex cards while keeping the existing standalone web canvas path intact.",
+    "developerName": "ASUI Canvas",
+    "category": "Creativity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "打开 ASUI 画布任务卡片",
+      "查看 ASUI 待处理生图任务",
+      "把当前 ASUI 任务作为卡片处理"
+    ],
+    "brandColor": "#111111",
+    "screenshots": []
+  }
+}

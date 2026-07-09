@@ -1,7 +1,8 @@
-import { readFile, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { POST } from "./route"
 import { sendCodexTaskToAppServer } from "../../../lib/codex-bridge/app-server"
@@ -15,14 +16,24 @@ vi.mock("../../../lib/codex-bridge/app-server", async (importOriginal) => {
       turnId: "turn-asui-test",
       visible: true,
       notifications: ["turn/started", "turn/completed"],
+      cardTool: {
+        name: "open_asui_canvas_card",
+        taskId: "task-asui-test",
+      },
     })),
   }
 })
 
-const createdRoot = join(process.cwd(), ".asui-codex")
+let testRoot = ""
+
+beforeEach(async () => {
+  testRoot = await mkdtemp(join(tmpdir(), "asui-codex-bridge-"))
+  process.env.ASUI_CODEX_TASK_ROOT_DIR = testRoot
+})
 
 afterEach(async () => {
-  await rm(createdRoot, { recursive: true, force: true })
+  delete process.env.ASUI_CODEX_TASK_ROOT_DIR
+  await rm(testRoot, { recursive: true, force: true })
   vi.clearAllMocks()
 })
 
@@ -51,7 +62,7 @@ describe("POST /api/codex-bridge", () => {
       file: { relativePath: string }
       codex: { threadId: string; turnId: string; visible: boolean }
     }
-    const saved = JSON.parse(await readFile(join(process.cwd(), payload.file.relativePath), "utf8")) as {
+    const saved = JSON.parse(await readFile(join(testRoot, payload.file.relativePath), "utf8")) as {
       id: string
     }
 

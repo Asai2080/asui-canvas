@@ -37,6 +37,30 @@ describe("POST /api/canvas-assets", () => {
     await expect(access(join(process.cwd(), "public", payload.version.src))).resolves.toBeUndefined()
   })
 
+  it("persists data URL images with charset metadata", async () => {
+    const version: ImageVersion = {
+      versionId: "version-charset",
+      prompt: "Codex SVG",
+      src: "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%2F%3E",
+      width: 100,
+      height: 100,
+      createdAt: "2026-06-21T00:00:00.000Z",
+    }
+
+    const response = await POST(
+      new Request("http://localhost/api/canvas-assets", {
+        method: "POST",
+        body: JSON.stringify({ version }),
+      })
+    )
+    const payload = (await response.json()) as { version: ImageVersion; asset: { path: string } }
+    createdFiles.push(payload.asset.path)
+
+    expect(response.status).toBe(200)
+    expect(payload.version.src).toMatch(/^\/canvas-assets\/version-charset-\d+\.svg$/)
+    await expect(access(join(process.cwd(), "public", payload.version.src))).resolves.toBeUndefined()
+  })
+
   it("rejects missing image version data", async () => {
     const response = await POST(
       new Request("http://localhost/api/canvas-assets", {

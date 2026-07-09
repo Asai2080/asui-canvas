@@ -1,14 +1,21 @@
-import { readFile, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { POST } from "./route"
 
-const createdRoot = join(process.cwd(), ".asui-codex")
+let testRoot = ""
+
+beforeEach(async () => {
+  testRoot = await mkdtemp(join(tmpdir(), "asui-codex-route-"))
+  process.env.ASUI_CODEX_TASK_ROOT_DIR = testRoot
+})
 
 afterEach(async () => {
-  await rm(createdRoot, { recursive: true, force: true })
+  delete process.env.ASUI_CODEX_TASK_ROOT_DIR
+  await rm(testRoot, { recursive: true, force: true })
 })
 
 const createRequest = (body: unknown) =>
@@ -36,7 +43,7 @@ describe("POST /api/codex-tasks", () => {
       task: { id: string; instruction: string }
       file: { relativePath: string }
     }
-    const saved = JSON.parse(await readFile(join(process.cwd(), payload.file.relativePath), "utf8")) as {
+    const saved = JSON.parse(await readFile(join(testRoot, payload.file.relativePath), "utf8")) as {
       id: string
     }
 

@@ -2,6 +2,9 @@ export type ApiConfig = {
   baseUrl: string
   apiKey: string
   model: string
+  videoBaseUrl: string
+  videoApiKey: string
+  videoModel: string
 }
 
 export const API_CONFIG_SESSION_KEY = "asui-ai-canvas:api-config"
@@ -11,6 +14,9 @@ export const DEFAULT_API_CONFIG: ApiConfig = {
   baseUrl: "",
   apiKey: "",
   model: "gpt-image-1",
+  videoBaseUrl: "",
+  videoApiKey: "",
+  videoModel: "kling-v2.1",
 }
 
 export function parseApiConfig(value: string | null): ApiConfig {
@@ -23,6 +29,9 @@ export function parseApiConfig(value: string | null): ApiConfig {
       baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : DEFAULT_API_CONFIG.baseUrl,
       apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey : DEFAULT_API_CONFIG.apiKey,
       model: typeof parsed.model === "string" ? parsed.model : DEFAULT_API_CONFIG.model,
+      videoBaseUrl: typeof parsed.videoBaseUrl === "string" ? parsed.videoBaseUrl : DEFAULT_API_CONFIG.videoBaseUrl,
+      videoApiKey: typeof parsed.videoApiKey === "string" ? parsed.videoApiKey : DEFAULT_API_CONFIG.videoApiKey,
+      videoModel: typeof parsed.videoModel === "string" ? parsed.videoModel : DEFAULT_API_CONFIG.videoModel,
     }
   } catch {
     return DEFAULT_API_CONFIG

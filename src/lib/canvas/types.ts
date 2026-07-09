@@ -25,8 +25,16 @@ export type ImageVersion = {
   createdAt: string
 }
 
+export type ReferenceImage = {
+  id: string
+  name: string
+  src: string
+  mediaType?: "image" | "video"
+  mimeType?: string
+}
+
 export type CanvasSelection = {
   shapeId: string
   versionId?: string
-  kind: "holder" | "image" | "other"
+  kind: "holder" | "image" | "video" | "other"
 }
