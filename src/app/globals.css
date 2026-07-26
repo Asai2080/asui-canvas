@@ -147,8 +147,8 @@
     fill: #171719 !important;
     stroke: #393842 !important;
     stroke-width: 2px !important;
-    rx: 16px !important;
-    ry: 16px !important;
+    rx: 30px !important;
+    ry: 30px !important;
   }
 
   .canvas-surface .asui-node-frame {
@@ -159,7 +159,7 @@
     pointer-events: none;
     z-index: 1;
     overflow: hidden;
-    border-radius: 16px !important;
+    border-radius: 30px !important;
     contain: strict;
     container-type: inline-size;
   }
