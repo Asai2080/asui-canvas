@@ -75,6 +75,7 @@ export const canvasContextSnapshotSchema = z.object({
   createdAt: z.iso.datetime(),
   scope: canvasContextScopeSchema,
   selectedNodeId: z.string().trim().min(1).optional(),
+  selectedNodeIds: z.array(z.string().trim().min(1)).optional(),
   sourceNode: canvasContextNodeSchema.optional(),
   annotations: z.array(canvasContextAnnotationSchema),
   connectedNodes: z.array(canvasContextNodeSchema),

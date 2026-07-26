@@ -14,6 +14,7 @@ import {
 type BuildCanvasContextInput = {
   scope: CanvasContextScope
   selectedNodeId?: string
+  selectedNodeIds?: string[]
   nodes: CanvasContextInputNode[]
 }
 
@@ -116,9 +117,11 @@ function collectConnectedNodes(
 function collectReferences(
   source: ParsedCanvasContextInputNode,
   connectedNodes: ParsedCanvasContextInputNode[],
-  nodes: ParsedCanvasContextInputNode[]
+  nodes: ParsedCanvasContextInputNode[],
+  selectedReferenceIds: string[] = []
 ) {
   const referenceIds = new Set([
+    ...selectedReferenceIds,
     ...source.referenceIds,
     ...connectedNodes.flatMap((node) => node.referenceIds),
   ])
@@ -137,8 +140,15 @@ export function buildCanvasContextSnapshot(
   options: BuildCanvasContextOptions = {}
 ): CanvasContextSnapshot {
   const nodes = input.nodes.map((node) => canvasContextInputNodeSchema.parse(node))
-  const source = input.selectedNodeId
-    ? nodes.find((node) => node.id === input.selectedNodeId)
+  const selectedNodeIds = Array.from(
+    new Set([
+      ...(input.selectedNodeId ? [input.selectedNodeId] : []),
+      ...(input.selectedNodeIds ?? []),
+    ])
+  )
+  const selectedNodeId = input.selectedNodeId ?? selectedNodeIds[0]
+  const source = selectedNodeId
+    ? nodes.find((node) => node.id === selectedNodeId)
     : undefined
 
   const annotations: CanvasContextAnnotation[] = source
@@ -159,13 +169,21 @@ export function buildCanvasContextSnapshot(
     : []
 
   const connectedNodes = source ? collectConnectedNodes(source, nodes) : []
-  const references = source ? collectReferences(source, connectedNodes, nodes) : []
+  const references = source
+    ? collectReferences(
+        source,
+        connectedNodes,
+        nodes,
+        selectedNodeIds.filter((nodeId) => nodeId !== source.id)
+      )
+    : []
 
   return canvasContextSnapshotSchema.parse({
     id: options.snapshotId ?? `context-${crypto.randomUUID()}`,
     createdAt: options.createdAt ?? new Date().toISOString(),
     scope: input.scope,
-    selectedNodeId: input.selectedNodeId,
+    selectedNodeId,
+    selectedNodeIds: selectedNodeIds.length > 0 ? selectedNodeIds : undefined,
     sourceNode: source ? sanitizeNode(source) : undefined,
     annotations,
     connectedNodes: connectedNodes.map(sanitizeNode),

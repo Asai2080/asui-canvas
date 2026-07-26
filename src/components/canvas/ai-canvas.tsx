@@ -607,10 +607,7 @@ function resolveEditRequestSize(source: ImageVersion | undefined, sourceBounds: 
   }
 }
 
-function getSelection(editor: Editor): CanvasSelection | null {
-  const shape = editor.getOnlySelectedShape()
-  if (!shape) return null
-
+function getCanvasSelection(shape: TLShape): CanvasSelection {
   if (isVideoNodeShape(shape)) {
     return { shapeId: shape.id, kind: "video" }
   }
@@ -628,6 +625,18 @@ function getSelection(editor: Editor): CanvasSelection | null {
   }
 
   return { shapeId: shape.id, kind: "other" }
+}
+
+function getSelection(editor: Editor): CanvasSelection | null {
+  const shape = editor.getOnlySelectedShape()
+  return shape ? getCanvasSelection(shape) : null
+}
+
+function getAgentSelections(editor: Editor) {
+  return editor.getSelectedShapeIds().flatMap((shapeId) => {
+    const shape = editor.getShape(shapeId)
+    return shape ? [getCanvasSelection(shape)] : []
+  })
 }
 
 function getLatestImageShapeIdFromHolder(editor: Editor, holderId: TLShapeId) {
@@ -1406,31 +1415,48 @@ function getContextNodeMedia(
 type ExportAgentCanvasContextOptions = {
   scope?: CanvasContextScope
   selection?: CanvasSelection | null
+  selections?: CanvasSelection[]
   snapshotId?: string
   createdAt?: string
+}
+
+function getAgentContextNodeId(editor: Editor, selection: CanvasSelection) {
+  const selectedShape = editor.getShape(selection.shapeId as TLShapeId)
+  if (!selectedShape) return undefined
+
+  if (ANNOTATION_TYPES.has(selectedShape.type)) {
+    return getGeneratedImageTargetForAnnotation(
+      editor,
+      selectedShape.id as TLShapeId
+    )?.imageId
+  }
+
+  if (isImageHolderShape(selectedShape)) {
+    return (
+      getLatestImageShapeIdFromHolder(editor, selectedShape.id as TLShapeId) ??
+      selectedShape.id
+    )
+  }
+
+  return selectedShape.id
 }
 
 export function exportAgentCanvasContextSnapshot(
   editor: Editor,
   options: ExportAgentCanvasContextOptions = {}
 ): CanvasContextSnapshot {
-  const selection =
+  const fallbackSelection =
     options.selection === undefined ? getSelection(editor) : options.selection
-  const selectedShape = selection
-    ? editor.getShape(selection.shapeId as TLShapeId)
-    : null
-
-  let selectedNodeId = selectedShape?.id
-  if (selectedShape && ANNOTATION_TYPES.has(selectedShape.type)) {
-    selectedNodeId = getGeneratedImageTargetForAnnotation(
-      editor,
-      selectedShape.id as TLShapeId
-    )?.imageId
-  } else if (selectedShape && isImageHolderShape(selectedShape)) {
-    selectedNodeId =
-      getLatestImageShapeIdFromHolder(editor, selectedShape.id as TLShapeId) ??
-      selectedShape.id
-  }
+  const selections = options.selections ?? (fallbackSelection ? [fallbackSelection] : [])
+  const selectedNodeIds = Array.from(
+    new Set(
+      selections.flatMap((selection) => {
+        const nodeId = getAgentContextNodeId(editor, selection)
+        return nodeId ? [nodeId] : []
+      })
+    )
+  )
+  const selectedNodeId = selectedNodeIds[0]
 
   const nodes = editor.getCurrentPageShapes().flatMap<CanvasContextInputNode>(
     (shape) => {
@@ -1472,6 +1498,7 @@ export function exportAgentCanvasContextSnapshot(
     {
       scope: options.scope ?? "selection",
       selectedNodeId,
+      selectedNodeIds,
       nodes,
     },
     {
@@ -1578,39 +1605,50 @@ export function AiCanvas() {
   const getAgentCanvasContext = useCallback(() => {
     const editor = editorRef.current
     if (!editor) throw new Error("画布尚未准备完成")
-    const selection = getSelection(editor)
-    const snapshot = exportAgentCanvasContextSnapshot(editor, { selection })
+    const selections = getAgentSelections(editor)
+    const snapshot = exportAgentCanvasContextSnapshot(editor, { selections })
     const viewportBounds = toBounds(editor.getViewportPageBounds())
-    const sourceShape = snapshot.sourceNode
-      ? editor.getShape(snapshot.sourceNode.id as TLShapeId)
-      : null
-    const sourceBounds = sourceShape
-      ? editor.getShapePageBounds(sourceShape.id)
-      : null
-    const sourceMedia = sourceShape && sourceBounds
-      ? getContextNodeMedia(editor, sourceShape, toBounds(sourceBounds))
-      : undefined
-    const selectionPreview = snapshot.sourceNode
-      ? {
-          nodeId: snapshot.sourceNode.id,
-          label:
-            sourceMedia?.mediaType === "video" || snapshot.sourceNode.kind === "video"
-              ? VIDEO_CANVAS_NAME
-              : sourceMedia?.mediaType === "image" ||
-                  snapshot.sourceNode.kind === "image" ||
-                  snapshot.sourceNode.kind === "holder"
-                ? IMAGE_CANVAS_NAME
-                : "画布节点",
-          mediaType: sourceMedia?.mediaType,
-          src: sourceMedia?.src,
-        }
-      : undefined
+    const selectedNodeIds = snapshot.selectedNodeIds ?? []
+    const selectionByNodeId = new Map<string, CanvasSelection>()
+    for (const selection of selections) {
+      const nodeId = getAgentContextNodeId(editor, selection)
+      if (nodeId && !selectionByNodeId.has(nodeId)) {
+        selectionByNodeId.set(nodeId, selection)
+      }
+    }
+    let imageReferenceIndex = 0
+    let videoReferenceIndex = 0
+    const selectionPreviews = selectedNodeIds.flatMap((nodeId) => {
+      const sourceShape = editor.getShape(nodeId as TLShapeId)
+      const sourceBounds = sourceShape
+        ? editor.getShapePageBounds(sourceShape.id)
+        : null
+      if (!sourceShape || !sourceBounds) return []
+      const sourceMedia = getContextNodeMedia(
+        editor,
+        sourceShape,
+        toBounds(sourceBounds)
+      )
+      const isVideo =
+        sourceMedia?.mediaType === "video" || isVideoNodeShape(sourceShape)
+      const canvasIndex = isVideo
+        ? ++videoReferenceIndex
+        : ++imageReferenceIndex
+
+      return [{
+        selectionId: selectionByNodeId.get(nodeId)?.shapeId ?? nodeId,
+        nodeId,
+        label: `${isVideo ? VIDEO_CANVAS_NAME : IMAGE_CANVAS_NAME}${Math.max(1, canvasIndex)}`,
+        mediaType: sourceMedia?.mediaType,
+        src: sourceMedia?.src,
+      }]
+    })
 
     return {
       snapshot,
       sourceBounds: snapshot.sourceNode?.bounds,
       viewportBounds,
-      selectionPreview,
+      selectionPreviews,
     }
   }, [])
 
@@ -3593,7 +3631,18 @@ export function AiCanvas() {
           open={isCanvasAgentOpen}
           selectionKey={selectedShapeIds.join("|")}
           getCanvasContext={getAgentCanvasContext}
-          onClearCanvasContext={() => editorRef.current?.selectNone()}
+          onClearCanvasContext={(selectionId) => {
+            const editor = editorRef.current
+            if (!editor) return
+            const remaining = editor
+              .getSelectedShapeIds()
+              .filter((shapeId) => shapeId !== selectionId)
+            if (remaining.length > 0) {
+              editor.select(...remaining)
+            } else {
+              editor.selectNone()
+            }
+          }}
           onBusyChange={setIsCanvasAgentBusy}
           onClose={() => setIsCanvasAgentOpen(false)}
         />

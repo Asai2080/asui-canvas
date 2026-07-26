@@ -15,10 +15,11 @@ export type AgentCanvasContext = {
   snapshot: CanvasContextSnapshot
   sourceBounds?: CanvasCommandBounds
   viewportBounds: CanvasCommandBounds
-  selectionPreview?: AgentCanvasSelectionPreview
+  selectionPreviews: AgentCanvasSelectionPreview[]
 }
 
 export type AgentCanvasSelectionPreview = {
+  selectionId: string
   nodeId: string
   label: string
   mediaType?: "image" | "video"
@@ -58,7 +59,10 @@ export function useAgentTasks({
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
   const boundsByTaskRef = useRef(
-    new Map<string, Omit<AgentCanvasContext, "snapshot">>()
+    new Map<
+      string,
+      Pick<AgentCanvasContext, "sourceBounds" | "viewportBounds">
+    >()
   )
   const writebackRevisionRef = useRef("")
   const foregroundTask = useMemo(() => selectForegroundTask(tasks), [tasks])

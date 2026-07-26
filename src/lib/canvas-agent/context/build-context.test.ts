@@ -158,6 +158,44 @@ describe("buildCanvasContextSnapshot", () => {
     expect(snapshot.connectedNodes.map((node) => node.id)).toEqual(["holder-1"])
   })
 
+  it("keeps the first selected canvas as source and exposes the rest as references", () => {
+    const snapshot = buildCanvasContextSnapshot(
+      {
+        scope: "selection",
+        selectedNodeIds: [SOURCE_NODE.id, "image-2", "video-1"],
+        nodes: [
+          SOURCE_NODE,
+          {
+            id: "image-2",
+            kind: "image",
+            bounds: { x: 760, y: 80, w: 600, h: 800 },
+            media: {
+              mediaType: "image",
+              src: "/canvas-assets/reference.png",
+            },
+          },
+          {
+            id: "video-1",
+            kind: "video",
+            bounds: { x: 1420, y: 80, w: 600, h: 800 },
+            media: {
+              mediaType: "video",
+              src: "https://cdn.example.com/reference.mp4",
+            },
+          },
+        ],
+      },
+      {
+        snapshotId: "snapshot-multi-selection",
+        createdAt: "2026-07-25T08:00:00.000Z",
+      }
+    )
+
+    expect(snapshot.selectedNodeId).toBe(SOURCE_NODE.id)
+    expect(snapshot.selectedNodeIds).toEqual([SOURCE_NODE.id, "image-2", "video-1"])
+    expect(snapshot.references.map((node) => node.id)).toEqual(["image-2", "video-1"])
+  })
+
   it("never embeds inline image bytes in the snapshot", () => {
     const snapshot = buildCanvasContextSnapshot(
       {

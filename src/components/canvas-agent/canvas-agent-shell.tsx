@@ -39,7 +39,7 @@ type CanvasAgentShellProps = {
   open: boolean
   selectionKey: string
   getCanvasContext: () => AgentCanvasContext
-  onClearCanvasContext: () => void
+  onClearCanvasContext: (selectionId: string) => void
   onClose: () => void
   onBusyChange?: (busy: boolean) => void
 }
@@ -118,12 +118,12 @@ export function CanvasAgentShell({
     (task) => task.status === "queued" && task.id !== foregroundTask?.id
   ).length
 
-  const selectionPreview = useMemo<AgentCanvasSelectionPreview | undefined>(() => {
-    if (!open || !selectionKey) return undefined
+  const selectionPreviews = useMemo<AgentCanvasSelectionPreview[]>(() => {
+    if (!open || !selectionKey) return []
     try {
-      return getCanvasContext().selectionPreview
+      return getCanvasContext().selectionPreviews
     } catch {
-      return undefined
+      return []
     }
   }, [getCanvasContext, open, selectionKey])
 
@@ -226,37 +226,42 @@ export function CanvasAgentShell({
                 className="canvas-agent-composer-beam"
               >
                 <ComposerPrimitive.Root className="canvas-agent-composer">
-                  {selectionPreview && (
-                    <div
-                      className="canvas-agent-selection-reference"
-                      title={`${selectionPreview.label} · ${selectionPreview.nodeId}`}
-                    >
-                      <span className="canvas-agent-selection-thumbnail">
-                        {selectionPreview.src && selectionPreview.mediaType === "video" ? (
-                          <video src={selectionPreview.src} muted playsInline preload="metadata" />
-                        ) : selectionPreview.src ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={selectionPreview.src} alt="当前引用节点" />
-                        ) : (
-                          <HugeiconsIcon icon={Image01Icon} size={14} strokeWidth={1.7} />
-                        )}
-                      </span>
-                      <span className="canvas-agent-selection-copy">
-                        <strong>{selectionPreview.label}</strong>
-                      </span>
-                      <button
-                        type="button"
-                        className="canvas-agent-selection-remove"
-                        onClick={onClearCanvasContext}
-                        aria-label="取消引用当前画布节点"
-                        title="取消引用"
-                      >
-                        <HugeiconsIcon icon={MultiplicationSignIcon} size={12} strokeWidth={1.8} />
-                      </button>
+                  {selectionPreviews.length > 0 && (
+                    <div className="canvas-agent-selection-references" aria-label="当前引用的画布节点">
+                      {selectionPreviews.map((selectionPreview) => (
+                        <div
+                          key={selectionPreview.selectionId}
+                          className="canvas-agent-selection-reference"
+                          title={`${selectionPreview.label} · ${selectionPreview.nodeId}`}
+                        >
+                          <span className="canvas-agent-selection-thumbnail">
+                            {selectionPreview.src && selectionPreview.mediaType === "video" ? (
+                              <video src={selectionPreview.src} muted playsInline preload="metadata" />
+                            ) : selectionPreview.src ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={selectionPreview.src} alt={selectionPreview.label} />
+                            ) : (
+                              <HugeiconsIcon icon={Image01Icon} size={14} strokeWidth={1.7} />
+                            )}
+                          </span>
+                          <span className="canvas-agent-selection-copy">
+                            <strong>{selectionPreview.label}</strong>
+                          </span>
+                          <button
+                            type="button"
+                            className="canvas-agent-selection-remove"
+                            onClick={() => onClearCanvasContext(selectionPreview.selectionId)}
+                            aria-label={`取消引用${selectionPreview.label}`}
+                            title="取消引用"
+                          >
+                            <HugeiconsIcon icon={MultiplicationSignIcon} size={12} strokeWidth={1.8} />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
                   <ComposerPrimitive.Input
-                    className={`canvas-agent-input${selectionPreview ? " has-selection-reference" : ""}`}
+                    className={`canvas-agent-input${selectionPreviews.length > 0 ? " has-selection-reference" : ""}`}
                     placeholder="输入消息，Enter 发送"
                     rows={3}
                   />

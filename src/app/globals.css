@@ -989,6 +989,15 @@
   padding-top: 4px !important;
 }
 
+.canvas-agent-selection-references {
+  display: flex;
+  max-height: 68px;
+  flex-wrap: wrap;
+  gap: 4px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
 .canvas-agent-selection-reference {
   display: flex;
   width: fit-content;
@@ -1031,15 +1040,12 @@
 }
 
 .canvas-agent-selection-copy strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.canvas-agent-selection-copy strong {
   color: var(--foreground);
   font-size: 11px;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .canvas-agent-selection-remove {
