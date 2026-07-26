@@ -91,7 +91,7 @@ export function SkillPicker({ value, onChange, compact = false }: SkillPickerPro
   }
 
   return (
-    <div className="relative">
+    <div className={`agent-skill-picker${compact ? " is-compact" : ""}`}>
       <button
         type="button"
         className={`agent-skill-trigger${compact ? " is-compact" : ""}`}
@@ -102,7 +102,10 @@ export function SkillPicker({ value, onChange, compact = false }: SkillPickerPro
         title={selected ? `我的 Skill：${selected.name}` : "我的 Skill"}
       >
         {compact ? (
-          <HugeiconsIcon icon={SparklesIcon} size={18} strokeWidth={1.7} />
+          <>
+            <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.7} />
+            <span>{selected?.name ?? "我的 Skill"}</span>
+          </>
         ) : (
           <>
             <span>{selected?.name ?? "我的 Skill"}</span>

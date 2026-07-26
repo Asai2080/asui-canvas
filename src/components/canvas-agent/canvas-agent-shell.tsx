@@ -14,14 +14,15 @@ import {
   Add01Icon,
   ArrowUp01Icon,
   Clock01Icon,
+  Image01Icon,
   Loading03Icon,
   Refresh03Icon,
   Robot01Icon,
-  SearchVisualIcon,
   Settings01Icon,
   SidebarRight01Icon,
   StopIcon,
 } from "@hugeicons/core-free-icons"
+import { BorderBeam } from "border-beam"
 
 import type { AgentTask } from "@/lib/canvas-agent/task-schema"
 
@@ -199,33 +200,40 @@ export function CanvasAgentShell({
             )}
             <ThreadPrimitive.ViewportFooter className="canvas-agent-composer-wrap">
               {error && <p className="canvas-agent-error" role="alert">{error}</p>}
-              <ComposerPrimitive.Root className="canvas-agent-composer">
-                <ComposerPrimitive.Input
-                  className="canvas-agent-input"
-                  placeholder="输入消息，Enter 发送"
-                  rows={3}
-                />
-                <div className="canvas-agent-composer-footer">
-                  <div className="canvas-agent-composer-tools">
-                    <span className="canvas-agent-context-button" title="自动读取当前画布选区" aria-label="自动读取当前画布选区">
-                      <HugeiconsIcon icon={Add01Icon} size={19} strokeWidth={1.7} />
-                    </span>
-                    <SkillPicker compact value={selectedSkillId} onChange={setSelectedSkillId} />
-                    <span className="canvas-agent-context-label">
-                      <HugeiconsIcon icon={SearchVisualIcon} size={14} strokeWidth={1.7} />
-                      当前画布
-                    </span>
+              <BorderBeam
+                size="md"
+                colorVariant="colorful"
+                strength={0.67}
+                borderRadius={30}
+                className="canvas-agent-composer-beam"
+              >
+                <ComposerPrimitive.Root className="canvas-agent-composer">
+                  <ComposerPrimitive.Input
+                    className="canvas-agent-input"
+                    placeholder="输入消息，Enter 发送"
+                    rows={3}
+                  />
+                  <div className="canvas-agent-composer-footer">
+                    <div className="canvas-agent-composer-tools">
+                      <span className="canvas-agent-context-button" title="自动读取当前画布选区" aria-label="自动读取当前画布选区">
+                        <HugeiconsIcon icon={Add01Icon} size={18} strokeWidth={1.7} />
+                      </span>
+                      <SkillPicker compact value={selectedSkillId} onChange={setSelectedSkillId} />
+                      <span className="canvas-agent-canvas-button" title="当前画布" aria-label="当前画布">
+                        <HugeiconsIcon icon={Image01Icon} size={17} strokeWidth={1.7} />
+                      </span>
+                    </div>
+                    <ComposerPrimitive.Send className="canvas-agent-send" aria-label="发送给画布 Agent">
+                      <HugeiconsIcon
+                        icon={foregroundTask ? Loading03Icon : ArrowUp01Icon}
+                        size={17}
+                        strokeWidth={1.8}
+                        className={foregroundTask ? "animate-spin" : undefined}
+                      />
+                    </ComposerPrimitive.Send>
                   </div>
-                  <ComposerPrimitive.Send className="canvas-agent-send" aria-label="发送给画布 Agent">
-                    <HugeiconsIcon
-                      icon={foregroundTask ? Loading03Icon : ArrowUp01Icon}
-                      size={17}
-                      strokeWidth={1.8}
-                      className={foregroundTask ? "animate-spin" : undefined}
-                    />
-                  </ComposerPrimitive.Send>
-                </div>
-              </ComposerPrimitive.Root>
+                </ComposerPrimitive.Root>
+              </BorderBeam>
             </ThreadPrimitive.ViewportFooter>
           </ThreadPrimitive.Viewport>
         </ThreadPrimitive.Root>

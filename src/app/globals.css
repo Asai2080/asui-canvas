@@ -458,39 +458,64 @@
   }
 
   .canvas-agent-composer {
-    @apply min-h-[132px] rounded-[28px] border border-[#333239] bg-[#111113] shadow-none transition-colors focus-within:border-[#4A4950];
+    @apply min-h-[132px] shrink-0 border border-sidebar-border bg-sidebar-accent/55 p-[10px] shadow-none;
+    border-radius: 30px;
+    box-shadow: none;
+  }
+
+  .canvas-agent-composer-beam {
+    display: block;
+    width: 100%;
+    border-radius: 30px;
   }
 
   .canvas-agent-input {
-    @apply block min-h-[82px] w-full resize-none bg-transparent px-6 pb-2 pt-5 text-[15px] leading-6 text-[#F4F4F5] outline-none placeholder:text-[#6F6F78];
+    @apply block h-[76px] min-h-[76px] w-full resize-none bg-transparent px-[10px] pb-0 pt-2 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground;
   }
 
   .canvas-agent-composer-footer {
-    @apply flex min-h-12 items-center justify-between gap-2 px-3 pb-3;
+    @apply mt-2 flex min-h-8 items-center gap-1.5 text-[12px];
   }
 
   .canvas-agent-composer-tools {
-    @apply flex min-w-0 items-center gap-1;
+    @apply flex min-w-0 items-center gap-1.5 overflow-hidden;
+  }
+
+  .canvas-agent-context-button,
+  .canvas-agent-canvas-button {
+    @apply flex size-8 shrink-0 items-center justify-center border bg-secondary text-secondary-foreground transition-colors hover:border-primary/35 hover:bg-accent hover:text-accent-foreground;
   }
 
   .canvas-agent-context-button {
-    @apply flex size-9 shrink-0 items-center justify-center rounded-full border border-[#34333A] text-[#B5B5BC];
+    @apply rounded-full;
+  }
+
+  .canvas-agent-canvas-button {
+    @apply rounded-lg;
   }
 
   .canvas-agent-send {
-    @apply flex size-9 shrink-0 items-center justify-center rounded-full bg-[#4D8100] text-[#D8FFB2] transition-colors hover:bg-[#5F9D00] disabled:cursor-not-allowed disabled:opacity-35;
-  }
-
-  .canvas-agent-context-label {
-    @apply sr-only;
+    @apply ml-auto flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/85 disabled:cursor-not-allowed disabled:opacity-35;
   }
 
   .agent-skill-trigger {
     @apply flex h-7 max-w-[150px] items-center gap-1.5 rounded-md px-2 text-[11px] text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground;
   }
 
+  .agent-skill-picker {
+    @apply relative;
+  }
+
+  .agent-skill-picker.is-compact {
+    @apply shrink-0;
+  }
+
   .agent-skill-trigger.is-compact {
-    @apply size-9 max-w-none justify-center rounded-full p-0 text-[#D0D0D5] hover:bg-white/[0.07] hover:text-primary;
+    @apply h-8 w-auto max-w-[132px] justify-start gap-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-full border border-primary/25 bg-primary/10 px-2 text-[11px] font-medium text-primary hover:border-primary/40 hover:bg-primary/15 hover:text-primary;
+  }
+
+  .agent-skill-trigger.is-compact span {
+    @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap;
   }
 
   .agent-skill-menu {
