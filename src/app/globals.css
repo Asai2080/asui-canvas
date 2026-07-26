@@ -146,6 +146,7 @@
   .canvas-surface .asui-node-frame .tl-frame__body {
     fill: #171719 !important;
     stroke: #393842 !important;
+    stroke-width: 2px !important;
     rx: 16px !important;
     ry: 16px !important;
   }
