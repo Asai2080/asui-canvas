@@ -1,12 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { HugeiconsIcon } from "@hugeicons/react"
-import {
-  AiChat01Icon,
-  Loading03Icon,
-} from "@hugeicons/core-free-icons"
-import { Bot, ChevronDown, ImagePlus, KeyRound, LoaderCircle, Sparkles, Video, X } from "lucide-react"
+import { KeyRound, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,25 +18,8 @@ import {
 
 type ApiConfigMode = "image" | "video"
 
-type CanvasToolbarProps = {
-  onCreateHolder: () => void
-  onCreateVideoNode: () => void
-  onOpenCodexTask: () => void
-  codexTaskStatus?: "idle" | "generating"
-  assistantMode?: "codex" | "agent"
-  assistantOpen?: boolean
-}
-
-export function CanvasToolbar({
-  onCreateHolder,
-  onCreateVideoNode,
-  onOpenCodexTask,
-  codexTaskStatus = "idle",
-  assistantMode = "codex",
-  assistantOpen = false,
-}: CanvasToolbarProps) {
+export function CanvasApiConfigDialog() {
   const [isConfigOpen, setIsConfigOpen] = useState(false)
-  const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false)
   const [configMode, setConfigMode] = useState<ApiConfigMode>("image")
   const [configMessage, setConfigMessage] = useState("")
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
@@ -54,12 +32,6 @@ export function CanvasToolbar({
   const updateDraftConfig = (key: keyof ApiConfig, value: string) => {
     setConfigMessage("")
     setDraftConfig((current) => ({ ...current, [key]: value }))
-  }
-
-  const openConfig = () => {
-    setDraftConfig(apiConfig)
-    setConfigMessage("")
-    setIsConfigOpen(true)
   }
 
   useEffect(() => {
@@ -100,130 +72,8 @@ export function CanvasToolbar({
   const activeModelKey = configMode === "image" ? "model" : "videoModel"
   const activeApiKey = configMode === "image" ? apiConfig.apiKey : apiConfig.videoApiKey
   const activeTitle = configMode === "image" ? "图片生成" : "视频生成"
-  const isCodexGenerating = codexTaskStatus === "generating"
-  const isAgentMode = assistantMode === "agent"
-  const assistantLabel = isCodexGenerating
-    ? isAgentMode
-      ? "Agent 执行中"
-      : "生成中"
-    : isAgentMode
-      ? "画布 Agent"
-      : "交给 Codex"
-  const assistantAriaLabel = isAgentMode
-    ? assistantOpen
-      ? "收起画布 Agent"
-      : "打开画布 Agent"
-    : isCodexGenerating
-      ? "Codex 正在生成"
-      : "交给 Codex"
-
   return (
     <>
-      <div
-        className="canvas-toolbar"
-        style={{ width: 350, zIndex: 1001 }}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <Button
-          type="button"
-          variant="ghost"
-          className="canvas-toolbar-button left-0 w-[100px] rounded-l-[12px]"
-          onClick={openConfig}
-          aria-label="打开 API 配置"
-        >
-          <Sparkles className="absolute left-4 top-4 size-4" aria-hidden="true" />
-          <span className="absolute left-9 top-[15px] whitespace-nowrap text-xs leading-normal">
-            阿水画布
-          </span>
-        </Button>
-        <div className="absolute left-[100px] top-0 h-12 w-px bg-border" />
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => setIsCreateMenuOpen((current) => !current)}
-          className="canvas-toolbar-button left-[101px] w-[124px]"
-          aria-haspopup="menu"
-          aria-expanded={isCreateMenuOpen}
-        >
-          <ImagePlus className="absolute left-4 top-4 size-4" aria-hidden="true" />
-          <span className="absolute left-9 top-[15px] whitespace-nowrap text-xs leading-normal">
-            新建节点
-          </span>
-          <ChevronDown className="absolute right-3 top-4 size-4 opacity-70" aria-hidden="true" />
-        </Button>
-        <div className="absolute left-[225px] top-0 h-12 w-px bg-border" />
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={onOpenCodexTask}
-          className={`canvas-toolbar-button left-[226px] w-[124px] rounded-r-[12px] ${
-            isCodexGenerating ? "text-primary" : ""
-          }`}
-          aria-label={assistantAriaLabel}
-        >
-          {isCodexGenerating ? (
-            isAgentMode ? (
-              <HugeiconsIcon
-                icon={Loading03Icon}
-                size={16}
-                strokeWidth={1.8}
-                className="absolute left-4 top-4 animate-spin"
-                aria-hidden="true"
-              />
-            ) : (
-              <LoaderCircle className="absolute left-4 top-4 size-4 animate-spin" aria-hidden="true" />
-            )
-          ) : isAgentMode ? (
-            <HugeiconsIcon
-              icon={AiChat01Icon}
-              size={16}
-              strokeWidth={1.8}
-              className="absolute left-4 top-4"
-              aria-hidden="true"
-            />
-          ) : (
-            <Bot className="absolute left-4 top-4 size-4" aria-hidden="true" />
-          )}
-          <span className="absolute left-9 top-[15px] whitespace-nowrap text-xs leading-normal">
-            {assistantLabel}
-          </span>
-        </Button>
-      </div>
-
-      {isCreateMenuOpen && (
-        <div
-          className="canvas-toolbar-create-menu"
-          role="menu"
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <Button
-            type="button"
-            variant="ghost"
-            role="menuitem"
-            onClick={() => {
-              setIsCreateMenuOpen(false)
-              onCreateHolder()
-            }}
-          >
-            <ImagePlus className="size-4" />
-            <span>图片节点</span>
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            role="menuitem"
-            onClick={() => {
-              setIsCreateMenuOpen(false)
-              onCreateVideoNode()
-            }}
-          >
-            <Video className="size-4" />
-            <span>视频节点</span>
-          </Button>
-        </div>
-      )}
-
       {isConfigOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-background/45 p-4 backdrop-blur-sm"

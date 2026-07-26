@@ -26,9 +26,12 @@ import { LoaderCircle, Plus, Scissors, Sparkles, Video } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CanvasGenerationStatusOverlay } from "@/components/canvas/canvas-generation-status-overlay"
 import { CanvasIdleDotGrid } from "@/components/canvas/canvas-idle-dot-grid"
+import {
+  CanvasMainToolbar,
+  CanvasMainToolbarContext,
+} from "@/components/canvas/canvas-main-toolbar"
 import { CanvasSizeFloatingBar } from "@/components/canvas/canvas-size-floating-bar"
-import { CanvasStylePanelDrawer } from "@/components/canvas/canvas-style-panel-drawer"
-import { CanvasToolbar } from "@/components/canvas/canvas-toolbar"
+import { CanvasApiConfigDialog } from "@/components/canvas/canvas-toolbar"
 import { CodexTaskPanel, type ResolvedCodexCanvasContext } from "@/components/canvas/codex-task-panel"
 import { GenerationPanel, type VideoResolution } from "@/components/canvas/generation-panel"
 import { canvasCommandBridge } from "@/lib/canvas-agent/canvas-commands/bridge"
@@ -132,7 +135,8 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
 }
 
 const TLDRAW_COMPONENTS = {
-  StylePanel: CanvasStylePanelDrawer,
+  StylePanel: null,
+  Toolbar: CanvasMainToolbar,
 }
 
 const TLDRAW_SHAPE_UTILS = [AsuiFrameShapeUtil]
@@ -2168,6 +2172,7 @@ export function AiCanvas() {
   const handleCanvasPointerDownCapture = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (event.button !== 0) return
+      if ((event.target as HTMLElement).closest(".canvas-main-toolbar-shell")) return
       const editor = editorRef.current
       if (!editor) return
       if (editor.getCurrentToolId() !== "select") return
@@ -3299,13 +3304,31 @@ export function AiCanvas() {
     <div className="flex h-screen min-h-0 overflow-hidden">
     <main className="canvas-app-shell">
       <div className="canvas-surface" onPointerDownCapture={handleCanvasPointerDownCapture}>
-        <Tldraw
-          persistenceKey={CANVAS_PERSISTENCE_KEY}
-          assetUrls={TLDRAW_ASSET_URLS}
-          components={TLDRAW_COMPONENTS}
-          shapeUtils={TLDRAW_SHAPE_UTILS}
-          onMount={handleMount}
-        />
+        <CanvasMainToolbarContext.Provider
+          value={{
+            assistantMode: CANVAS_AGENT_ENABLED ? "agent" : "codex",
+            assistantOpen: CANVAS_AGENT_ENABLED ? isCanvasAgentOpen : isCodexTaskOpen,
+            assistantBusy: CANVAS_AGENT_ENABLED ? isCanvasAgentBusy : codexTaskStatus === "generating",
+            onCreateImageNode: createHolder,
+            onCreateVideoNode: createStandaloneVideoNode,
+            onToggleAssistant: () => {
+              if (CANVAS_AGENT_ENABLED) {
+                setIsCanvasAgentOpen((current) => !current)
+              } else {
+                setIsCodexTaskOpen((current) => !current)
+              }
+            },
+            onOpenApiConfig: () => window.dispatchEvent(new Event("asui:open-api-config")),
+          }}
+        >
+          <Tldraw
+            persistenceKey={CANVAS_PERSISTENCE_KEY}
+            assetUrls={TLDRAW_ASSET_URLS}
+            components={TLDRAW_COMPONENTS}
+            shapeUtils={TLDRAW_SHAPE_UTILS}
+            onMount={handleMount}
+          />
+        </CanvasMainToolbarContext.Provider>
       </div>
       {generationOverlay && (
         <CanvasGenerationStatusOverlay bounds={generationOverlay.bounds} label={generationOverlay.label} />
@@ -3489,26 +3512,7 @@ export function AiCanvas() {
           onClose={() => setIsCodexTaskOpen(false)}
         />
       )}
-      <CanvasToolbar
-        onCreateHolder={createHolder}
-        onCreateVideoNode={createStandaloneVideoNode}
-        onOpenCodexTask={() => {
-          if (CANVAS_AGENT_ENABLED) {
-            setIsCanvasAgentOpen((current) => !current)
-          } else {
-            setIsCodexTaskOpen(true)
-          }
-        }}
-        codexTaskStatus={
-          CANVAS_AGENT_ENABLED
-            ? isCanvasAgentBusy
-              ? "generating"
-              : "idle"
-            : codexTaskStatus
-        }
-        assistantMode={CANVAS_AGENT_ENABLED ? "agent" : "codex"}
-        assistantOpen={isCanvasAgentOpen}
-      />
+      <CanvasApiConfigDialog />
       {selection?.kind === "holder" && generationPanelPosition && (
         <GenerationPanel
           selection={selection}

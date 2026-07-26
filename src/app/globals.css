@@ -232,36 +232,39 @@
     box-shadow: inset 0 0 0 1px rgb(163 254 68 / 38%);
   }
 
-  .canvas-toolbar {
-    @apply absolute left-1/2 top-3 z-[1001] h-12 w-[350px] -translate-x-1/2 overflow-hidden text-card-foreground backdrop-blur-xl;
-    border: 0;
-    border-radius: var(--tl-radius-4, 11px);
-    background: var(--card);
-    box-shadow:
-      0 2px 6px rgb(0 0 0 / 20%),
-      inset 0 0 0 1px #393842;
+  .canvas-main-toolbar-shell {
+    @apply pointer-events-auto relative z-30 flex items-center justify-center;
   }
 
-  .canvas-toolbar-button {
-    @apply absolute inset-y-0 rounded-none border-0 text-card-foreground hover:bg-primary/10 hover:text-primary focus-visible:ring-primary/55;
+  .canvas-main-toolbar {
+    @apply flex h-14 items-center gap-1 rounded-full border border-[#323137] bg-[#151515] p-1.5 text-[#B7B6BE];
+    box-shadow: 0 12px 36px rgb(0 0 0 / 34%);
   }
 
-  .canvas-toolbar-button > svg {
-    top: 16px;
+  .canvas-main-toolbar__button {
+    @apply flex size-11 shrink-0 items-center justify-center rounded-full text-current transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/55;
   }
 
-  .canvas-toolbar-button > span {
-    top: 15px;
+  .canvas-main-toolbar__button.is-active {
+    @apply bg-primary text-primary-foreground;
   }
 
-  .canvas-toolbar-create-menu {
-    @apply absolute left-1/2 top-[68px] z-[1002] w-36 -translate-x-1/2 p-1.5 text-sm text-popover-foreground;
-    border: 0;
-    border-radius: var(--tl-radius-4, 11px);
-    background: var(--popover);
-    box-shadow:
-      0 8px 24px rgb(0 0 0 / 28%),
-      inset 0 0 0 1px #393842;
+  .canvas-main-toolbar__separator {
+    @apply mx-1 h-7 w-px shrink-0 bg-[#39383F];
+  }
+
+  .canvas-main-toolbar__style-panel {
+    @apply pointer-events-none absolute bottom-[calc(100%+10px)] right-0 translate-y-3 opacity-0 transition-[transform,opacity] duration-200 ease-out;
+  }
+
+  .canvas-main-toolbar__style-panel.is-open {
+    @apply pointer-events-auto translate-y-0 opacity-100;
+  }
+
+  .canvas-main-toolbar__style-panel .tlui-style-panel__wrapper {
+    margin: 0;
+    max-height: calc(100vh - 120px);
+    box-shadow: 0 18px 48px rgb(0 0 0 / 35%);
   }
 
   .canvas-modal-surface {
@@ -302,10 +305,6 @@
 
   .api-config-mode-tabs__tab--active > span {
     transform: scale(1);
-  }
-
-  .canvas-toolbar-create-menu button {
-    @apply flex h-9 w-full items-center justify-start gap-2 rounded-lg px-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground;
   }
 
   .canvas-toast {
@@ -869,55 +868,9 @@
     }
   }
 
-  .canvas-style-drawer {
-    @apply pointer-events-none fixed bottom-3 left-[calc(50%+245px)] z-30 flex items-end;
-  }
-
-  .canvas-style-drawer__trigger {
-    @apply pointer-events-auto inline-flex size-12 select-none items-center justify-center p-0 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none;
-    border: 0;
-    border-radius: var(--tl-radius-4);
-    background: var(--tl-color-panel);
-    box-shadow: var(--tl-shadow-2);
-    padding: 0;
-  }
-
-  .canvas-style-drawer__trigger:hover {
-    background: var(--tl-color-low);
-  }
-
-  .canvas-style-drawer__trigger--open {
-    @apply text-primary hover:text-primary;
-    background: rgb(163 254 68 / 12%);
-    box-shadow: inset 0 0 0 1px rgb(163 254 68 / 38%), var(--tl-shadow-2);
-  }
-
-  .canvas-style-drawer__trigger--open:hover {
-    background: rgb(163 254 68 / 16%);
-  }
-
-  .canvas-style-drawer__panel {
-    @apply pointer-events-none absolute bottom-[calc(100%+10px)] right-0 translate-y-3 opacity-0 transition-[transform,opacity] duration-200 ease-out;
-  }
-
-  .canvas-style-drawer[data-open="true"] .canvas-style-drawer__panel {
-    @apply pointer-events-auto translate-y-0 opacity-100;
-  }
-
-  .canvas-style-drawer__panel .tlui-style-panel__wrapper {
-    margin: 0;
-    max-height: calc(100vh - 120px);
-    box-shadow: 0 18px 48px rgb(0 0 0 / 35%);
-  }
 }
 
 /* tldraw ships unlayered theme rules, so these brand overrides must also be unlayered. */
-.canvas-style-drawer__trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .canvas-surface .tl-container.tl-theme__dark {
   --tl-color-selection-fill: rgb(163 254 68 / 18%);
   --tl-color-selection-stroke: #a3fe44;
@@ -959,10 +912,6 @@
 }
 
 @media (max-width: 860px) {
-  .canvas-toolbar {
-    @apply left-1/2 right-auto top-14 max-w-[calc(100vw-1.5rem)] -translate-x-1/2;
-  }
-
   .canvas-agent-shell {
     @apply fixed inset-x-3 bottom-3 top-auto z-[1050] m-0 h-[min(680px,calc(100vh-74px))] w-auto translate-x-[calc(100%+1.5rem)] rounded-[20px] border opacity-100 transition-transform;
   }
@@ -987,6 +936,20 @@
     width: auto !important;
   }
 
+}
+
+@media (max-width: 520px) {
+  .canvas-main-toolbar {
+    @apply h-11 gap-0.5 p-1;
+  }
+
+  .canvas-main-toolbar__button {
+    @apply size-8;
+  }
+
+  .canvas-main-toolbar__separator {
+    @apply mx-0.5 h-5;
+  }
 }
 
 /* Keep both generation composers visually as one input surface. */
