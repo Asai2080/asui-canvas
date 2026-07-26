@@ -991,24 +991,26 @@
 
 .canvas-agent-selection-reference {
   display: flex;
+  width: fit-content;
+  max-width: 100%;
   min-width: 0;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px 6px 6px;
+  gap: 6px;
+  padding: 3px 6px 3px 3px;
   border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
-  border-radius: 12px;
+  border-radius: 9999px;
   background: color-mix(in srgb, var(--primary) 5%, transparent);
 }
 
 .canvas-agent-selection-thumbnail {
   display: flex;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 8px;
+  border-radius: 9999px;
   background: rgb(0 0 0 / 35%);
   color: var(--primary);
 }
@@ -1024,7 +1026,8 @@
   display: flex;
   min-width: 0;
   flex: 1;
-  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
 .canvas-agent-selection-copy strong,
@@ -1036,21 +1039,25 @@
 
 .canvas-agent-selection-copy strong {
   color: var(--foreground);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
 }
 
 .canvas-agent-selection-copy small {
   color: var(--muted-foreground);
-  font-size: 10px;
-  line-height: 16px;
+  font-size: 9px;
+  line-height: 12px;
+}
+
+.canvas-agent-selection-copy small::before {
+  content: "· ";
 }
 
 .canvas-agent-selection-remove {
   display: flex;
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
   align-items: center;
   justify-content: center;
   border-radius: 999px;

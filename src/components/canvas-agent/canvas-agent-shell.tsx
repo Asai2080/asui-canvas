@@ -238,7 +238,7 @@ export function CanvasAgentShell({
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={selectionPreview.src} alt="当前引用节点" />
                         ) : (
-                          <HugeiconsIcon icon={Image01Icon} size={17} strokeWidth={1.7} />
+                          <HugeiconsIcon icon={Image01Icon} size={14} strokeWidth={1.7} />
                         )}
                       </span>
                       <span className="canvas-agent-selection-copy">
@@ -252,7 +252,7 @@ export function CanvasAgentShell({
                         aria-label="取消引用当前画布节点"
                         title="取消引用"
                       >
-                        <HugeiconsIcon icon={MultiplicationSignIcon} size={14} strokeWidth={1.8} />
+                        <HugeiconsIcon icon={MultiplicationSignIcon} size={12} strokeWidth={1.8} />
                       </button>
                     </div>
                   )}
