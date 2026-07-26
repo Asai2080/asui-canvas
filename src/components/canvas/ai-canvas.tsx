@@ -17,12 +17,16 @@ import {
   Editor,
   FrameShapeUtil,
   HTMLContainer,
+  ImageShapeUtil,
   Tldraw,
   TLAssetId,
   TLFrameShape,
+  TLImageShape,
   TLShape,
   TLShapeId,
+  TLVideoShape,
   useValue,
+  VideoShapeUtil,
 } from "tldraw"
 import { LoaderCircle, Plus, Scissors, Sparkles, Video } from "lucide-react"
 
@@ -58,6 +62,7 @@ import {
 } from "@/lib/canvas/annotations"
 import { readApiConfigFromSession } from "@/lib/canvas/api-config"
 import { expandBounds, findClearPlacement, intersects, normalizeBounds } from "@/lib/canvas/geometry"
+import { insetCanvasMediaBounds } from "@/lib/canvas/media-layout"
 import { CANVAS_PERSISTENCE_KEY, IMAGE_VERSION_STORAGE_KEY } from "@/lib/canvas/persistence"
 import { generatePoster } from "@/lib/canvas/poster-generator"
 import { resolveCanvasSizePreset, type CanvasSizePresetId } from "@/lib/canvas/size-presets"
@@ -141,11 +146,6 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
             </div>
           </HTMLContainer>
         )}
-        <HTMLContainer
-          className="asui-node-frame-outline"
-          style={{ width: shape.props.w, height: shape.props.h }}
-          aria-hidden="true"
-        />
       </div>
     )
   }
@@ -156,7 +156,35 @@ const TLDRAW_COMPONENTS = {
   Toolbar: CanvasMainToolbar,
 }
 
-const TLDRAW_SHAPE_UTILS = [AsuiFrameShapeUtil]
+class AsuiImageShapeUtil extends ImageShapeUtil {
+  override component(shape: TLImageShape) {
+    const content = super.component(shape)
+    const meta = shapeMeta(shape)
+    if (meta.kind !== "generated-image" && meta.asuiNode !== "generated-image") {
+      return content
+    }
+
+    return <div className="asui-generated-media">{content}</div>
+  }
+}
+
+class AsuiVideoShapeUtil extends VideoShapeUtil {
+  override component(shape: TLVideoShape) {
+    const content = super.component(shape)
+    const meta = shapeMeta(shape)
+    if (meta.kind !== "generated-video" && meta.asuiNode !== "generated-video") {
+      return content
+    }
+
+    return <div className="asui-generated-media">{content}</div>
+  }
+}
+
+const TLDRAW_SHAPE_UTILS = [
+  AsuiFrameShapeUtil,
+  AsuiImageShapeUtil,
+  AsuiVideoShapeUtil,
+]
 const externalVersionIdForShape = (shapeId: string) => `external:${shapeId}`
 const isExternalVersionId = (versionId?: string) => Boolean(versionId?.startsWith("external:"))
 const parentVersionIdFromCanvasVersionId = (versionId?: string) =>
@@ -858,6 +886,7 @@ function createImageShape(
     parentId?: TLShapeId
   } = {}
 ) {
+  const mediaBounds = options.parentId ? insetCanvasMediaBounds(bounds) : bounds
   const assetId = AssetRecordType.createId()
   const shapeId = createShapeId()
   const extension = extensionFromSrc(version.src)
@@ -886,12 +915,12 @@ function createImageShape(
   editor.createShape({
     id: shapeId,
     type: "image",
-    x: bounds.x,
-    y: bounds.y,
+    x: mediaBounds.x,
+    y: mediaBounds.y,
     parentId: options.parentId,
     props: {
-      w: bounds.w,
-      h: bounds.h,
+      w: mediaBounds.w,
+      h: mediaBounds.h,
       playing: false,
       url: "",
       assetId,
@@ -1010,6 +1039,7 @@ function createVideoShape(
     taskId?: string
   }
 ) {
+  const mediaBounds = parentId ? insetCanvasMediaBounds(bounds) : bounds
   const assetId = AssetRecordType.createId()
   const shapeId = createShapeId()
 
@@ -1037,12 +1067,12 @@ function createVideoShape(
   editor.createShape({
     id: shapeId,
     type: "video",
-    x: bounds.x,
-    y: bounds.y,
+    x: mediaBounds.x,
+    y: mediaBounds.y,
     parentId,
     props: {
-      w: bounds.w,
-      h: bounds.h,
+      w: mediaBounds.w,
+      h: mediaBounds.h,
       time: 0,
       playing: true,
       autoplay: true,
@@ -1059,6 +1089,58 @@ function createVideoShape(
   })
 
   return shapeId
+}
+
+function syncGeneratedMediaToCanvasFrame(
+  editor: Editor,
+  frameId: TLShapeId,
+  size: CanvasSize
+) {
+  const mediaBounds = insetCanvasMediaBounds({
+    x: 0,
+    y: 0,
+    w: size.width,
+    h: size.height,
+  })
+
+  for (const childId of editor.getSortedChildIdsForParent(frameId)) {
+    const child = editor.getShape(childId)
+    const meta = shapeMeta(child)
+    const isGeneratedImage =
+      child?.type === "image" &&
+      (meta.kind === "generated-image" || meta.asuiNode === "generated-image")
+    const isGeneratedVideo =
+      child?.type === "video" &&
+      (meta.kind === "generated-video" || meta.asuiNode === "generated-video")
+    if (!child || (!isGeneratedImage && !isGeneratedVideo)) continue
+
+    editor.updateShape({
+      id: child.id,
+      type: child.type,
+      x: mediaBounds.x,
+      y: mediaBounds.y,
+      props: {
+        w: mediaBounds.w,
+        h: mediaBounds.h,
+      },
+    })
+  }
+}
+
+function syncAllGeneratedMediaToCanvasFrames(editor: Editor) {
+  for (const shape of editor.getCurrentPageShapes()) {
+    if (
+      shape.type !== "frame" ||
+      (!isImageHolderShape(shape) && !isVideoNodeShape(shape))
+    ) {
+      continue
+    }
+
+    syncGeneratedMediaToCanvasFrame(editor, shape.id as TLShapeId, {
+      width: shape.props.w,
+      height: shape.props.h,
+    })
+  }
 }
 
 async function persistImageVersion(version: ImageVersion) {
@@ -2248,6 +2330,7 @@ export function AiCanvas() {
       editorRef.current = editor
       editor.user.updateUserPreferences({ colorScheme: "dark" })
       migrateVersionLinkArrows(editor)
+      syncAllGeneratedMediaToCanvasFrames(editor)
       const canvasNameUpdates = editor
         .getCurrentPageShapes()
         .filter(
@@ -2518,6 +2601,7 @@ export function AiCanvas() {
             layoutMode: "manual",
           },
         })
+        syncGeneratedMediaToCanvasFrame(editor, holderId, normalizedSize)
         return
       }
 
@@ -2581,6 +2665,7 @@ export function AiCanvas() {
           sizePreset: nextPreset,
         },
       })
+      syncGeneratedMediaToCanvasFrame(editor, videoId, normalizedSize)
       setVideoNodeLinks(getVideoNodeLinks(editor))
     },
     [selection]
@@ -2723,7 +2808,7 @@ export function AiCanvas() {
           },
         })
       }
-      editor.select(imageId)
+      editor.select(holderId)
       setVersions((current) => [...current, version])
       setStatus("success")
       clearGenerationOverlay()
@@ -2976,7 +3061,7 @@ export function AiCanvas() {
           obstacles,
           margin: 190,
         })
-        const { imageId } = createImageHolderWithImage(editor, savedVersion, imageBounds)
+        const { holderId, imageId } = createImageHolderWithImage(editor, savedVersion, imageBounds)
         attachVersionLinkToImage(
           editor,
           imageId,
@@ -2984,7 +3069,7 @@ export function AiCanvas() {
           sourceAnnotationIds
         )
         setVersionNodeLinks(getVersionNodeLinks(editor))
-        editor.select(imageId)
+        editor.select(holderId)
         editor.zoomToSelection({ animation: { duration: 240 } })
         setVersions((current) => [...current, savedVersion])
         setStatus("success")
@@ -3021,7 +3106,7 @@ export function AiCanvas() {
               },
             })
           }
-          editor.select(imageId)
+          editor.select(holderId)
           setVersions((current) => [...current, savedVersion])
           setStatus("success")
           setStatusDetail("")
@@ -3032,13 +3117,13 @@ export function AiCanvas() {
       const viewport = editor.getViewportPageBounds()
       const width = Math.min(savedVersion.width, Math.max(240, viewport.w * 0.4))
       const height = Math.max(120, width * (savedVersion.height / Math.max(1, savedVersion.width)))
-      const { imageId } = createImageHolderWithImage(editor, savedVersion, {
+      const { holderId } = createImageHolderWithImage(editor, savedVersion, {
         x: viewport.x + viewport.w / 2 - width / 2,
         y: viewport.y + viewport.h / 2 - height / 2,
         w: width,
         h: height,
       })
-      editor.select(imageId)
+      editor.select(holderId)
       editor.zoomToSelection({ animation: { duration: 240 } })
       setVersions((current) => [...current, savedVersion])
       setStatus("success")
@@ -3405,7 +3490,7 @@ export function AiCanvas() {
         },
       })
       videoPollingTaskRef.current = ""
-      editor.select(videoId)
+      editor.select(videoShape.id)
       setStatus("success")
       setStatusDetail(`${activeDurationSeconds}s · ${activeResolution} · 已生成`)
     } catch (error) {
