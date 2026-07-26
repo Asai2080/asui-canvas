@@ -12,7 +12,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Add01Icon,
-  AiBrain01Icon,
   ArrowUp01Icon,
   Clock01Icon,
   Image01Icon,
@@ -192,9 +191,6 @@ export function CanvasAgentShell({
           <ThreadPrimitive.Viewport className="canvas-agent-viewport">
             <ThreadPrimitive.Empty>
               <div className="canvas-agent-empty">
-                <span className="canvas-agent-empty-mark">
-                  <HugeiconsIcon icon={AiBrain01Icon} size={30} strokeWidth={1.65} />
-                </span>
                 <h3>有什么可以帮你？</h3>
                 <p>生成的图片、视频会放到画布上，点击画布内容即可继续引用给我。</p>
               </div>

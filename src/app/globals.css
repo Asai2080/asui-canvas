@@ -399,14 +399,6 @@
     @apply mx-auto my-auto flex max-w-[340px] -translate-y-5 flex-col items-center px-5 text-center;
   }
 
-  .canvas-agent-empty-mark {
-    @apply mb-6 flex size-16 shrink-0 items-center justify-center rounded-[18px] text-white;
-    background: linear-gradient(140deg, #a3fe44 4%, #28d88c 88%);
-    box-shadow:
-      0 0 28px rgb(163 254 68 / 24%),
-      0 10px 30px rgb(35 184 111 / 18%);
-  }
-
   .canvas-agent-empty h3 {
     @apply text-[26px] font-semibold leading-9 text-[#F4F4F5];
   }
