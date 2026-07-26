@@ -1,5 +1,6 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
@@ -32,6 +33,18 @@ import { CanvasStylePanelDrawer } from "@/components/canvas/canvas-style-panel-d
 import { CanvasToolbar } from "@/components/canvas/canvas-toolbar"
 import { CodexTaskPanel, type ResolvedCodexCanvasContext } from "@/components/canvas/codex-task-panel"
 import { GenerationPanel, type VideoResolution } from "@/components/canvas/generation-panel"
+import { canvasCommandBridge } from "@/lib/canvas-agent/canvas-commands/bridge"
+import type {
+  AgentCanvasCommandAcknowledgement,
+  AgentCanvasCommandBatch,
+} from "@/lib/canvas-agent/canvas-commands/schema"
+import { buildCanvasContextSnapshot } from "@/lib/canvas-agent/context/build-context"
+import type {
+  CanvasContextInputMedia,
+  CanvasContextInputNode,
+  CanvasContextScope,
+  CanvasContextSnapshot,
+} from "@/lib/canvas-agent/context/schema"
 import {
   buildAnnotationFeedbackItems,
   validateSameAnnotationTarget,
@@ -46,6 +59,18 @@ import { resolveCanvasSizePreset, type CanvasSizePresetId } from "@/lib/canvas/s
 import { normalizeCanvasSize } from "@/lib/canvas/size"
 import type { Bounds, CanvasSelection, CanvasSize, GenerationStatus, ImageVersion, ReferenceImage } from "@/lib/canvas/types"
 import { normalizeVideoReferenceSource } from "@/lib/video-generation/reference-source"
+
+const CanvasAgentShell = dynamic(
+  () =>
+    import("@/components/canvas-agent/canvas-agent-shell").then(
+      (module) => module.CanvasAgentShell
+    ),
+  { ssr: false }
+)
+
+const CANVAS_AGENT_ENABLED = ["1", "true", "yes", "on"].includes(
+  (process.env.NEXT_PUBLIC_CANVAS_AGENT_ENABLED ?? "").trim().toLowerCase()
+)
 
 const DEFAULT_HOLDER_SIZE: CanvasSize = { width: 360, height: 480 }
 const ANNOTATION_TYPES = new Set(["arrow", "draw", "text", "highlight", "geo"])
@@ -1273,6 +1298,177 @@ function getImageShapeSource(editor: Editor, shapeId: TLShapeId) {
   return asset?.type === "image" ? asset.props.src : null
 }
 
+function getVideoShapeSource(editor: Editor, shapeId: TLShapeId) {
+  const shape = editor.getShape(shapeId)
+  if (!shape || shape.type !== "video") return null
+
+  const assetId = shape.props.assetId
+  if (!assetId) return null
+
+  const asset = editor.getAsset(assetId)
+  return asset?.type === "video" ? asset.props.src : null
+}
+
+function getStringMetaValue(meta: Record<string, unknown>, key: string) {
+  const value = meta[key]
+  return typeof value === "string" && value.trim() ? value : undefined
+}
+
+function getStringArrayMetaValue(meta: Record<string, unknown>, key: string) {
+  const value = meta[key]
+  if (!Array.isArray(value)) return []
+  return value.filter(
+    (item): item is string =>
+      typeof item === "string" && item.trim().length > 0
+  )
+}
+
+function getContextReferenceIds(meta: Record<string, unknown>) {
+  return Array.from(
+    new Set([
+      ...getStringArrayMetaValue(meta, "referenceIds"),
+      ...getStringArrayMetaValue(meta, "referenceShapeIds"),
+    ])
+  )
+}
+
+function getContextNodeKind(shape: TLShape): CanvasContextInputNode["kind"] {
+  if (ANNOTATION_TYPES.has(shape.type)) return "annotation"
+  if (isImageHolderShape(shape)) return "holder"
+  if (isVideoNodeShape(shape) || shape.type === "video") return "video"
+  if (shape.type === "image") return "image"
+  return "other"
+}
+
+function getContextNodeMedia(
+  editor: Editor,
+  shape: TLShape,
+  bounds: Bounds
+): CanvasContextInputMedia | undefined {
+  const meta = shapeMeta(shape)
+
+  if (shape.type === "image") {
+    const src = getImageShapeSource(editor, shape.id as TLShapeId)
+    if (!src) return undefined
+    return {
+      mediaType: "image",
+      src,
+      mimeType: mimeFromSrc(src),
+      width: Math.max(1, Math.round(bounds.w)),
+      height: Math.max(1, Math.round(bounds.h)),
+    }
+  }
+
+  if (shape.type === "video") {
+    const src = getVideoShapeSource(editor, shape.id as TLShapeId)
+    if (!src) return undefined
+    return {
+      mediaType: "video",
+      src,
+      mimeType: "video/mp4",
+      width: Math.max(1, Math.round(bounds.w)),
+      height: Math.max(1, Math.round(bounds.h)),
+    }
+  }
+
+  if (isVideoNodeShape(shape)) {
+    const latestVideoShapeId = getStringMetaValue(meta, "latestVideoShapeId")
+    const src =
+      getStringMetaValue(meta, "videoSrc") ??
+      (latestVideoShapeId
+        ? getVideoShapeSource(editor, latestVideoShapeId as TLShapeId)
+        : null)
+    if (!src) return undefined
+    return {
+      mediaType: "video",
+      src,
+      mimeType: "video/mp4",
+      width: Math.max(1, Math.round(bounds.w)),
+      height: Math.max(1, Math.round(bounds.h)),
+    }
+  }
+
+  return undefined
+}
+
+type ExportAgentCanvasContextOptions = {
+  scope?: CanvasContextScope
+  selection?: CanvasSelection | null
+  snapshotId?: string
+  createdAt?: string
+}
+
+export function exportAgentCanvasContextSnapshot(
+  editor: Editor,
+  options: ExportAgentCanvasContextOptions = {}
+): CanvasContextSnapshot {
+  const selection =
+    options.selection === undefined ? getSelection(editor) : options.selection
+  const selectedShape = selection
+    ? editor.getShape(selection.shapeId as TLShapeId)
+    : null
+
+  let selectedNodeId = selectedShape?.id
+  if (selectedShape && ANNOTATION_TYPES.has(selectedShape.type)) {
+    selectedNodeId = getGeneratedImageTargetForAnnotation(
+      editor,
+      selectedShape.id as TLShapeId
+    )?.imageId
+  } else if (selectedShape && isImageHolderShape(selectedShape)) {
+    selectedNodeId =
+      getLatestImageShapeIdFromHolder(editor, selectedShape.id as TLShapeId) ??
+      selectedShape.id
+  }
+
+  const nodes = editor.getCurrentPageShapes().flatMap<CanvasContextInputNode>(
+    (shape) => {
+      const pageBounds = editor.getShapePageBounds(shape.id)
+      if (!pageBounds) return []
+
+      const bounds = toBounds(pageBounds)
+      const meta = shapeMeta(shape)
+      const isAnnotation = ANNOTATION_TYPES.has(shape.type)
+      const annotationTarget = isAnnotation
+        ? getGeneratedImageTargetForAnnotation(editor, shape.id as TLShapeId)
+        : null
+      const parentId = String(shape.parentId)
+
+      return [
+        {
+          id: shape.id,
+          kind: getContextNodeKind(shape),
+          bounds,
+          text: isAnnotation
+            ? getAnnotationText(editor, shape.id as TLShapeId)
+            : undefined,
+          versionId:
+            shape.type === "image"
+              ? getCanvasImageVersionId(shape)
+              : getStringMetaValue(meta, "versionId"),
+          sourceNodeId:
+            annotationTarget?.imageId ??
+            getStringMetaValue(meta, "sourceShapeId"),
+          parentNodeId: parentId.startsWith("shape:") ? parentId : undefined,
+          media: getContextNodeMedia(editor, shape, bounds),
+          referenceIds: getContextReferenceIds(meta),
+        },
+      ]
+    }
+  )
+
+  return buildCanvasContextSnapshot(
+    {
+      scope: options.scope ?? "selection",
+      selectedNodeId,
+      nodes,
+    },
+    {
+      snapshotId: options.snapshotId,
+      createdAt: options.createdAt,
+    }
+  )
+}
+
 async function getVideoNodeReferenceImages(editor: Editor, videoShapeId: TLShapeId): Promise<ReferenceImage[]> {
   const videoShape = editor.getShape(videoShapeId)
   const sourceShapeId = shapeMeta(videoShape).sourceShapeId
@@ -1344,6 +1540,8 @@ export function AiCanvas() {
   const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<string[]>([])
   const [isCodexTaskOpen, setIsCodexTaskOpen] = useState(false)
   const [codexTaskStatus, setCodexTaskStatus] = useState<"idle" | "generating">("idle")
+  const [isCanvasAgentOpen, setIsCanvasAgentOpen] = useState(false)
+  const [isCanvasAgentBusy, setIsCanvasAgentBusy] = useState(false)
   const [codexTaskId, setCodexTaskId] = useState("")
   const [prompt, setPrompt] = useState("")
   const [videoPrompt, setVideoPrompt] = useState("")
@@ -1364,6 +1562,19 @@ export function AiCanvas() {
   const codexPollingTaskRef = useRef("")
   const codexResultContextRef = useRef<ResolvedCodexCanvasContext | null>(null)
   const videoPollingTaskRef = useRef("")
+
+  const getAgentCanvasContext = useCallback(() => {
+    const editor = editorRef.current
+    if (!editor) throw new Error("画布尚未准备完成")
+    const snapshot = exportAgentCanvasContextSnapshot(editor)
+    const viewportBounds = toBounds(editor.getViewportPageBounds())
+
+    return {
+      snapshot,
+      sourceBounds: snapshot.sourceNode?.bounds,
+      viewportBounds,
+    }
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -1645,6 +1856,248 @@ export function AiCanvas() {
   const clearGenerationOverlay = useCallback(() => {
     setGenerationOverlay(null)
   }, [])
+
+  const applyAgentCanvasCommands = useCallback(
+    async (
+      batch: AgentCanvasCommandBatch
+    ): Promise<AgentCanvasCommandAcknowledgement> => {
+      const editor = editorRef.current
+      if (!editor) {
+        return {
+          batchId: batch.id,
+          taskId: batch.taskId,
+          status: "rejected",
+          resultNodeIds: [],
+          artifactNodeIds: {},
+          errors: [{ message: "画布尚未准备好" }],
+        }
+      }
+
+      const createdNodes = new Map<
+        string,
+        {
+          logicalId: TLShapeId
+          connectionId: TLShapeId
+          artifactId: string
+        }
+      >()
+      const resultNodeIds: string[] = []
+      const artifactNodeIds: Record<string, string> = {}
+      const errors: AgentCanvasCommandAcknowledgement["errors"] = []
+      const createdImageVersions: ImageVersion[] = []
+
+      for (const [commandIndex, command] of batch.commands.entries()) {
+        try {
+          if (command.type === "create-image-node") {
+            const version: ImageVersion = {
+              versionId: command.artifact.versionId,
+              parentVersionId: command.artifact.parentVersionId,
+              prompt: command.artifact.prompt,
+              src: command.artifact.src,
+              width: command.artifact.width,
+              height: command.artifact.height,
+              createdAt: command.artifact.createdAt,
+            }
+            const { holderId, imageId } = createImageHolderWithImage(
+              editor,
+              version,
+              command.bounds
+            )
+            const holder = editor.getShape(holderId)
+            const image = editor.getShape(imageId)
+
+            if (holder) {
+              editor.updateShape({
+                id: holderId,
+                type: holder.type,
+                meta: {
+                  ...holder.meta,
+                  agentTaskId: batch.taskId,
+                  agentArtifactId: command.artifact.id,
+                },
+              })
+            }
+            if (image) {
+              editor.updateShape({
+                id: imageId,
+                type: image.type,
+                meta: {
+                  ...image.meta,
+                  agentTaskId: batch.taskId,
+                  agentArtifactId: command.artifact.id,
+                },
+              })
+            }
+
+            createdNodes.set(command.nodeRef, {
+              logicalId: holderId,
+              connectionId: imageId,
+              artifactId: command.artifact.id,
+            })
+            resultNodeIds.push(holderId)
+            artifactNodeIds[command.artifact.id] = holderId
+            createdImageVersions.push(version)
+            void persistImageVersion(version).catch(() => undefined)
+            continue
+          }
+
+          if (command.type === "create-video-node") {
+            const videoNodeId = createShapeId()
+            editor.createShape({
+              id: videoNodeId,
+              type: "frame",
+              x: command.bounds.x,
+              y: command.bounds.y,
+              props: {
+                w: command.bounds.w,
+                h: command.bounds.h,
+                name: `AI Video Holder${
+                  command.artifact.durationSeconds
+                    ? ` · ${command.artifact.durationSeconds}s`
+                    : ""
+                }${
+                  command.artifact.resolution
+                    ? ` · ${command.artifact.resolution}`
+                    : ""
+                }`,
+                color: "blue",
+              },
+              meta: {
+                kind: "video-node",
+                asuiNode: "video-node",
+                asuiMetaVersion: ASUI_META_VERSION,
+                status: "completed",
+                agentTaskId: batch.taskId,
+                agentArtifactId: command.artifact.id,
+              },
+            })
+            const videoShapeId = createVideoShape(editor, {
+              src: command.artifact.src,
+              prompt: command.prompt,
+              bounds: {
+                x: 0,
+                y: 0,
+                w: command.bounds.w,
+                h: command.bounds.h,
+              },
+              parentId: videoNodeId,
+              taskId: command.artifact.taskId ?? batch.taskId,
+            })
+            const videoNode = editor.getShape(videoNodeId)
+            if (videoNode) {
+              editor.updateShape({
+                id: videoNodeId,
+                type: videoNode.type,
+                meta: {
+                  ...videoNode.meta,
+                  latestVideoShapeId: videoShapeId,
+                },
+              })
+            }
+
+            createdNodes.set(command.nodeRef, {
+              logicalId: videoNodeId,
+              connectionId: videoNodeId,
+              artifactId: command.artifact.id,
+            })
+            resultNodeIds.push(videoNodeId)
+            artifactNodeIds[command.artifact.id] = videoNodeId
+            continue
+          }
+
+          if (command.type === "connect-nodes") {
+            const target = createdNodes.get(command.targetNodeRef)
+            const source = editor.getShape(command.sourceNodeId as TLShapeId)
+            const connectionTarget = target
+              ? editor.getShape(target.connectionId)
+              : null
+            if (!target || !source || !connectionTarget) {
+              throw new Error("无法连接生成结果与来源画布")
+            }
+            editor.updateShape({
+              id: target.connectionId,
+              type: connectionTarget.type,
+              meta: {
+                ...connectionTarget.meta,
+                sourceShapeId: source.id,
+                agentTaskId: batch.taskId,
+              },
+            })
+            continue
+          }
+
+          if (command.type === "set-recommended-result") {
+            const target = createdNodes.get(command.nodeRef)
+            const shape = target ? editor.getShape(target.logicalId) : null
+            if (!target || !shape) {
+              throw new Error("找不到需要推荐的生成结果")
+            }
+            editor.updateShape({
+              id: target.logicalId,
+              type: shape.type,
+              meta: {
+                ...shape.meta,
+                recommendedResult: true,
+              },
+            })
+            continue
+          }
+
+          const focusIds = command.nodeRefs
+            .map((nodeRef) => createdNodes.get(nodeRef)?.logicalId)
+            .filter((shapeId): shapeId is TLShapeId => Boolean(shapeId))
+          if (focusIds.length === 0) {
+            throw new Error("找不到需要聚焦的生成结果")
+          }
+          editor.select(...focusIds)
+          editor.zoomToSelection({ animation: { duration: 240 } })
+        } catch (error) {
+          errors.push({
+            commandIndex,
+            message: errorMessage(error, "画布命令执行失败"),
+          })
+        }
+      }
+
+      if (createdImageVersions.length > 0) {
+        setVersions((current) => {
+          const incomingIds = new Set(
+            createdImageVersions.map((version) => version.versionId)
+          )
+          return [
+            ...current.filter(
+              (version) => !incomingIds.has(version.versionId)
+            ),
+            ...createdImageVersions,
+          ]
+        })
+      }
+      setVideoNodeLinks(getVideoNodeLinks(editor))
+      setVersionNodeLinks(getVersionNodeLinks(editor))
+
+      const commandStatus =
+        resultNodeIds.length === 0
+          ? "rejected"
+          : errors.length > 0
+            ? "partial"
+            : "applied"
+
+      return {
+        batchId: batch.id,
+        taskId: batch.taskId,
+        status: commandStatus,
+        resultNodeIds,
+        artifactNodeIds,
+        errors,
+      }
+    },
+    []
+  )
+
+  useEffect(
+    () => canvasCommandBridge.subscribe(applyAgentCanvasCommands),
+    [applyAgentCanvasCommands]
+  )
 
   const handleMount = useCallback(
     (editor: Editor) => {
@@ -3045,8 +3498,22 @@ export function AiCanvas() {
       <CanvasToolbar
         onCreateHolder={createHolder}
         onCreateVideoNode={createStandaloneVideoNode}
-        onOpenCodexTask={() => setIsCodexTaskOpen(true)}
-        codexTaskStatus={codexTaskStatus}
+        onOpenCodexTask={() => {
+          if (CANVAS_AGENT_ENABLED) {
+            setIsCanvasAgentOpen((current) => !current)
+          } else {
+            setIsCodexTaskOpen(true)
+          }
+        }}
+        codexTaskStatus={
+          CANVAS_AGENT_ENABLED
+            ? isCanvasAgentBusy
+              ? "generating"
+              : "idle"
+            : codexTaskStatus
+        }
+        assistantMode={CANVAS_AGENT_ENABLED ? "agent" : "codex"}
+        assistantOpen={isCanvasAgentOpen}
       />
       {selection?.kind === "holder" && generationPanelPosition && (
         <GenerationPanel
@@ -3085,7 +3552,15 @@ export function AiCanvas() {
         />
       )}
     </main>
-      {selection?.kind === "holder" && (
+      {CANVAS_AGENT_ENABLED && (
+        <CanvasAgentShell
+          open={isCanvasAgentOpen}
+          getCanvasContext={getAgentCanvasContext}
+          onBusyChange={setIsCanvasAgentBusy}
+          onClose={() => setIsCanvasAgentOpen(false)}
+        />
+      )}
+      {!isCanvasAgentOpen && selection?.kind === "holder" && (
         <GenerationPanel
           placement="sidebar"
           selection={selection}
@@ -3098,7 +3573,7 @@ export function AiCanvas() {
           onFill={fillHolder}
         />
       )}
-      {selection?.kind === "video" && (
+      {!isCanvasAgentOpen && selection?.kind === "video" && (
         <GenerationPanel
           placement="sidebar"
           mode="video"

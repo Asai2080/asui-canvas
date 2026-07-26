@@ -331,6 +331,183 @@
     background-color: #08060a !important;
   }
 
+  .canvas-agent-shell {
+    @apply pointer-events-none flex h-screen w-0 shrink-0 flex-col overflow-hidden border-l border-sidebar-border bg-[#08060A] text-sidebar-foreground opacity-0 transition-[width,opacity] duration-200;
+  }
+
+  .canvas-agent-shell.is-open {
+    @apply pointer-events-auto w-[clamp(360px,26vw,420px)] opacity-100;
+    box-shadow: -8px 0 24px rgb(0 0 0 / 14%);
+  }
+
+  .canvas-agent-header {
+    @apply flex h-16 shrink-0 items-center justify-between border-b border-sidebar-border px-4;
+  }
+
+  .canvas-agent-title {
+    @apply flex min-w-0 items-center gap-3;
+  }
+
+  .canvas-agent-title h2 {
+    @apply text-sm font-semibold leading-5 text-sidebar-foreground;
+  }
+
+  .canvas-agent-title p {
+    @apply text-[11px] leading-4 text-muted-foreground;
+  }
+
+  .canvas-agent-mark,
+  .canvas-agent-empty-mark {
+    @apply flex shrink-0 items-center justify-center rounded-md border border-primary/30 bg-primary/10 text-primary;
+  }
+
+  .canvas-agent-mark {
+    @apply size-8;
+  }
+
+  .canvas-agent-icon-button {
+    @apply flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground;
+  }
+
+  .canvas-agent-thread,
+  .canvas-agent-viewport {
+    @apply min-h-0 flex-1;
+  }
+
+  .canvas-agent-viewport {
+    @apply flex h-full flex-col overflow-y-auto;
+    background-color: #08060a;
+    background-image: radial-gradient(circle, rgb(163 254 68 / 10%) 0.8px, transparent 0.8px);
+    background-size: 24px 24px;
+    scrollbar-color: rgb(255 255 255 / 18%) transparent;
+  }
+
+  .canvas-agent-empty {
+    @apply mx-auto mt-[min(24vh,180px)] flex max-w-[280px] flex-col items-center px-5 text-center;
+  }
+
+  .canvas-agent-empty-mark {
+    @apply mb-5 size-12 shadow-[0_0_30px_rgba(163,254,68,0.12)];
+  }
+
+  .canvas-agent-empty > span:not(.canvas-agent-empty-mark) {
+    @apply text-[13px] font-medium text-sidebar-foreground;
+  }
+
+  .canvas-agent-empty p {
+    @apply mt-1.5 text-xs leading-5 text-muted-foreground;
+  }
+
+  .agent-message {
+    @apply border-b border-sidebar-border px-5 py-4;
+  }
+
+  .agent-message[data-role="user"] {
+    @apply bg-white/[0.025];
+  }
+
+  .agent-message-label {
+    @apply mb-2 block text-[10px] font-semibold uppercase text-primary;
+  }
+
+  .agent-message-text {
+    @apply block whitespace-pre-wrap text-xs leading-[1.65] text-sidebar-foreground/80;
+  }
+
+  .canvas-agent-task-strip {
+    @apply mx-4 my-3 border-y border-sidebar-border py-1;
+  }
+
+  .canvas-agent-task-row {
+    @apply flex h-8 items-center gap-2 text-[11px] text-muted-foreground;
+  }
+
+  .canvas-agent-task-row button {
+    @apply ml-auto flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground;
+  }
+
+  .canvas-agent-status-dot {
+    @apply size-1.5 shrink-0 rounded-full bg-white/25;
+  }
+
+  .canvas-agent-status-dot.status-executing,
+  .canvas-agent-status-dot.status-writing-canvas {
+    @apply animate-pulse bg-[#F4C66E];
+  }
+
+  .canvas-agent-status-dot.status-completed {
+    @apply bg-primary;
+  }
+
+  .canvas-agent-status-dot.status-failed {
+    @apply bg-destructive;
+  }
+
+  .canvas-agent-task-label {
+    @apply truncate;
+  }
+
+  .canvas-agent-composer-wrap {
+    @apply sticky bottom-0 mt-auto bg-[#08060A] p-3 pt-2;
+  }
+
+  .canvas-agent-error,
+  .agent-skill-error {
+    @apply mb-2 text-[11px] leading-4 text-destructive;
+  }
+
+  .canvas-agent-composer {
+    @apply rounded-lg border border-sidebar-border bg-sidebar-accent/55 shadow-none focus-within:border-primary/45;
+  }
+
+  .canvas-agent-input {
+    @apply block min-h-[76px] w-full resize-none bg-transparent px-3.5 py-3 text-[13px] leading-5 text-sidebar-foreground outline-none placeholder:text-muted-foreground;
+  }
+
+  .canvas-agent-composer-footer {
+    @apply flex min-h-11 items-center justify-between gap-2 border-t border-sidebar-border px-2.5;
+  }
+
+  .canvas-agent-send {
+    @apply flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/85 disabled:cursor-not-allowed disabled:opacity-35;
+  }
+
+  .canvas-agent-auto-label {
+    @apply truncate text-[10px] text-muted-foreground;
+  }
+
+  .canvas-agent-context-label {
+    @apply flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground;
+  }
+
+  .agent-skill-trigger {
+    @apply flex h-7 max-w-[150px] items-center gap-1.5 rounded-md px-2 text-[11px] text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground;
+  }
+
+  .agent-skill-menu {
+    @apply absolute bottom-9 left-0 z-20 max-h-[300px] w-[290px] overflow-y-auto rounded-lg border border-sidebar-border bg-sidebar p-1.5 shadow-2xl;
+  }
+
+  .agent-skill-menu > button {
+    @apply flex w-full flex-col rounded-md px-2.5 py-2 text-left text-xs text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent;
+  }
+
+  .agent-skill-menu small {
+    @apply mt-0.5 line-clamp-2 text-[10px] leading-4 text-muted-foreground;
+  }
+
+  .agent-skill-import {
+    @apply mt-1 flex h-9 items-center gap-2 border-t border-sidebar-border px-2 pt-1 text-muted-foreground;
+  }
+
+  .agent-skill-import input {
+    @apply min-w-0 flex-1 bg-transparent text-[11px] text-sidebar-foreground outline-none placeholder:text-muted-foreground;
+  }
+
+  .agent-skill-import button {
+    @apply flex size-6 items-center justify-center hover:text-sidebar-foreground;
+  }
+
   .generation-panel-composer {
     @apply shrink-0 border border-sidebar-border bg-sidebar-accent/55 p-[10px] shadow-none;
     border-radius: 30px;
@@ -770,6 +947,14 @@
 
   .generation-sidebar {
     @apply fixed inset-x-3 bottom-3 top-auto z-[70] h-[min(520px,72vh)] w-auto rounded-2xl border shadow-2xl;
+  }
+
+  .canvas-agent-shell {
+    @apply fixed inset-x-3 bottom-3 top-auto z-[1050] h-[min(680px,calc(100vh-74px))] w-auto translate-x-[calc(100%+1.5rem)] rounded-xl border opacity-100 transition-transform;
+  }
+
+  .canvas-agent-shell.is-open {
+    @apply w-auto translate-x-0;
   }
 
   .generation-panel-prompt {

@@ -1,6 +1,11 @@
 "use client"
 
 import { useState } from "react"
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  AiChat01Icon,
+  Loading03Icon,
+} from "@hugeicons/core-free-icons"
 import { Bot, ChevronDown, ImagePlus, KeyRound, LoaderCircle, Sparkles, Video, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -23,6 +28,8 @@ type CanvasToolbarProps = {
   onCreateVideoNode: () => void
   onOpenCodexTask: () => void
   codexTaskStatus?: "idle" | "generating"
+  assistantMode?: "codex" | "agent"
+  assistantOpen?: boolean
 }
 
 export function CanvasToolbar({
@@ -30,6 +37,8 @@ export function CanvasToolbar({
   onCreateVideoNode,
   onOpenCodexTask,
   codexTaskStatus = "idle",
+  assistantMode = "codex",
+  assistantOpen = false,
 }: CanvasToolbarProps) {
   const [isConfigOpen, setIsConfigOpen] = useState(false)
   const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false)
@@ -81,6 +90,21 @@ export function CanvasToolbar({
   const activeApiKey = configMode === "image" ? apiConfig.apiKey : apiConfig.videoApiKey
   const activeTitle = configMode === "image" ? "图片生成" : "视频生成"
   const isCodexGenerating = codexTaskStatus === "generating"
+  const isAgentMode = assistantMode === "agent"
+  const assistantLabel = isCodexGenerating
+    ? isAgentMode
+      ? "Agent 执行中"
+      : "生成中"
+    : isAgentMode
+      ? "画布 Agent"
+      : "交给 Codex"
+  const assistantAriaLabel = isAgentMode
+    ? assistantOpen
+      ? "收起画布 Agent"
+      : "打开画布 Agent"
+    : isCodexGenerating
+      ? "Codex 正在生成"
+      : "交给 Codex"
 
   return (
     <>
@@ -125,15 +149,33 @@ export function CanvasToolbar({
           className={`canvas-toolbar-button left-[226px] w-[124px] rounded-r-[12px] ${
             isCodexGenerating ? "text-primary" : ""
           }`}
-          aria-label={isCodexGenerating ? "Codex 正在生成" : "交给 Codex"}
+          aria-label={assistantAriaLabel}
         >
           {isCodexGenerating ? (
-            <LoaderCircle className="absolute left-4 top-4 size-4 animate-spin" aria-hidden="true" />
+            isAgentMode ? (
+              <HugeiconsIcon
+                icon={Loading03Icon}
+                size={16}
+                strokeWidth={1.8}
+                className="absolute left-4 top-4 animate-spin"
+                aria-hidden="true"
+              />
+            ) : (
+              <LoaderCircle className="absolute left-4 top-4 size-4 animate-spin" aria-hidden="true" />
+            )
+          ) : isAgentMode ? (
+            <HugeiconsIcon
+              icon={AiChat01Icon}
+              size={16}
+              strokeWidth={1.8}
+              className="absolute left-4 top-4"
+              aria-hidden="true"
+            />
           ) : (
             <Bot className="absolute left-4 top-4 size-4" aria-hidden="true" />
           )}
           <span className="absolute left-9 top-[15px] whitespace-nowrap text-xs leading-normal">
-            {isCodexGenerating ? "生成中" : "交给 Codex"}
+            {assistantLabel}
           </span>
         </Button>
       </div>
