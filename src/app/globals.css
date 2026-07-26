@@ -787,6 +787,14 @@
   --tl-color-primary: #a3fe44;
 }
 
+.canvas-surface .asui-node-frame-outline {
+  pointer-events: none;
+  z-index: 4;
+  overflow: hidden;
+  border-radius: 30px;
+  box-shadow: inset 0 0 0 6px #393842;
+}
+
 .canvas-surface .tlui-button__tool[aria-pressed="true"] {
   color: #102000 !important;
 }

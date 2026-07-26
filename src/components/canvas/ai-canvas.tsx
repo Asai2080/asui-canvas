@@ -141,6 +141,11 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
             </div>
           </HTMLContainer>
         )}
+        <HTMLContainer
+          className="asui-node-frame-outline"
+          style={{ width: shape.props.w, height: shape.props.h }}
+          aria-hidden="true"
+        />
       </div>
     )
   }
