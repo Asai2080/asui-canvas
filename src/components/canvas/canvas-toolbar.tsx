@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   AiChat01Icon,
@@ -61,6 +61,17 @@ export function CanvasToolbar({
     setConfigMessage("")
     setIsConfigOpen(true)
   }
+
+  useEffect(() => {
+    const handleOpenApiConfig = () => {
+      setDraftConfig(readApiConfigFromSession())
+      setConfigMessage("")
+      setIsConfigOpen(true)
+    }
+    window.addEventListener("asui:open-api-config", handleOpenApiConfig)
+    return () =>
+      window.removeEventListener("asui:open-api-config", handleOpenApiConfig)
+  }, [])
 
   const saveConfig = () => {
     const trimmedBaseUrl = configMode === "image" ? draftConfig.baseUrl.trim() : draftConfig.videoBaseUrl.trim()

@@ -6,6 +6,7 @@ import {
   ArrowDown01Icon,
   FolderInputIcon,
   Refresh03Icon,
+  SparklesIcon,
 } from "@hugeicons/core-free-icons"
 
 import type {
@@ -16,9 +17,10 @@ import type {
 type SkillPickerProps = {
   value: string
   onChange: (skillId: string) => void
+  compact?: boolean
 }
 
-export function SkillPicker({ value, onChange }: SkillPickerProps) {
+export function SkillPicker({ value, onChange, compact = false }: SkillPickerProps) {
   const [skills, setSkills] = useState<SkillRecord[]>([])
   const [discovered, setDiscovered] = useState<DiscoveredSkill[]>([])
   const [isOpen, setIsOpen] = useState(false)
@@ -92,13 +94,21 @@ export function SkillPicker({ value, onChange }: SkillPickerProps) {
     <div className="relative">
       <button
         type="button"
-        className="agent-skill-trigger"
+        className={`agent-skill-trigger${compact ? " is-compact" : ""}`}
         onClick={() => setIsOpen((current) => !current)}
         aria-expanded={isOpen}
         aria-haspopup="menu"
+        aria-label={selected ? `我的 Skill：${selected.name}` : "我的 Skill"}
+        title={selected ? `我的 Skill：${selected.name}` : "我的 Skill"}
       >
-        <span>{selected?.name ?? "我的 Skill"}</span>
-        <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.7} />
+        {compact ? (
+          <HugeiconsIcon icon={SparklesIcon} size={18} strokeWidth={1.7} />
+        ) : (
+          <>
+            <span>{selected?.name ?? "我的 Skill"}</span>
+            <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.7} />
+          </>
+        )}
       </button>
       {isOpen && (
         <div className="agent-skill-menu" role="menu">

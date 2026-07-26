@@ -332,41 +332,40 @@
   }
 
   .canvas-agent-shell {
-    @apply pointer-events-none flex h-screen w-0 shrink-0 flex-col overflow-hidden border-l border-sidebar-border bg-[#08060A] text-sidebar-foreground opacity-0 transition-[width,opacity] duration-200;
+    @apply pointer-events-none my-3 flex h-[calc(100vh-24px)] w-0 shrink-0 flex-col overflow-hidden rounded-[22px] border border-transparent bg-[#151515] text-sidebar-foreground opacity-0 transition-[width,margin,opacity] duration-200;
   }
 
   .canvas-agent-shell.is-open {
-    @apply pointer-events-auto w-[clamp(360px,26vw,420px)] opacity-100;
-    box-shadow: -8px 0 24px rgb(0 0 0 / 14%);
+    @apply pointer-events-auto mr-3 w-[clamp(400px,28vw,460px)] border-[#2A292E] opacity-100;
+    box-shadow: 0 16px 50px rgb(0 0 0 / 28%);
   }
 
   .canvas-agent-header {
-    @apply flex h-16 shrink-0 items-center justify-between border-b border-sidebar-border px-4;
+    @apply flex h-14 shrink-0 items-center justify-between border-b border-[#2A292E] px-5;
   }
 
-  .canvas-agent-title {
-    @apply flex min-w-0 items-center gap-3;
+  .canvas-agent-heading {
+    @apply flex min-w-0 items-center gap-2.5;
   }
 
-  .canvas-agent-title h2 {
-    @apply text-sm font-semibold leading-5 text-sidebar-foreground;
+  .canvas-agent-heading h2 {
+    @apply whitespace-nowrap text-[16px] font-semibold leading-5 text-[#F3F3F4];
   }
 
-  .canvas-agent-title p {
-    @apply text-[11px] leading-4 text-muted-foreground;
+  .canvas-agent-heading span {
+    @apply truncate text-[10px] text-[#77777F];
   }
 
-  .canvas-agent-mark,
-  .canvas-agent-empty-mark {
-    @apply flex shrink-0 items-center justify-center rounded-md border border-primary/30 bg-primary/10 text-primary;
-  }
-
-  .canvas-agent-mark {
-    @apply size-8;
+  .canvas-agent-header-actions {
+    @apply flex shrink-0 items-center gap-1;
   }
 
   .canvas-agent-icon-button {
-    @apply flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground;
+    @apply flex size-8 shrink-0 items-center justify-center rounded-lg text-[#97979F] transition-colors hover:bg-white/[0.07] hover:text-[#F3F3F4];
+  }
+
+  .canvas-agent-icon-button.is-active {
+    @apply bg-white/[0.08] text-primary;
   }
 
   .canvas-agent-thread,
@@ -376,26 +375,28 @@
 
   .canvas-agent-viewport {
     @apply flex h-full flex-col overflow-y-auto;
-    background-color: #08060a;
-    background-image: radial-gradient(circle, rgb(163 254 68 / 10%) 0.8px, transparent 0.8px);
-    background-size: 24px 24px;
+    background-color: #151515;
     scrollbar-color: rgb(255 255 255 / 18%) transparent;
   }
 
   .canvas-agent-empty {
-    @apply mx-auto mt-[min(24vh,180px)] flex max-w-[280px] flex-col items-center px-5 text-center;
+    @apply mx-auto my-auto flex max-w-[340px] -translate-y-5 flex-col items-center px-5 text-center;
   }
 
   .canvas-agent-empty-mark {
-    @apply mb-5 size-12 shadow-[0_0_30px_rgba(163,254,68,0.12)];
+    @apply mb-6 flex size-16 shrink-0 items-center justify-center rounded-[18px] text-white;
+    background: linear-gradient(140deg, #a3fe44 4%, #28d88c 88%);
+    box-shadow:
+      0 0 28px rgb(163 254 68 / 24%),
+      0 10px 30px rgb(35 184 111 / 18%);
   }
 
-  .canvas-agent-empty > span:not(.canvas-agent-empty-mark) {
-    @apply text-[13px] font-medium text-sidebar-foreground;
+  .canvas-agent-empty h3 {
+    @apply text-[26px] font-semibold leading-9 text-[#F4F4F5];
   }
 
   .canvas-agent-empty p {
-    @apply mt-1.5 text-xs leading-5 text-muted-foreground;
+    @apply mt-2.5 max-w-[320px] text-[14px] leading-6 text-[#86868E];
   }
 
   .agent-message {
@@ -448,7 +449,7 @@
   }
 
   .canvas-agent-composer-wrap {
-    @apply sticky bottom-0 mt-auto bg-[#08060A] p-3 pt-2;
+    @apply sticky bottom-0 mt-auto bg-[#151515] px-5 pb-5 pt-3;
   }
 
   .canvas-agent-error,
@@ -457,35 +458,43 @@
   }
 
   .canvas-agent-composer {
-    @apply rounded-lg border border-sidebar-border bg-sidebar-accent/55 shadow-none focus-within:border-primary/45;
+    @apply min-h-[132px] rounded-[28px] border border-[#333239] bg-[#111113] shadow-none transition-colors focus-within:border-[#4A4950];
   }
 
   .canvas-agent-input {
-    @apply block min-h-[76px] w-full resize-none bg-transparent px-3.5 py-3 text-[13px] leading-5 text-sidebar-foreground outline-none placeholder:text-muted-foreground;
+    @apply block min-h-[82px] w-full resize-none bg-transparent px-6 pb-2 pt-5 text-[15px] leading-6 text-[#F4F4F5] outline-none placeholder:text-[#6F6F78];
   }
 
   .canvas-agent-composer-footer {
-    @apply flex min-h-11 items-center justify-between gap-2 border-t border-sidebar-border px-2.5;
+    @apply flex min-h-12 items-center justify-between gap-2 px-3 pb-3;
+  }
+
+  .canvas-agent-composer-tools {
+    @apply flex min-w-0 items-center gap-1;
+  }
+
+  .canvas-agent-context-button {
+    @apply flex size-9 shrink-0 items-center justify-center rounded-full border border-[#34333A] text-[#B5B5BC];
   }
 
   .canvas-agent-send {
-    @apply flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/85 disabled:cursor-not-allowed disabled:opacity-35;
-  }
-
-  .canvas-agent-auto-label {
-    @apply truncate text-[10px] text-muted-foreground;
+    @apply flex size-9 shrink-0 items-center justify-center rounded-full bg-[#4D8100] text-[#D8FFB2] transition-colors hover:bg-[#5F9D00] disabled:cursor-not-allowed disabled:opacity-35;
   }
 
   .canvas-agent-context-label {
-    @apply flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground;
+    @apply sr-only;
   }
 
   .agent-skill-trigger {
     @apply flex h-7 max-w-[150px] items-center gap-1.5 rounded-md px-2 text-[11px] text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground;
   }
 
+  .agent-skill-trigger.is-compact {
+    @apply size-9 max-w-none justify-center rounded-full p-0 text-[#D0D0D5] hover:bg-white/[0.07] hover:text-primary;
+  }
+
   .agent-skill-menu {
-    @apply absolute bottom-9 left-0 z-20 max-h-[300px] w-[290px] overflow-y-auto rounded-lg border border-sidebar-border bg-sidebar p-1.5 shadow-2xl;
+    @apply absolute bottom-11 left-0 z-20 max-h-[300px] w-[290px] overflow-y-auto rounded-xl border border-[#333239] bg-[#1B1B1E] p-1.5 shadow-2xl;
   }
 
   .agent-skill-menu > button {
@@ -950,7 +959,7 @@
   }
 
   .canvas-agent-shell {
-    @apply fixed inset-x-3 bottom-3 top-auto z-[1050] h-[min(680px,calc(100vh-74px))] w-auto translate-x-[calc(100%+1.5rem)] rounded-xl border opacity-100 transition-transform;
+    @apply fixed inset-x-3 bottom-3 top-auto z-[1050] m-0 h-[min(680px,calc(100vh-74px))] w-auto translate-x-[calc(100%+1.5rem)] rounded-[20px] border opacity-100 transition-transform;
   }
 
   .canvas-agent-shell.is-open {

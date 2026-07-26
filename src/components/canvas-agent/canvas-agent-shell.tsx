@@ -11,12 +11,15 @@ import {
 } from "@assistant-ui/react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  AiChat01Icon,
-  Cancel01Icon,
+  Add01Icon,
+  ArrowUp01Icon,
+  Clock01Icon,
   Loading03Icon,
   Refresh03Icon,
+  Robot01Icon,
   SearchVisualIcon,
-  SentIcon,
+  Settings01Icon,
+  SidebarRight01Icon,
   StopIcon,
 } from "@hugeicons/core-free-icons"
 
@@ -73,6 +76,8 @@ export function CanvasAgentShell({
   onBusyChange,
 }: CanvasAgentShellProps) {
   const [selectedSkillId, setSelectedSkillId] = useState("")
+  const [conversationStartedAt, setConversationStartedAt] = useState("")
+  const [showHistory, setShowHistory] = useState(false)
   const {
     tasks,
     foregroundTask,
@@ -82,16 +87,39 @@ export function CanvasAgentShell({
     cancelTask,
     retryTask,
   } = useAgentTasks({ getCanvasContext, selectedSkillId, onBusyChange })
-  const messages = useMemo(() => tasksToThreadMessages(tasks), [tasks])
+  const visibleTasks = useMemo(
+    () =>
+      showHistory || !conversationStartedAt
+        ? tasks
+        : tasks.filter((task) => task.createdAt >= conversationStartedAt),
+    [conversationStartedAt, showHistory, tasks]
+  )
+  const messages = useMemo(
+    () => tasksToThreadMessages(visibleTasks),
+    [visibleTasks]
+  )
   const runtime = useExternalStoreRuntime({
     messages,
     isLoading,
     isRunning: Boolean(foregroundTask),
     onNew: submitMessage,
   })
-  const queuedBehind = tasks.filter(
+  const queuedBehind = visibleTasks.filter(
     (task) => task.status === "queued" && task.id !== foregroundTask?.id
   ).length
+
+  const startNewConversation = () => {
+    setConversationStartedAt(new Date().toISOString())
+    setShowHistory(false)
+    setSelectedSkillId("")
+  }
+
+  const openApiSettings = () => {
+    onClose()
+    window.setTimeout(() => {
+      window.dispatchEvent(new Event("asui:open-api-config"))
+    }, 0)
+  }
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -103,18 +131,35 @@ export function CanvasAgentShell({
         onPointerDown={(event) => event.stopPropagation()}
       >
         <header className="canvas-agent-header">
-          <div className="canvas-agent-title">
-            <span className="canvas-agent-mark">
-              <HugeiconsIcon icon={AiChat01Icon} size={17} strokeWidth={1.7} />
-            </span>
-            <div>
-              <h2>画布 Agent</h2>
-              <p>{foregroundTask ? STATUS_LABELS[foregroundTask.status] : "待命"}{queuedBehind > 0 ? ` · ${queuedBehind} 个排队` : ""}</p>
-            </div>
+          <div className="canvas-agent-heading">
+            <h2>{showHistory ? "历史对话" : "新对话"}</h2>
+            {foregroundTask && (
+              <span>
+                {STATUS_LABELS[foregroundTask.status]}
+                {queuedBehind > 0 ? ` · ${queuedBehind} 个排队` : ""}
+              </span>
+            )}
           </div>
-          <button type="button" className="canvas-agent-icon-button" onClick={onClose} aria-label="关闭画布 Agent">
-            <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.7} />
-          </button>
+          <div className="canvas-agent-header-actions">
+            <button type="button" className="canvas-agent-icon-button" onClick={startNewConversation} aria-label="新建对话" title="新建对话">
+              <HugeiconsIcon icon={Add01Icon} size={20} strokeWidth={1.7} />
+            </button>
+            <button
+              type="button"
+              className={`canvas-agent-icon-button${showHistory ? " is-active" : ""}`}
+              onClick={() => setShowHistory((current) => !current)}
+              aria-label="历史对话"
+              title="历史对话"
+            >
+              <HugeiconsIcon icon={Clock01Icon} size={19} strokeWidth={1.7} />
+            </button>
+            <button type="button" className="canvas-agent-icon-button" onClick={onClose} aria-label="关闭画布 Agent" title="收起侧栏">
+              <HugeiconsIcon icon={SidebarRight01Icon} size={19} strokeWidth={1.7} />
+            </button>
+            <button type="button" className="canvas-agent-icon-button" onClick={openApiSettings} aria-label="Agent 设置" title="API 设置">
+              <HugeiconsIcon icon={Settings01Icon} size={19} strokeWidth={1.7} />
+            </button>
+          </div>
         </header>
 
         <ThreadPrimitive.Root className="canvas-agent-thread">
@@ -122,16 +167,16 @@ export function CanvasAgentShell({
             <ThreadPrimitive.Empty>
               <div className="canvas-agent-empty">
                 <span className="canvas-agent-empty-mark">
-                  <HugeiconsIcon icon={AiChat01Icon} size={22} strokeWidth={1.6} />
+                  <HugeiconsIcon icon={Robot01Icon} size={32} strokeWidth={1.65} />
                 </span>
-                <span>多步生成与画布编排</span>
-                <p>描述目标，Agent 会整理提示词、执行步骤并把结果写回当前画布。</p>
+                <h3>有什么可以帮你？</h3>
+                <p>生成的图片、视频会放到画布上，点击画布内容即可继续引用给我。</p>
               </div>
             </ThreadPrimitive.Empty>
             <ThreadPrimitive.Messages components={{ Message: ThreadMessage }} />
-            {tasks.length > 0 && (
+            {visibleTasks.length > 0 && (
               <div className="canvas-agent-task-strip" aria-label="Agent 任务状态">
-                {tasks
+                {visibleTasks
                   .slice()
                   .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
                   .map((task) => (
@@ -157,21 +202,23 @@ export function CanvasAgentShell({
               <ComposerPrimitive.Root className="canvas-agent-composer">
                 <ComposerPrimitive.Input
                   className="canvas-agent-input"
-                  placeholder="描述一个多步画布任务…"
+                  placeholder="输入消息，Enter 发送"
                   rows={3}
                 />
                 <div className="canvas-agent-composer-footer">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <SkillPicker value={selectedSkillId} onChange={setSelectedSkillId} />
+                  <div className="canvas-agent-composer-tools">
+                    <span className="canvas-agent-context-button" title="自动读取当前画布选区" aria-label="自动读取当前画布选区">
+                      <HugeiconsIcon icon={Add01Icon} size={19} strokeWidth={1.7} />
+                    </span>
+                    <SkillPicker compact value={selectedSkillId} onChange={setSelectedSkillId} />
                     <span className="canvas-agent-context-label">
-                      <HugeiconsIcon icon={SearchVisualIcon} size={13} strokeWidth={1.7} />
+                      <HugeiconsIcon icon={SearchVisualIcon} size={14} strokeWidth={1.7} />
                       当前画布
                     </span>
-                    <span className="canvas-agent-auto-label">自动执行</span>
                   </div>
                   <ComposerPrimitive.Send className="canvas-agent-send" aria-label="发送给画布 Agent">
                     <HugeiconsIcon
-                      icon={foregroundTask ? Loading03Icon : SentIcon}
+                      icon={foregroundTask ? Loading03Icon : ArrowUp01Icon}
                       size={17}
                       strokeWidth={1.8}
                       className={foregroundTask ? "animate-spin" : undefined}
