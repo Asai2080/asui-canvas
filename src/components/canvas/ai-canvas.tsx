@@ -164,7 +164,14 @@ class AsuiImageShapeUtil extends ImageShapeUtil {
       return content
     }
 
-    return <div className="asui-generated-media">{content}</div>
+    return (
+      <div
+        className="asui-generated-media"
+        style={{ width: shape.props.w, height: shape.props.h }}
+      >
+        {content}
+      </div>
+    )
   }
 }
 
@@ -176,7 +183,14 @@ class AsuiVideoShapeUtil extends VideoShapeUtil {
       return content
     }
 
-    return <div className="asui-generated-media">{content}</div>
+    return (
+      <div
+        className="asui-generated-media"
+        style={{ width: shape.props.w, height: shape.props.h }}
+      >
+        {content}
+      </div>
+    )
   }
 }
 
