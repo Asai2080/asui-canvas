@@ -46,7 +46,7 @@ function ToolButton({ active, label, onClick, icon }: ToolButtonProps) {
       title={label}
       onClick={onClick}
     >
-      <HugeiconsIcon icon={icon} size={22} strokeWidth={1.7} aria-hidden="true" />
+      <HugeiconsIcon icon={icon} size={18} strokeWidth={1.7} aria-hidden="true" />
     </button>
   )
 }
@@ -143,7 +143,7 @@ export function CanvasMainToolbar() {
         >
           <HugeiconsIcon
             icon={actions.assistantBusy ? Loading03Icon : AiChat01Icon}
-            size={22}
+            size={18}
             strokeWidth={1.7}
             className={actions.assistantBusy ? "animate-spin" : undefined}
             aria-hidden="true"
