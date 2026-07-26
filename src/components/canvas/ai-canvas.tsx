@@ -8,6 +8,8 @@ import {
   useRef,
   useState,
 } from "react"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { Image01Icon, Video01Icon } from "@hugeicons/core-free-icons"
 import {
   AssetRecordType,
   createShapeId,
@@ -127,6 +129,14 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
             style={{ width: shape.props.w, height: shape.props.h }}
           >
             <CanvasIdleDotGrid />
+            <div className="canvas-idle-prompt" aria-hidden="true">
+              <HugeiconsIcon
+                icon={kind === "video" ? Video01Icon : Image01Icon}
+                size={20}
+                strokeWidth={1.6}
+              />
+              <span>在底部面板输入 Prompt 生成{kind === "video" ? "视频" : "图片"}</span>
+            </div>
           </HTMLContainer>
         )}
       </div>

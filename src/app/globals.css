@@ -160,6 +160,7 @@
     overflow: hidden;
     border-radius: 16px !important;
     contain: strict;
+    container-type: inline-size;
   }
 
   .canvas-idle-dot-grid,
@@ -175,6 +176,16 @@
 
   .canvas-idle-dot-grid__canvas {
     display: block;
+  }
+
+  .canvas-idle-prompt {
+    @apply absolute inset-0 z-[2] flex flex-col items-center justify-center gap-2 px-6 text-center text-[#85858E];
+    font-size: clamp(11px, 4cqw, 15px);
+    line-height: 1.5;
+  }
+
+  .canvas-idle-prompt svg {
+    @apply opacity-75;
   }
 
   .canvas-surface .asui-node-frame .tl-frame-heading {
