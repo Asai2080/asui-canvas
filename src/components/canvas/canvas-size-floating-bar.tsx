@@ -40,7 +40,7 @@ const presetIconClass = (presetId: CanvasSizePresetId) => {
       return "h-2.5 w-4 rounded-[3px]"
     case "a4":
     case "web":
-      return "h-3.5 w-4 rounded-[3px] before:absolute before:-left-0.5 before:-top-0.5 before:h-3.5 before:w-4 before:rounded-[3px] before:border before:border-current before:bg-white"
+      return "h-3.5 w-4 rounded-[3px] before:absolute before:-left-0.5 before:-top-0.5 before:h-3.5 before:w-4 before:rounded-[3px] before:border before:border-current before:bg-card"
     default:
       return "h-4 w-4 rounded-[3px]"
   }
@@ -104,14 +104,15 @@ export function CanvasSizeFloatingBar({
         </Button>
 
         {isPresetOpen && (
-          <div className="absolute left-0 top-8 z-40 w-[166px] rounded-[12px] border border-[rgba(0,0,0,0.07)] bg-white p-[5px]">
+          <div className="absolute left-0 top-8 z-40 w-[166px] rounded-[12px] border bg-popover p-[5px] text-popover-foreground shadow-xl">
             {CANVAS_SIZE_PRESETS.filter((preset) => preset.id !== "custom").map((preset) => (
-              <button
+              <Button
                 key={preset.id}
                 type="button"
+                variant="ghost"
                 className={cn(
-                  "flex h-8 w-full items-center gap-2 rounded-[8px] px-2 text-left text-[13px] leading-5 text-[rgba(0,0,0,0.9)] transition-colors hover:bg-[rgba(0,0,0,0.06)]",
-                  preset.id === presetId && "bg-[rgba(0,0,0,0.06)]"
+                  "flex h-8 w-full items-center justify-start gap-2 rounded-[8px] px-2 text-left text-[13px] leading-5 text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+                  preset.id === presetId && "bg-primary text-primary-foreground hover:bg-primary/85 hover:text-primary-foreground"
                 )}
                 onClick={() => {
                   const nextSize = resolveCanvasSizePreset(preset.id, size)
@@ -123,11 +124,11 @@ export function CanvasSizeFloatingBar({
                 <PresetIcon presetId={preset.id} />
                 <span className="font-normal">{preset.label}</span>
                 {preset.width && preset.height && preset.group !== "ratio" ? (
-                  <span className="text-[13px] font-normal leading-5 text-[rgba(0,0,0,0.3)]">
+                  <span className="text-[13px] font-normal leading-5 opacity-45">
                     {preset.width}*{preset.height}
                   </span>
                 ) : null}
-              </button>
+              </Button>
             ))}
           </div>
         )}

@@ -90,47 +90,52 @@ export function CanvasToolbar({
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
       >
-        <button
+        <Button
           type="button"
-          className="absolute inset-y-0 left-0 w-[100px] rounded-l-[12px] transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45"
+          variant="ghost"
+          className="canvas-toolbar-button left-0 w-[100px] rounded-l-[12px]"
           onClick={openConfig}
           aria-label="打开 API 配置"
         >
-          <Sparkles className="absolute left-4 top-3 size-4" aria-hidden="true" />
-          <span className="absolute left-9 top-[11px] whitespace-nowrap text-xs leading-normal text-white">
+          <Sparkles className="absolute left-4 top-4 size-4" aria-hidden="true" />
+          <span className="absolute left-9 top-[15px] whitespace-nowrap text-xs leading-normal">
             阿水画布
           </span>
-        </button>
-        <div className="absolute left-[100px] top-0 h-10 w-px bg-[#5a5a5a]" />
-        <button
+        </Button>
+        <div className="absolute left-[100px] top-0 h-12 w-px bg-border" />
+        <Button
           type="button"
+          variant="ghost"
           onClick={() => setIsCreateMenuOpen((current) => !current)}
-          className="absolute inset-y-0 left-[101px] w-[124px] transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45"
+          className="canvas-toolbar-button left-[101px] w-[124px]"
           aria-haspopup="menu"
           aria-expanded={isCreateMenuOpen}
         >
-          <ImagePlus className="absolute left-4 top-3 size-4" aria-hidden="true" />
-          <span className="absolute left-9 top-[11px] whitespace-nowrap text-xs leading-normal text-white">
+          <ImagePlus className="absolute left-4 top-4 size-4" aria-hidden="true" />
+          <span className="absolute left-9 top-[15px] whitespace-nowrap text-xs leading-normal">
             新建节点
           </span>
-          <ChevronDown className="absolute right-3 top-3 size-4 text-white/75" aria-hidden="true" />
-        </button>
-        <div className="absolute left-[225px] top-0 h-10 w-px bg-[#5a5a5a]" />
-        <button
+          <ChevronDown className="absolute right-3 top-4 size-4 opacity-70" aria-hidden="true" />
+        </Button>
+        <div className="absolute left-[225px] top-0 h-12 w-px bg-border" />
+        <Button
           type="button"
+          variant="ghost"
           onClick={onOpenCodexTask}
-          className="absolute inset-y-0 left-[226px] w-[124px] rounded-r-[12px] transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45"
+          className={`canvas-toolbar-button left-[226px] w-[124px] rounded-r-[12px] ${
+            isCodexGenerating ? "text-primary" : ""
+          }`}
           aria-label={isCodexGenerating ? "Codex 正在生成" : "交给 Codex"}
         >
           {isCodexGenerating ? (
-            <LoaderCircle className="absolute left-4 top-3 size-4 animate-spin" aria-hidden="true" />
+            <LoaderCircle className="absolute left-4 top-4 size-4 animate-spin" aria-hidden="true" />
           ) : (
-            <Bot className="absolute left-4 top-3 size-4" aria-hidden="true" />
+            <Bot className="absolute left-4 top-4 size-4" aria-hidden="true" />
           )}
-          <span className="absolute left-9 top-[11px] whitespace-nowrap text-xs leading-normal text-white">
+          <span className="absolute left-9 top-[15px] whitespace-nowrap text-xs leading-normal">
             {isCodexGenerating ? "生成中" : "交给 Codex"}
           </span>
-        </button>
+        </Button>
       </div>
 
       {isCreateMenuOpen && (
@@ -139,8 +144,9 @@ export function CanvasToolbar({
           role="menu"
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <button
+          <Button
             type="button"
+            variant="ghost"
             role="menuitem"
             onClick={() => {
               setIsCreateMenuOpen(false)
@@ -149,9 +155,10 @@ export function CanvasToolbar({
           >
             <ImagePlus className="size-4" />
             <span>图片节点</span>
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
             role="menuitem"
             onClick={() => {
               setIsCreateMenuOpen(false)
@@ -160,20 +167,20 @@ export function CanvasToolbar({
           >
             <Video className="size-4" />
             <span>视频节点</span>
-          </button>
+          </Button>
         </div>
       )}
 
       {isConfigOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center bg-background/45 px-4 pt-16 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/45 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-labelledby="api-config-title"
           onPointerDown={() => setIsConfigOpen(false)}
         >
           <form
-            className="flex h-[min(550px,calc(100vh-6rem))] w-full max-w-md flex-col overflow-hidden rounded-3xl border bg-background shadow-2xl"
+            className="canvas-modal-surface flex h-[min(550px,calc(100vh-2rem))] w-full max-w-md flex-col overflow-hidden rounded-2xl"
             onPointerDown={(event) => event.stopPropagation()}
             onSubmit={(event) => {
               event.preventDefault()
@@ -209,30 +216,40 @@ export function CanvasToolbar({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
-              <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-muted p-1 text-sm">
+              <div className="api-config-mode-tabs mb-5" role="tablist" aria-label="生成类型">
+                <span
+                  className={`api-config-mode-tabs__indicator ${
+                    configMode === "video" ? "api-config-mode-tabs__indicator--video" : ""
+                  }`}
+                  aria-hidden="true"
+                />
                 <button
                   type="button"
-                  className={`h-9 rounded-xl font-medium transition-colors ${
-                    configMode === "image" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+                  role="tab"
+                  aria-selected={configMode === "image"}
+                  className={`api-config-mode-tabs__tab ${
+                    configMode === "image" ? "api-config-mode-tabs__tab--active" : ""
                   }`}
                   onClick={() => {
                     setConfigMode("image")
                     setConfigMessage("")
                   }}
                 >
-                  图片生成
+                  <span>图片生成</span>
                 </button>
                 <button
                   type="button"
-                  className={`h-9 rounded-xl font-medium transition-colors ${
-                    configMode === "video" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+                  role="tab"
+                  aria-selected={configMode === "video"}
+                  className={`api-config-mode-tabs__tab ${
+                    configMode === "video" ? "api-config-mode-tabs__tab--active" : ""
                   }`}
                   onClick={() => {
                     setConfigMode("video")
                     setConfigMessage("")
                   }}
                 >
-                  视频生成
+                  <span>视频生成</span>
                 </button>
               </div>
 

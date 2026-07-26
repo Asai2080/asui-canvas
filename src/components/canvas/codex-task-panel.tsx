@@ -298,7 +298,7 @@ export function CodexTaskPanel({
       onPointerDown={onClose}
     >
       <form
-        className="flex max-h-[min(720px,calc(100vh-5rem))] w-full max-w-lg flex-col overflow-hidden rounded-3xl border bg-background shadow-2xl"
+        className="canvas-modal-surface flex max-h-[min(720px,calc(100vh-5rem))] w-full max-w-lg flex-col overflow-hidden rounded-2xl"
         onPointerDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault()
@@ -381,7 +381,7 @@ export function CodexTaskPanel({
           ) : null}
         </div>
 
-        <div className="flex shrink-0 justify-end gap-2 border-t bg-background p-5">
+        <div className="flex shrink-0 justify-end gap-2 border-t bg-card p-5">
           <Button type="button" variant="outline" className="rounded-xl" onClick={onClose}>
             取消
           </Button>

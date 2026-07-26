@@ -4,7 +4,7 @@
 
 ## 背景
 
-当前“交给 Codex”更接近复制/任务队列记录，不是目标交互。目标是点击网页按钮后，Codex 输入区或当前线程中出现类似“使用 Xcode 选项卡”的上下文卡片，让 ASUI 画布任务可以直接交给 Codex。
+当前“交给 Codex”更接近复制/任务队列记录，不是目标交互。目标是点击网页按钮后，Codex 当前线程中出现 ASUI 自己的上下文任务卡片，让 ASUI 画布任务可以直接交给 Codex。
 
 长期目标是让生图有两条路径：
 
@@ -58,7 +58,7 @@ type UserInput =
 ## 关键限制
 
 - `app-server` 可以创建/恢复/注入 Codex thread，但不等于一定能控制当前 Codex Desktop 输入框的 composer UI。
-- 目标截图里的“小卡片”更像 Codex 客户端 UI 对 `mention`、`skill`、`localImage`、plugin/app context 的渲染结果。
+- 目标中的“小卡片”更像 Codex 客户端 UI 对 `mention`、`skill`、`localImage`、plugin/app context 的渲染结果。
 - 仅用 `thread/inject_items` 可以把任务写进上下文，但不保证它显示在当前输入框里。
 - WebSocket transport 官方标注为 experimental / unsupported，生产功能优先用 stdio/unix socket 的本地桥接服务。
 
@@ -153,3 +153,7 @@ type UserInput =
 ## 判断
 
 这个方向可行。真正要确认的是 UI 级别的“输入框卡片”是否能被第三方 app-server client 控制；协议层的任务传输、图片传输和上下文注入已经验证可行。
+
+## 2026-07-05 更新
+
+后续优先走 ASUI 自有 Codex 卡片模式：在项目内提供 `.codex-plugin` 和 MCP server，把画布生成任务作为原生卡片渲染，而不是尝试从网页直接控制 Codex 输入框。该方案必须保持独立命名和独立实现，不复用第三方项目代码、目录名、工具名或产品名。

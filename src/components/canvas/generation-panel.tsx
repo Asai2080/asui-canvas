@@ -1,21 +1,42 @@
-import { useCallback, useEffect, useRef, useState } from "react"
-import { ArrowUp, LoaderCircle, Plus, Video, X } from "lucide-react"
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react"
+import { BorderBeam } from "border-beam"
+import {
+  ArrowUp,
+  LoaderCircle,
+  Plus,
+  Sparkles,
+  Video,
+  X,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+} from "@/components/ui/sidebar"
 import { Textarea } from "@/components/ui/textarea"
 import { API_CONFIG_CHANGED_EVENT, readApiConfigFromSession } from "@/lib/canvas/api-config"
 import type { CanvasSelection, GenerationStatus, ReferenceImage } from "@/lib/canvas/types"
 
 const MAX_REFERENCE_IMAGES = 20
 const VIDEO_RESOLUTIONS = ["480p", "720p", "1080p", "4K"] as const
+const MAX_MODEL_LABEL_LENGTH = 8
 
 export type VideoResolution = (typeof VIDEO_RESOLUTIONS)[number]
 
+const truncateModelLabel = (label: string) => {
+  const characters = Array.from(label)
+  if (characters.length <= MAX_MODEL_LABEL_LENGTH) return label
+  return `${characters.slice(0, MAX_MODEL_LABEL_LENGTH - 1).join("")}…`
+}
+
 type GenerationPanelProps = {
   selection: CanvasSelection | null
+  placement?: "floating" | "sidebar"
+  x?: number
+  y?: number
   mode?: "image" | "video"
-  x: number
-  y: number
   prompt: string
   status: GenerationStatus
   statusDetail: string
@@ -50,9 +71,10 @@ function CutoutServiceIcon({ className, filled }: { className?: string; filled: 
 
 export function GenerationPanel({
   selection,
-  mode = "image",
+  placement = "floating",
   x,
   y,
+  mode = "image",
   prompt,
   status,
   statusDetail,
@@ -79,8 +101,11 @@ export function GenerationPanel({
   const isBusy = status === "generating" || status === "editing"
   const selectedHolder = selection?.kind === "holder"
   const isVideoMode = mode === "video"
+  const showVideoStatus = isVideoMode && Boolean(statusDetail) && status !== "error"
+  const footerLabel = showVideoStatus ? statusDetail : truncateModelLabel(modelLabel)
   const visibleReferenceImages = [...lockedReferenceImages, ...referenceImages]
   const serviceText = cutoutService?.running ? "抠图已启用" : "抠图未启动"
+  const canSubmit = Boolean((selectedHolder || isVideoMode) && prompt.trim() && !isBusy)
 
   const readReferenceFile = (file: File) =>
     new Promise<ReferenceImage>((resolve, reject) => {
@@ -179,13 +204,15 @@ export function GenerationPanel({
     onReferenceImagesChange(referenceImages.filter((image) => image.id !== id))
   }
 
-  return (
-    <aside
-      className="generation-panel"
-      style={{ left: x, top: y }}
-      onPointerDown={(event) => event.stopPropagation()}
+  const renderComposer = () => (
+    <BorderBeam
+      size="md"
+      colorVariant="colorful"
+      strength={0.67}
+      borderRadius={30}
+      className="generation-panel-composer-beam"
     >
-      <div className="generation-panel-tools-row">
+      <div className={`generation-panel-composer generation-panel-composer--${placement}`}>
         <input
           ref={fileInputRef}
           type="file"
@@ -197,14 +224,29 @@ export function GenerationPanel({
             event.target.value = ""
           }}
         />
-        <button
-          type="button"
-          className="generation-panel-tool"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Plus className="size-5" />
-          <span>参考</span>
-        </button>
+        <div className="generation-panel-prompt-wrap">
+          <Textarea
+            id={`generation-prompt-${placement}`}
+            value={prompt}
+            onChange={(event) => onPromptChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return
+              event.preventDefault()
+              if (canSubmit) onFill()
+            }}
+            placeholder={isVideoMode ? "描述图片要如何运动，Enter 发送" : "输入生成或修改指令，Enter 发送"}
+            className="generation-panel-prompt field-sizing-fixed"
+          />
+          {!selectedHolder && !isVideoMode && (
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              先点击“新建生图节点”，并保持该节点处于选中状态。
+            </p>
+          )}
+          {statusDetail && status !== "error" && !isVideoMode && (
+            <p className="generation-panel-status-message bg-muted text-muted-foreground">{statusDetail}</p>
+          )}
+        </div>
+
         {visibleReferenceImages.length > 0 && (
           <div className="generation-panel-reference-strip" aria-label="参考图">
             {visibleReferenceImages.map((image, index) => (
@@ -222,43 +264,22 @@ export function GenerationPanel({
                 )}
                 <span className="generation-panel-reference-badge">{index + 1}</span>
                 {!lockedReferenceImages.some((locked) => locked.id === image.id) && (
-                  <button
+                  <Button
                     type="button"
+                    size="icon-xs"
+                    variant="ghost"
                     className="generation-panel-reference-remove"
                     aria-label={`移除参考图 ${index + 1}`}
                     onClick={() => removeReferenceImage(image.id)}
                   >
                     <X className="size-3" />
-                  </button>
+                  </Button>
                 )}
               </div>
             ))}
           </div>
         )}
-      </div>
 
-      <div className="generation-panel-prompt-wrap">
-        <Textarea
-          id="generation-prompt"
-          value={prompt}
-          onChange={(event) => onPromptChange(event.target.value)}
-          placeholder={isVideoMode ? "描述图片要如何运动，例如：镜头缓慢推进，人物轻微转头，光影流动" : "可直接文字生图，或上传图片输入文字指令对图片进行编辑，如：将背景改为雪夜"}
-          className="generation-panel-prompt field-sizing-fixed"
-        />
-        {!selectedHolder && !isVideoMode && (
-          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-            先点击“新建生图节点”，并保持该节点处于选中状态。
-          </p>
-        )}
-        {statusDetail && status !== "error" && !isVideoMode && (
-          <p className="generation-panel-status-message bg-muted text-muted-foreground">{statusDetail}</p>
-        )}
-      </div>
-
-      <div className="generation-panel-footer">
-        <div className="generation-panel-bottom-item generation-panel-model-item font-medium">
-          <span>{isVideoMode && statusDetail && status !== "error" ? statusDetail : modelLabel}</span>
-        </div>
         {isVideoMode && (
           <div className="generation-panel-video-options" aria-label="视频生成参数">
             <label className="generation-panel-video-duration">
@@ -277,47 +298,116 @@ export function GenerationPanel({
               <span>秒</span>
             </label>
             <div className="generation-panel-video-resolution" role="group" aria-label="清晰度">
-              <span>清晰度</span>
               {VIDEO_RESOLUTIONS.map((resolution) => (
-                <button
+                <Button
                   type="button"
+                  size="xs"
+                  variant="ghost"
                   key={resolution}
                   className={resolution === videoResolution ? "is-active" : ""}
                   onClick={() => onVideoResolutionChange?.(resolution)}
                 >
                   {resolution}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
         )}
-        {!isVideoMode && (
-          <button
+
+        <div className="generation-panel-footer">
+          <Button
             type="button"
-            className="generation-panel-bottom-item"
-            disabled={isCutoutServiceBusy}
-            onClick={() => void toggleCutoutService()}
-            title={cutoutService?.url ? `${serviceText} · ${cutoutService.url}` : serviceText}
+            variant="ghost"
+            size="icon-sm"
+            className="generation-panel-add-button"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="添加参考素材"
+            title="添加参考素材"
           >
-            {isCutoutServiceBusy ? (
-              <LoaderCircle className="size-5 animate-spin" />
+            <Plus className="size-4" />
+          </Button>
+          <div
+            className="generation-panel-bottom-item generation-panel-model-item font-medium"
+            title={showVideoStatus ? statusDetail : modelLabel}
+          >
+            <Sparkles className="size-3.5" />
+            <span>{footerLabel}</span>
+          </div>
+          {!isVideoMode && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="generation-panel-cutout-button"
+              disabled={isCutoutServiceBusy}
+              onClick={() => void toggleCutoutService()}
+              title={cutoutService?.url ? `${serviceText} · ${cutoutService.url}` : serviceText}
+              aria-label={serviceText}
+            >
+              {isCutoutServiceBusy ? (
+                <LoaderCircle className="size-4 animate-spin" />
+              ) : (
+                <CutoutServiceIcon className="size-4" filled={Boolean(cutoutService?.running)} />
+              )}
+            </Button>
+          )}
+          <Button
+            type="button"
+            size="icon"
+            className="generation-panel-send-button"
+            onClick={onFill}
+            disabled={!canSubmit}
+            aria-label={isVideoMode ? "生成视频" : "生成图片"}
+          >
+            {status === "generating" ? (
+              <LoaderCircle className="size-4 animate-spin" />
             ) : (
-              <CutoutServiceIcon className="size-5" filled={Boolean(cutoutService?.running)} />
+              <ArrowUp className="size-4" />
             )}
-            <span>{serviceText}</span>
-          </button>
-        )}
-        <Button
-          type="button"
-          size="icon"
-          className="generation-panel-send-button"
-          onClick={onFill}
-          disabled={(!selectedHolder && !isVideoMode) || !prompt.trim() || isBusy}
-          aria-label={isVideoMode ? "生成视频" : "生成图片"}
-        >
-          {status === "generating" ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
-        </Button>
+          </Button>
+        </div>
       </div>
+    </BorderBeam>
+  )
+
+  const floatingStyle: CSSProperties | undefined =
+    typeof x === "number" && typeof y === "number"
+      ? {
+          position: "absolute",
+          zIndex: 40,
+          left: x,
+          top: y,
+          width: 683,
+          maxWidth: "calc(100% - 2rem)",
+        }
+      : undefined
+
+  if (placement === "sidebar") {
+    return (
+      <Sidebar
+        side="right"
+        variant="sidebar"
+        collapsible="none"
+        className="generation-sidebar"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <SidebarContent aria-hidden="true" />
+        <SidebarFooter className="generation-panel-sidebar-footer">
+          {renderComposer()}
+        </SidebarFooter>
+      </Sidebar>
+    )
+  }
+
+  if (!floatingStyle) return null
+
+  return (
+    <aside
+      className="generation-panel-floating"
+      style={floatingStyle}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      {renderComposer()}
     </aside>
   )
 }
