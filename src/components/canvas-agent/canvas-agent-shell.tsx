@@ -42,6 +42,7 @@ type CanvasAgentShellProps = {
   onClearCanvasContext: (selectionId: string) => void
   onClose: () => void
   onBusyChange?: (busy: boolean) => void
+  onForegroundTaskChange?: (task?: AgentTask) => void
 }
 
 const STATUS_LABELS: Partial<Record<AgentTask["status"], string>> = {
@@ -84,6 +85,7 @@ export function CanvasAgentShell({
   onClearCanvasContext,
   onClose,
   onBusyChange,
+  onForegroundTaskChange,
 }: CanvasAgentShellProps) {
   const [selectedSkillId, setSelectedSkillId] = useState("")
   const [conversationStartedAt, setConversationStartedAt] = useState("")
@@ -96,7 +98,12 @@ export function CanvasAgentShell({
     submitMessage,
     cancelTask,
     retryTask,
-  } = useAgentTasks({ getCanvasContext, selectedSkillId, onBusyChange })
+  } = useAgentTasks({
+    getCanvasContext,
+    selectedSkillId,
+    onBusyChange,
+    onForegroundTaskChange,
+  })
   const visibleTasks = useMemo(
     () =>
       showHistory || !conversationStartedAt

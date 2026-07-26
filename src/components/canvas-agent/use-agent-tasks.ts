@@ -30,6 +30,7 @@ type UseAgentTasksOptions = {
   getCanvasContext: () => AgentCanvasContext
   selectedSkillId?: string
   onBusyChange?: (busy: boolean) => void
+  onForegroundTaskChange?: (task?: AgentTask) => void
 }
 
 type TaskPayload = { task?: AgentTask; error?: string }
@@ -54,6 +55,7 @@ export function useAgentTasks({
   getCanvasContext,
   selectedSkillId,
   onBusyChange,
+  onForegroundTaskChange,
 }: UseAgentTasksOptions) {
   const [tasks, setTasks] = useState<AgentTask[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -99,7 +101,8 @@ export function useAgentTasks({
 
   useEffect(() => {
     onBusyChange?.(Boolean(foregroundTask))
-  }, [foregroundTask, onBusyChange])
+    onForegroundTaskChange?.(foregroundTask)
+  }, [foregroundTask, onBusyChange, onForegroundTaskChange])
 
   useEffect(() => {
     if (!foregroundTask) return

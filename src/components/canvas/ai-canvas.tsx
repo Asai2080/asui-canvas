@@ -10,6 +10,7 @@ import {
 } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Image01Icon, Video01Icon } from "@hugeicons/core-free-icons"
+import type { OrbState } from "thinking-orbs"
 import {
   AssetRecordType,
   createShapeId,
@@ -41,6 +42,7 @@ import type {
   AgentCanvasCommandAcknowledgement,
   AgentCanvasCommandBatch,
 } from "@/lib/canvas-agent/canvas-commands/schema"
+import type { AgentTask } from "@/lib/canvas-agent/task-schema"
 import { buildCanvasContextSnapshot } from "@/lib/canvas-agent/context/build-context"
 import type {
   CanvasContextInputMedia,
@@ -1581,6 +1583,7 @@ export function AiCanvas() {
   const [codexTaskStatus, setCodexTaskStatus] = useState<"idle" | "generating">("idle")
   const [isCanvasAgentOpen, setIsCanvasAgentOpen] = useState(false)
   const [isCanvasAgentBusy, setIsCanvasAgentBusy] = useState(false)
+  const [foregroundAgentTask, setForegroundAgentTask] = useState<AgentTask>()
   const [codexTaskId, setCodexTaskId] = useState("")
   const [prompt, setPrompt] = useState("")
   const [videoPrompt, setVideoPrompt] = useState("")
@@ -1597,6 +1600,8 @@ export function AiCanvas() {
     shapeId: TLShapeId
     bounds: Bounds
     label: string
+    state: OrbState
+    owner: "direct" | "agent"
   } | null>(null)
   const codexPollingTaskRef = useRef("")
   const codexResultContextRef = useRef<ResolvedCodexCanvasContext | null>(null)
@@ -1919,19 +1924,73 @@ export function AiCanvas() {
     [syncViewportUi]
   )
 
-  const showGenerationOverlay = useCallback((shapeId: TLShapeId, label: string) => {
+  const showGenerationOverlay = useCallback((
+    shapeId: TLShapeId,
+    label: string,
+    state: OrbState = "working"
+  ) => {
     const editor = editorRef.current
     if (!editor) return
 
     const bounds = getViewportShapeBounds(editor, shapeId)
     if (!bounds) return
 
-    setGenerationOverlay({ shapeId, bounds, label })
+    setGenerationOverlay({ shapeId, bounds, label, state, owner: "direct" })
   }, [])
 
   const clearGenerationOverlay = useCallback(() => {
     setGenerationOverlay(null)
   }, [])
+
+  useEffect(() => {
+    const editor = editorRef.current
+    const selectedCanvasId = foregroundAgentTask?.selectedCanvasId
+    if (!editor || !selectedCanvasId) {
+      setGenerationOverlay((current) =>
+        current?.owner === "agent" ? null : current
+      )
+      return
+    }
+
+    const shapeId = selectedCanvasId as TLShapeId
+    const bounds = getViewportShapeBounds(editor, shapeId)
+    if (!bounds) {
+      setGenerationOverlay((current) =>
+        current?.owner === "agent" ? null : current
+      )
+      return
+    }
+    const mediaType = foregroundAgentTask.compiledPrompt?.outputs[0]?.mediaType
+    const statusPresentation: Partial<
+      Record<AgentTask["status"], { label: string; state: OrbState }>
+    > = {
+      queued: { label: "等待 Agent 执行", state: "listening" },
+      understanding: { label: "Agent 正在理解需求", state: "listening" },
+      "reading-skill": { label: "Agent 正在读取 Skill", state: "searching" },
+      "reading-canvas": { label: "Agent 正在读取画布", state: "searching" },
+      "compiling-prompt": { label: "Agent 正在整理提示词", state: "composing" },
+      planning: { label: "Agent 正在规划步骤", state: "solving" },
+      executing: {
+        label: `Agent 正在生成${mediaType === "video" ? "视频" : "图片"}`,
+        state: "working",
+      },
+      "writing-canvas": { label: "Agent 正在写回画布", state: "shaping" },
+    }
+    const presentation = statusPresentation[foregroundAgentTask.status]
+    if (!presentation) return
+
+    setGenerationOverlay((current) =>
+      current?.owner === "direct"
+        ? current
+        : {
+            shapeId,
+            bounds,
+            label: presentation.label,
+            state: presentation.state,
+            owner: "agent",
+          }
+    )
+  }, [foregroundAgentTask])
 
   const applyAgentCanvasCommands = useCallback(
     async (
@@ -2618,7 +2677,7 @@ export function AiCanvas() {
     const bounds = editor.getShapePageBounds(holderId)
     if (!bounds) return
 
-    showGenerationOverlay(holderId, "正在生成图片")
+    showGenerationOverlay(holderId, "正在生成图片", "shaping")
     setStatus("generating")
     setStatusDetail("")
     try {
@@ -2682,7 +2741,7 @@ export function AiCanvas() {
     if (!sourceBounds) return
     const source = versions.find((version) => version.versionId === annotationAction.versionId)
 
-    showGenerationOverlay(annotationAction.imageId, "正在生成新版本")
+    showGenerationOverlay(annotationAction.imageId, "正在生成新版本", "composing")
     setStatus("editing")
     setStatusDetail("")
     try {
@@ -2802,7 +2861,7 @@ export function AiCanvas() {
     if (!sourceBounds) return
     const source = versions.find((version) => version.versionId === multiAnnotationAction.versionId)
 
-    showGenerationOverlay(multiAnnotationAction.imageId, "正在整合多个标注")
+    showGenerationOverlay(multiAnnotationAction.imageId, "正在整合多个标注", "solving")
     setStatus("editing")
     setStatusDetail("")
     try {
@@ -3210,6 +3269,11 @@ export function AiCanvas() {
 
     if (existingTaskId && videoPollingTaskRef.current === existingTaskId) return
     if (existingTaskId) videoPollingTaskRef.current = existingTaskId
+    showGenerationOverlay(
+      videoShape.id,
+      isResumableTask ? "正在恢复视频任务" : "正在提交视频任务",
+      isResumableTask ? "searching" : "working"
+    )
     setStatus("generating")
     setStatusDetail(isResumableTask ? "正在恢复视频任务" : "正在提交任务")
     editor.updateShape({
@@ -3281,6 +3345,7 @@ export function AiCanvas() {
         },
       })
       setStatusDetail("视频生成中，请稍等")
+      showGenerationOverlay(videoShape.id, "正在生成视频", "working")
 
       let video: Awaited<ReturnType<typeof task.poll>>["video"] | null = null
       for (let attempt = 1; attempt <= 240; attempt += 1) {
@@ -3359,8 +3424,10 @@ export function AiCanvas() {
       setStatus("error")
       setStatusDetail("")
       setToastMessage(failedMessage)
+    } finally {
+      clearGenerationOverlay()
     }
-  }, [selection, videoDurationSeconds, videoPrompt, videoReferenceImages, videoResolution, videoUploadedReferences])
+  }, [clearGenerationOverlay, selection, showGenerationOverlay, videoDurationSeconds, videoPrompt, videoReferenceImages, videoResolution, videoUploadedReferences])
 
   useEffect(() => {
     const editor = editorRef.current
@@ -3409,7 +3476,11 @@ export function AiCanvas() {
         </CanvasMainToolbarContext.Provider>
       </div>
       {generationOverlay && (
-        <CanvasGenerationStatusOverlay bounds={generationOverlay.bounds} label={generationOverlay.label} />
+        <CanvasGenerationStatusOverlay
+          bounds={generationOverlay.bounds}
+          label={generationOverlay.label}
+          state={generationOverlay.state}
+        />
       )}
       {toastMessage && (
         <div className="canvas-toast" role="status" aria-live="polite">
@@ -3644,6 +3715,7 @@ export function AiCanvas() {
             }
           }}
           onBusyChange={setIsCanvasAgentBusy}
+          onForegroundTaskChange={setForegroundAgentTask}
           onClose={() => setIsCanvasAgentOpen(false)}
         />
       )}
