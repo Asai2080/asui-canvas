@@ -10,11 +10,6 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-} from "@/components/ui/sidebar"
 import { Textarea } from "@/components/ui/textarea"
 import { API_CONFIG_CHANGED_EVENT, readApiConfigFromSession } from "@/lib/canvas/api-config"
 import type { CanvasSelection, GenerationStatus, ReferenceImage } from "@/lib/canvas/types"
@@ -33,7 +28,6 @@ const truncateModelLabel = (label: string) => {
 
 type GenerationPanelProps = {
   selection: CanvasSelection | null
-  placement?: "floating" | "sidebar"
   x?: number
   y?: number
   mode?: "image" | "video"
@@ -71,7 +65,6 @@ function CutoutServiceIcon({ className, filled }: { className?: string; filled: 
 
 export function GenerationPanel({
   selection,
-  placement = "floating",
   x,
   y,
   mode = "image",
@@ -212,7 +205,7 @@ export function GenerationPanel({
       borderRadius={30}
       className="generation-panel-composer-beam"
     >
-      <div className={`generation-panel-composer generation-panel-composer--${placement}`}>
+      <div className="generation-panel-composer generation-panel-composer--floating">
         <input
           ref={fileInputRef}
           type="file"
@@ -226,7 +219,7 @@ export function GenerationPanel({
         />
         <div className="generation-panel-prompt-wrap">
           <Textarea
-            id={`generation-prompt-${placement}`}
+            id="generation-prompt-floating"
             value={prompt}
             onChange={(event) => onPromptChange(event.target.value)}
             onKeyDown={(event) => {
@@ -381,23 +374,6 @@ export function GenerationPanel({
           maxWidth: "calc(100% - 2rem)",
         }
       : undefined
-
-  if (placement === "sidebar") {
-    return (
-      <Sidebar
-        side="right"
-        variant="sidebar"
-        collapsible="none"
-        className="generation-sidebar"
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <SidebarContent aria-hidden="true" />
-        <SidebarFooter className="generation-panel-sidebar-footer">
-          {renderComposer()}
-        </SidebarFooter>
-      </Sidebar>
-    )
-  }
 
   if (!floatingStyle) return null
 

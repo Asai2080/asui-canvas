@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic"
 import {
-  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -25,7 +24,6 @@ import {
 import { LoaderCircle, Plus, Scissors, Sparkles, Video } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { SidebarProvider } from "@/components/ui/sidebar"
 import { CanvasGenerationStatusOverlay } from "@/components/canvas/canvas-generation-status-overlay"
 import { CanvasIdleDotGrid } from "@/components/canvas/canvas-idle-dot-grid"
 import { CanvasSizeFloatingBar } from "@/components/canvas/canvas-size-floating-bar"
@@ -3298,11 +3296,7 @@ export function AiCanvas() {
   }, [fillVideoNode, selection, status])
 
   return (
-    <SidebarProvider
-      defaultOpen
-      className="h-screen min-h-0 overflow-hidden"
-      style={{ "--sidebar-width": "clamp(360px, 26vw, 420px)" } as CSSProperties}
-    >
+    <div className="flex h-screen min-h-0 overflow-hidden">
     <main className="canvas-app-shell">
       <div className="canvas-surface" onPointerDownCapture={handleCanvasPointerDownCapture}>
         <Tldraw
@@ -3517,7 +3511,6 @@ export function AiCanvas() {
       />
       {selection?.kind === "holder" && generationPanelPosition && (
         <GenerationPanel
-          placement="floating"
           selection={selection}
           x={generationPanelPosition.x}
           y={generationPanelPosition.y}
@@ -3532,7 +3525,6 @@ export function AiCanvas() {
       )}
       {selection?.kind === "video" && generationPanelPosition && (
         <GenerationPanel
-          placement="floating"
           mode="video"
           selection={selection}
           x={generationPanelPosition.x}
@@ -3560,38 +3552,6 @@ export function AiCanvas() {
           onClose={() => setIsCanvasAgentOpen(false)}
         />
       )}
-      {!isCanvasAgentOpen && selection?.kind === "holder" && (
-        <GenerationPanel
-          placement="sidebar"
-          selection={selection}
-          prompt={prompt}
-          status={status}
-          statusDetail={statusDetail}
-          referenceImages={referenceImages}
-          onPromptChange={setPrompt}
-          onReferenceImagesChange={setReferenceImages}
-          onFill={fillHolder}
-        />
-      )}
-      {!isCanvasAgentOpen && selection?.kind === "video" && (
-        <GenerationPanel
-          placement="sidebar"
-          mode="video"
-          selection={selection}
-          prompt={videoPrompt}
-          status={status}
-          statusDetail={statusDetail}
-          referenceImages={videoUploadedReferences}
-          lockedReferenceImages={videoReferenceImages}
-          videoDurationSeconds={videoDurationSeconds}
-          videoResolution={videoResolution}
-          onPromptChange={setVideoPrompt}
-          onReferenceImagesChange={setVideoUploadedReferences}
-          onVideoDurationChange={setVideoDurationSeconds}
-          onVideoResolutionChange={setVideoResolution}
-          onFill={fillVideoNode}
-        />
-      )}
-    </SidebarProvider>
+    </div>
   )
 }

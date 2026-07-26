@@ -320,17 +320,6 @@
     @apply flex size-6 shrink-0 items-center justify-center rounded-full text-lg leading-none text-destructive transition-colors hover:bg-destructive/15;
   }
 
-  .generation-sidebar {
-    @apply h-screen shrink-0 border-l border-sidebar-border text-sidebar-foreground;
-    background-color: #08060a !important;
-    box-shadow: -8px 0 24px rgb(0 0 0 / 14%);
-  }
-
-  .generation-sidebar [data-slot="sidebar-inner"],
-  .generation-sidebar [data-slot="sidebar-content"] {
-    background-color: #08060a !important;
-  }
-
   .canvas-agent-shell {
     @apply pointer-events-none my-3 flex h-[calc(100vh-24px)] w-0 shrink-0 flex-col overflow-hidden rounded-[22px] border border-transparent bg-[#151515] text-sidebar-foreground opacity-0 transition-[width,margin,opacity] duration-200;
   }
@@ -560,11 +549,6 @@
 
   .generation-panel-floating .generation-panel-composer {
     @apply bg-sidebar shadow-2xl;
-  }
-
-  .generation-panel-sidebar-footer {
-    @apply shrink-0 px-3 pb-3 pt-2;
-    background-color: #08060a !important;
   }
 
   .generation-panel-prompt-wrap {
@@ -977,10 +961,6 @@
 @media (max-width: 860px) {
   .canvas-toolbar {
     @apply left-1/2 right-auto top-14 max-w-[calc(100vw-1.5rem)] -translate-x-1/2;
-  }
-
-  .generation-sidebar {
-    @apply fixed inset-x-3 bottom-3 top-auto z-[70] h-[min(520px,72vh)] w-auto rounded-2xl border shadow-2xl;
   }
 
   .canvas-agent-shell {
