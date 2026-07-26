@@ -25,6 +25,7 @@
 *.pem
 /public/canvas-assets/
 /.asui-codex/
+/.asui-agent/
 
 # debug
 npm-debug.log*
