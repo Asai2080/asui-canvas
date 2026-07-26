@@ -416,52 +416,152 @@
   }
 
   .agent-message {
-    @apply border-b border-sidebar-border px-5 py-4;
+    @apply flex w-full px-5 py-2;
   }
 
-  .agent-message[data-role="user"] {
-    @apply bg-white/[0.025];
+  .agent-message:first-of-type {
+    @apply pt-5;
   }
 
-  .agent-message-label {
-    @apply mb-2 block text-[10px] font-semibold uppercase text-primary;
+  .agent-message:last-of-type {
+    @apply pb-4;
+  }
+
+  .agent-message--user {
+    @apply justify-end;
+  }
+
+  .agent-message--assistant {
+    @apply justify-start;
+  }
+
+  .agent-bubble {
+    @apply min-w-0 overflow-hidden text-[13px] leading-[1.65];
+  }
+
+  .agent-bubble--user {
+    @apply max-w-[82%] rounded-[18px] rounded-br-[6px] border border-primary/20 bg-primary/10 px-3.5 py-2.5 text-[#F0F0F2];
+  }
+
+  .agent-bubble--assistant {
+    @apply w-[94%] rounded-[18px] rounded-bl-[6px] border border-[#303036] bg-[#1B1B1E] px-4 py-3.5 text-[#C9C9CE];
   }
 
   .agent-message-text {
-    @apply block whitespace-pre-wrap text-xs leading-[1.65] text-sidebar-foreground/80;
+    @apply block whitespace-pre-wrap break-words;
   }
 
-  .canvas-agent-task-strip {
-    @apply mx-4 my-3 border-y border-sidebar-border py-1;
+  .agent-bubble-header {
+    @apply mb-2.5 flex items-center justify-between gap-3;
   }
 
-  .canvas-agent-task-row {
-    @apply flex h-8 items-center gap-2 text-[11px] text-muted-foreground;
+  .agent-bubble-author {
+    @apply text-[11px] font-semibold text-primary;
   }
 
-  .canvas-agent-task-row button {
-    @apply ml-auto flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground;
+  .agent-bubble-status {
+    @apply flex shrink-0 items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.035] px-2 py-0.5 text-[10px] leading-5 text-[#9D9DA5];
   }
 
-  .canvas-agent-status-dot {
-    @apply size-1.5 shrink-0 rounded-full bg-white/25;
+  .agent-bubble.status-completed .agent-bubble-status {
+    @apply border-primary/20 bg-primary/[0.07] text-primary;
   }
 
-  .canvas-agent-status-dot.status-executing,
-  .canvas-agent-status-dot.status-writing-canvas {
+  .agent-bubble.status-failed .agent-bubble-status,
+  .agent-bubble.status-partially-completed .agent-bubble-status {
+    @apply border-destructive/25 bg-destructive/10 text-destructive;
+  }
+
+  .agent-bubble-reply {
+    @apply text-[13px] leading-[1.7] text-[#ECECEF];
+  }
+
+  .agent-bubble-section {
+    @apply mt-3 border-t border-white/[0.07] pt-3;
+  }
+
+  .agent-bubble-section-label {
+    @apply mb-1 block text-[10px] font-medium text-[#85858E];
+  }
+
+  .agent-bubble-section p {
+    @apply break-words text-[12px] leading-5 text-[#C7C7CC];
+  }
+
+  .agent-bubble-details {
+    @apply mt-2 text-[11px] text-[#92929A];
+  }
+
+  .agent-bubble-details summary {
+    @apply w-fit cursor-pointer select-none text-primary/85 transition-colors hover:text-primary;
+  }
+
+  .agent-bubble-details ol {
+    @apply mt-2 space-y-2 border-l border-white/10 pl-3;
+  }
+
+  .agent-bubble-details li {
+    @apply list-decimal break-words pl-0.5 leading-5;
+  }
+
+  .agent-step-list {
+    @apply mt-1.5 space-y-1;
+  }
+
+  .agent-step-list li {
+    @apply flex min-h-6 items-center gap-2 text-[11px] text-[#A4A4AC];
+  }
+
+  .agent-step-indicator {
+    @apply size-1.5 shrink-0 rounded-full bg-white/20;
+  }
+
+  .agent-step-list li.status-running .agent-step-indicator {
     @apply animate-pulse bg-[#F4C66E];
   }
 
-  .canvas-agent-status-dot.status-completed {
+  .agent-step-list li.status-completed .agent-step-indicator {
     @apply bg-primary;
   }
 
-  .canvas-agent-status-dot.status-failed {
+  .agent-step-list li.status-failed .agent-step-indicator {
     @apply bg-destructive;
   }
 
-  .canvas-agent-task-label {
-    @apply truncate;
+  .agent-step-title {
+    @apply min-w-0 flex-1 truncate;
+  }
+
+  .agent-step-status {
+    @apply shrink-0 text-[10px] text-[#74747C];
+  }
+
+  .agent-bubble-error {
+    @apply mt-3 flex flex-col gap-0.5 border-t border-destructive/25 pt-3 text-[11px] leading-5 text-destructive/90;
+  }
+
+  .agent-bubble-error strong {
+    @apply font-medium text-destructive;
+  }
+
+  .agent-bubble-error span {
+    @apply break-words;
+  }
+
+  .agent-bubble-result {
+    @apply mt-3 border-t border-primary/15 pt-3 text-[11px] font-medium text-primary;
+  }
+
+  .agent-bubble-footer {
+    @apply mt-3 flex min-h-6 items-center gap-2 border-t border-white/[0.06] pt-2.5 text-[10px] text-[#696971];
+  }
+
+  .agent-bubble-footer button {
+    @apply ml-auto flex h-6 items-center gap-1 rounded-full px-2 text-[#92929A] transition-colors hover:bg-white/[0.06] hover:text-[#E8E8EB];
+  }
+
+  .agent-bubble-footer button + button {
+    @apply ml-0;
   }
 
   .canvas-agent-composer-wrap {

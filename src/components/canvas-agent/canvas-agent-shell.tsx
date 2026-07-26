@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { createContext, useContext, useMemo, useState } from "react"
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
@@ -8,11 +8,14 @@ import {
   MessagePrimitive,
   ThreadPrimitive,
   useExternalStoreRuntime,
+  useMessage,
 } from "@assistant-ui/react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Add01Icon,
+  AlertCircleIcon,
   ArrowUp01Icon,
+  CheckmarkCircle02Icon,
   Clock01Icon,
   Image01Icon,
   Loading03Icon,
@@ -59,20 +62,180 @@ const STATUS_LABELS: Partial<Record<AgentTask["status"], string>> = {
   cancelled: "取消",
 }
 
-function ThreadMessage() {
-  return (
-    <MessagePrimitive.Root className="agent-message">
-      <MessagePrimitive.If user>
-        <span className="agent-message-label">你</span>
-      </MessagePrimitive.If>
-      <MessagePrimitive.If assistant>
-        <span className="agent-message-label">Agent</span>
-      </MessagePrimitive.If>
-      <MessagePrimitive.Parts
-        components={{
-          Text: () => <MessagePartPrimitive.Text className="agent-message-text" />,
-        }}
+const STEP_STATUS_LABELS: Record<
+  NonNullable<AgentTask["executionPlan"]>["steps"][number]["status"],
+  string
+> = {
+  pending: "待执行",
+  running: "执行中",
+  completed: "已完成",
+  failed: "失败",
+  cancelled: "已取消",
+}
+
+type AgentMessageContextValue = {
+  tasksByMessageId: ReadonlyMap<string, AgentTask>
+  cancelTask: (taskId: string) => Promise<void>
+  retryTask: (taskId: string) => Promise<void>
+}
+
+const AgentMessageContext = createContext<AgentMessageContextValue | null>(null)
+
+function TaskStatusIcon({ status }: { status: AgentTask["status"] }) {
+  if (status === "completed") {
+    return <HugeiconsIcon icon={CheckmarkCircle02Icon} size={14} strokeWidth={1.8} />
+  }
+
+  if (status === "failed" || status === "partially-completed") {
+    return <HugeiconsIcon icon={AlertCircleIcon} size={14} strokeWidth={1.8} />
+  }
+
+  if (status === "cancelled") {
+    return <HugeiconsIcon icon={MultiplicationSignIcon} size={14} strokeWidth={1.8} />
+  }
+
+  if (status === "executing" || status === "writing-canvas") {
+    return (
+      <HugeiconsIcon
+        icon={Loading03Icon}
+        size={14}
+        strokeWidth={1.8}
+        className="animate-spin"
       />
+    )
+  }
+
+  return <HugeiconsIcon icon={Clock01Icon} size={14} strokeWidth={1.8} />
+}
+
+function AgentTaskBubble({ task }: { task: AgentTask }) {
+  const context = useContext(AgentMessageContext)
+  const isTerminal = isAgentTaskTerminal(task)
+  const statusLabel = STATUS_LABELS[task.status] ?? task.status
+  const reply =
+    task.interpretation?.message ??
+    (task.status === "queued"
+      ? "任务已加入队列，我会在前一个任务结束后自动开始。"
+      : "我正在理解你的目标，并准备接下来的执行步骤。")
+
+  return (
+    <div className={`agent-bubble agent-bubble--assistant status-${task.status}`}>
+      <div className="agent-bubble-header">
+        <span className="agent-bubble-author">Agent</span>
+        <span className="agent-bubble-status">
+          <TaskStatusIcon status={task.status} />
+          {statusLabel}
+        </span>
+      </div>
+
+      <p className="agent-bubble-reply">{reply}</p>
+
+      {task.interpretation?.summary && (
+        <section className="agent-bubble-section">
+          <span className="agent-bubble-section-label">任务摘要</span>
+          <p>{task.interpretation.summary}</p>
+        </section>
+      )}
+
+      {task.compiledPrompt && (
+        <section className="agent-bubble-section">
+          <span className="agent-bubble-section-label">生成提示词</span>
+          <p>{task.compiledPrompt.summary}</p>
+          <details className="agent-bubble-details">
+            <summary>
+              查看 {task.compiledPrompt.outputs.length} 个输出提示词
+            </summary>
+            <ol>
+              {task.compiledPrompt.outputs.map((output) => (
+                <li key={output.id}>{output.prompt}</li>
+              ))}
+            </ol>
+          </details>
+        </section>
+      )}
+
+      {task.executionPlan && (
+        <section className="agent-bubble-section">
+          <span className="agent-bubble-section-label">执行步骤</span>
+          <ol className="agent-step-list">
+            {task.executionPlan.steps.map((step) => (
+              <li key={step.id} className={`status-${step.status}`}>
+                <span className="agent-step-indicator" aria-hidden="true" />
+                <span className="agent-step-title">{step.title}</span>
+                <span className="agent-step-status">
+                  {STEP_STATUS_LABELS[step.status]}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {task.error && (
+        <div className="agent-bubble-error" role="alert">
+          <strong>执行失败</strong>
+          <span>{task.error.message}</span>
+        </div>
+      )}
+
+      {task.resultNodeIds.length > 0 && (
+        <p className="agent-bubble-result">
+          已写回画布 · {task.resultNodeIds.length} 个节点
+        </p>
+      )}
+
+      <div className="agent-bubble-footer">
+        <span>
+          {task.interpretation?.source === "text-model"
+            ? "文字模型理解"
+            : task.interpretation
+              ? "本地规则理解"
+              : "正在准备"}
+        </span>
+        {!isTerminal && task.status !== "writing-canvas" && (
+          <button
+            type="button"
+            onClick={() => void context?.cancelTask(task.id)}
+          >
+            <HugeiconsIcon icon={StopIcon} size={13} strokeWidth={1.8} />
+            取消
+          </button>
+        )}
+        {task.status === "failed" && task.error?.retryable && (
+          <button
+            type="button"
+            onClick={() => void context?.retryTask(task.id)}
+          >
+            <HugeiconsIcon icon={Refresh03Icon} size={13} strokeWidth={1.8} />
+            重试
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ThreadMessage() {
+  const messageId = useMessage((message) => message.id)
+  const role = useMessage((message) => message.role)
+  const context = useContext(AgentMessageContext)
+  const task = context?.tasksByMessageId.get(messageId)
+
+  return (
+    <MessagePrimitive.Root className={`agent-message agent-message--${role}`}>
+      {role === "assistant" && task ? (
+        <AgentTaskBubble task={task} />
+      ) : (
+        <div className={`agent-bubble agent-bubble--${role}`}>
+          <MessagePrimitive.Parts
+            components={{
+              Text: () => (
+                <MessagePartPrimitive.Text className="agent-message-text" />
+              ),
+            }}
+          />
+        </div>
+      )}
     </MessagePrimitive.Root>
   )
 }
@@ -113,6 +276,20 @@ export function CanvasAgentShell({
   const messages = useMemo(
     () => tasksToThreadMessages(visibleTasks),
     [visibleTasks]
+  )
+  const tasksByMessageId = useMemo(
+    () =>
+      new Map(
+        visibleTasks.flatMap((task) => [
+          [`${task.id}-user`, task] as const,
+          [`${task.id}-assistant`, task] as const,
+        ])
+      ),
+    [visibleTasks]
+  )
+  const messageContextValue = useMemo<AgentMessageContextValue>(
+    () => ({ tasksByMessageId, cancelTask, retryTask }),
+    [cancelTask, retryTask, tasksByMessageId]
   )
   const runtime = useExternalStoreRuntime({
     messages,
@@ -187,8 +364,9 @@ export function CanvasAgentShell({
           </div>
         </header>
 
-        <ThreadPrimitive.Root className="canvas-agent-thread">
-          <ThreadPrimitive.Viewport className="canvas-agent-viewport">
+        <AgentMessageContext.Provider value={messageContextValue}>
+          <ThreadPrimitive.Root className="canvas-agent-thread">
+            <ThreadPrimitive.Viewport className="canvas-agent-viewport">
             <ThreadPrimitive.Empty>
               <div className="canvas-agent-empty">
                 <h3>有什么可以帮你？</h3>
@@ -196,29 +374,6 @@ export function CanvasAgentShell({
               </div>
             </ThreadPrimitive.Empty>
             <ThreadPrimitive.Messages components={{ Message: ThreadMessage }} />
-            {visibleTasks.length > 0 && (
-              <div className="canvas-agent-task-strip" aria-label="Agent 任务状态">
-                {visibleTasks
-                  .slice()
-                  .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-                  .map((task) => (
-                    <div key={task.id} className="canvas-agent-task-row">
-                      <span className={`canvas-agent-status-dot status-${task.status}`} />
-                      <span className="canvas-agent-task-label">{STATUS_LABELS[task.status]}</span>
-                      {!isAgentTaskTerminal(task) && task.status !== "writing-canvas" && (
-                        <button type="button" onClick={() => void cancelTask(task.id)} aria-label="取消任务">
-                          <HugeiconsIcon icon={StopIcon} size={13} strokeWidth={1.8} />
-                        </button>
-                      )}
-                      {task.status === "failed" && task.error?.retryable && (
-                        <button type="button" onClick={() => void retryTask(task.id)} aria-label="重试任务">
-                          <HugeiconsIcon icon={Refresh03Icon} size={13} strokeWidth={1.8} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-              </div>
-            )}
             <ThreadPrimitive.ViewportFooter className="canvas-agent-composer-wrap">
               {error && <p className="canvas-agent-error" role="alert">{error}</p>}
               <BorderBeam
@@ -290,8 +445,9 @@ export function CanvasAgentShell({
                 </ComposerPrimitive.Root>
               </BorderBeam>
             </ThreadPrimitive.ViewportFooter>
-          </ThreadPrimitive.Viewport>
-        </ThreadPrimitive.Root>
+            </ThreadPrimitive.Viewport>
+          </ThreadPrimitive.Root>
+        </AgentMessageContext.Provider>
       </aside>
     </AssistantRuntimeProvider>
   )
