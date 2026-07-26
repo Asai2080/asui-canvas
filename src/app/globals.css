@@ -146,8 +146,8 @@
   .canvas-surface .asui-node-frame .tl-frame__body {
     fill: #171719 !important;
     stroke: #393842 !important;
-    rx: 10px;
-    ry: 10px;
+    rx: 16px !important;
+    ry: 16px !important;
   }
 
   .canvas-surface .asui-node-frame {
@@ -158,7 +158,7 @@
     pointer-events: none;
     z-index: 1;
     overflow: hidden;
-    border-radius: 10px;
+    border-radius: 16px !important;
     contain: strict;
   }
 
