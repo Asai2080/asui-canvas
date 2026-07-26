@@ -106,6 +106,24 @@ export const agentTaskErrorSchema = z.object({
   details: z.record(z.string(), z.unknown()).optional(),
 })
 
+export const agentInterpretationSchema = z.object({
+  message: z.string().trim().min(1).max(2_000),
+  summary: z.string().trim().min(1).max(1_000),
+  normalizedInstruction: z.string().trim().min(1).max(4_000),
+  intent: z.enum(["image", "video", "unsupported"]),
+  source: z.enum(["text-model", "local-rules"]),
+  target: z
+    .object({
+      mediaType: z.enum(["image", "video"]).optional(),
+      count: z.number().int().min(1).max(8).optional(),
+      width: z.number().int().positive().max(8192).optional(),
+      height: z.number().int().positive().max(8192).optional(),
+      durationSeconds: z.number().int().min(1).max(15).optional(),
+      resolution: z.string().trim().min(1).max(40).optional(),
+    })
+    .optional(),
+})
+
 export const agentImageArtifactSchema = z.object({
   kind: z.literal("image"),
   id: agentTaskIdSchema,
@@ -143,6 +161,7 @@ export const agentTaskSchema = z.object({
   skillId: agentTaskIdSchema.optional(),
   contextSnapshotId: agentTaskIdSchema.optional(),
   retryOfTaskId: agentTaskIdSchema.optional(),
+  interpretation: agentInterpretationSchema.optional(),
   compiledPrompt: compiledPromptSchema.optional(),
   plan: agentPlanSchema.optional(),
   executionPlan: structuredAgentPlanSchema.optional(),
@@ -165,6 +184,7 @@ export type AgentTaskHistoryEvent = z.infer<typeof agentTaskHistoryEventSchema>
 export type CompiledPrompt = z.infer<typeof compiledPromptSchema>
 export type AgentPlan = z.infer<typeof agentPlanSchema>
 export type AgentTaskError = z.infer<typeof agentTaskErrorSchema>
+export type AgentInterpretation = z.infer<typeof agentInterpretationSchema>
 export type AgentImageArtifact = z.infer<typeof agentImageArtifactSchema>
 export type AgentVideoArtifact = z.infer<typeof agentVideoArtifactSchema>
 export type AgentArtifact = z.infer<typeof agentArtifactSchema>

@@ -28,6 +28,7 @@ describe("api config", () => {
         })
       )
     ).toEqual({
+      ...DEFAULT_API_CONFIG,
       baseUrl: "https://image.example.com/v1",
       apiKey: "sk-image",
       model: "gpt-image-1",

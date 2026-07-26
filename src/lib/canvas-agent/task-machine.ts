@@ -41,6 +41,7 @@ const ALLOWED_TRANSITIONS: Record<AgentTaskStatus, AgentTaskStatus[]> = {
     "reading-skill",
     "reading-canvas",
     "compiling-prompt",
+    "completed",
     "failed",
     "cancelled",
   ],

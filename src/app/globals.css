@@ -291,6 +291,10 @@
     @apply relative grid grid-cols-2 gap-1 overflow-hidden rounded-2xl bg-muted p-1 text-sm;
   }
 
+  .api-config-mode-tabs.is-agent-enabled {
+    @apply grid-cols-3;
+  }
+
   .api-config-mode-tabs__indicator {
     @apply pointer-events-none absolute bottom-1 left-1 top-1 rounded-xl bg-primary shadow-sm;
     width: calc((100% - 12px) / 2);
@@ -300,6 +304,18 @@
 
   .api-config-mode-tabs__indicator--video {
     transform: translateX(calc(100% + 4px));
+  }
+
+  .api-config-mode-tabs.is-agent-enabled .api-config-mode-tabs__indicator {
+    width: calc((100% - 16px) / 3);
+  }
+
+  .api-config-mode-tabs.is-agent-enabled .api-config-mode-tabs__indicator--image {
+    transform: translateX(calc(100% + 4px));
+  }
+
+  .api-config-mode-tabs.is-agent-enabled .api-config-mode-tabs__indicator--video {
+    transform: translateX(calc(200% + 8px));
   }
 
   .api-config-mode-tabs__tab {

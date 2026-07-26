@@ -38,7 +38,10 @@ describe("/api/agent/tasks/[taskId]/run", () => {
       createAgentTask({ userInstruction: "生成海报" }, { id: "task-run" })
     )
     const response = await POST(
-      request({ imageCredentials: { apiKey: "route-secret" } }),
+      request({
+        textCredentials: { apiKey: "text-route-secret" },
+        imageCredentials: { apiKey: "route-secret" },
+      }),
       context
     )
     const payload = (await response.json()) as { task: { status: string } }
@@ -50,6 +53,7 @@ describe("/api/agent/tasks/[taskId]/run", () => {
     expect(response.status).toBe(200)
     expect(payload.task.status).toBe("understanding")
     expect(taskFile).not.toContain("route-secret")
+    expect(taskFile).not.toContain("text-route-secret")
   })
 
   it("rejects malformed credentials", async () => {

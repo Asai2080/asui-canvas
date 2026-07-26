@@ -6,6 +6,11 @@ import {
   createVideoGenerationAdapter,
   type VideoGenerationCredentials,
 } from "./adapters/video-generation"
+import {
+  createTextModelAdapter,
+  type TextModelCredentials,
+  type TextModelInterpretationInput,
+} from "./adapters/text-model"
 import { getStoredCanvasContextSnapshot } from "./context/store"
 import {
   executeAgentTask,
@@ -14,7 +19,11 @@ import {
 import { createAgentPlan } from "./planner/planner"
 import { compileGenerationPrompt } from "./prompts/compiler"
 import { createSkillSnapshot } from "./skills/registry"
-import { agentTaskSchema, type AgentTask } from "./task-schema"
+import {
+  agentTaskSchema,
+  type AgentInterpretation,
+  type AgentTask,
+} from "./task-schema"
 import { transitionAgentTask } from "./task-machine"
 import {
   AgentTaskNotFoundError,
@@ -27,8 +36,10 @@ export type RunAgentTaskDependencies = {
   apiOrigin: string
   imageCredentials?: ImageGenerationCredentials
   videoCredentials?: VideoGenerationCredentials
+  textCredentials?: TextModelCredentials
   imageAdapter?: ExecuteAgentTaskDependencies["imageAdapter"]
   videoAdapter?: ExecuteAgentTaskDependencies["videoAdapter"]
+  textAdapter?: ReturnType<typeof createTextModelAdapter>
   now?: () => string
   createId?: (prefix: string) => string
 }
@@ -46,6 +57,83 @@ function defaultNow() {
 
 function skillSnapshotId(taskId: string) {
   return `${taskId.slice(0, 114)}-skill`
+}
+
+function localInterpretation(
+  input: TextModelInterpretationInput,
+  modelFallback = false
+): AgentInterpretation {
+  const instruction = input.userInstruction.trim()
+  const video = /视频|动画|镜头|动起来|图生视频/.test(instruction)
+  const creative = Boolean(
+    input.context?.sourceNode ||
+      /图|海报|主视觉|封面|插画|照片|广告|设计|logo|素材|画面|标注|修改|替换|抠图|动画|镜头|视频/i.test(
+        instruction
+      )
+  )
+  if (!creative) {
+    return {
+      message:
+        "我可以和你对话并理解任务，但目前只执行图片和视频创作。你可以告诉我要生成或修改什么画面。",
+      summary: "非图片或视频创作请求，未执行画布操作",
+      normalizedInstruction: instruction,
+      intent: "unsupported",
+      source: "local-rules",
+    }
+  }
+  return {
+    message: modelFallback
+      ? "文字模型暂时不可用，我已切换到本地规则规划，会继续生成并写回画布。"
+      : "我会先整理目标和执行步骤，然后自动生成并写回画布。",
+    summary: video ? "理解视频创作目标并自动执行" : "理解图片创作目标并自动执行",
+    normalizedInstruction: instruction,
+    intent: video ? "video" : "image",
+    source: "local-rules",
+    target: { mediaType: video ? "video" : "image" },
+  }
+}
+
+function hasTextModelCredentials(credentials?: TextModelCredentials) {
+  return Boolean(
+    credentials?.baseUrl?.trim() &&
+      credentials.apiKey?.trim() &&
+      credentials.model?.trim()
+  )
+}
+
+async function understandTask(
+  task: AgentTask,
+  dependencies: RunAgentTaskDependencies
+): Promise<AgentInterpretation> {
+  const timestamp = (dependencies.now ?? defaultNow)()
+  const [context, skill] = await Promise.all([
+    loadContext(task, dependencies.root),
+    loadSkill(task, dependencies.root, timestamp),
+  ])
+  const input = { userInstruction: task.userInstruction, context, skill }
+  const useTextModel = Boolean(
+    dependencies.textAdapter || hasTextModelCredentials(dependencies.textCredentials)
+  )
+  if (!useTextModel) return localInterpretation(input)
+
+  try {
+    const interpreted = await (
+      dependencies.textAdapter ?? createTextModelAdapter()
+    ).interpret(input, dependencies.textCredentials ?? {})
+    return {
+      ...interpreted,
+      source: "text-model",
+      target:
+        interpreted.intent === "unsupported"
+          ? undefined
+          : {
+              ...interpreted.target,
+              mediaType: interpreted.intent,
+            },
+    }
+  } catch {
+    return localInterpretation(input, true)
+  }
 }
 
 async function loadContext(task: AgentTask, root?: string) {
@@ -92,6 +180,7 @@ function sanitizedMessage(
   const secrets = [
     dependencies.imageCredentials?.apiKey,
     dependencies.videoCredentials?.videoApiKey,
+    dependencies.textCredentials?.apiKey,
   ].filter((value): value is string => Boolean(value))
   for (const secret of secrets) {
     message = message.split(secret).join("[REDACTED]")
@@ -153,12 +242,22 @@ export async function runAgentTaskTick(
     }
 
     if (task.status === "understanding") {
+      const interpretation = await understandTask(task, dependencies)
+      if (interpretation.intent === "unsupported") {
+        return persistTransition(task, "completed", dependencies, (next) => ({
+          ...next,
+          interpretation,
+        }))
+      }
       const next = task.skillId
         ? "reading-skill"
         : task.contextSnapshotId
           ? "reading-canvas"
           : "compiling-prompt"
-      return persistTransition(task, next, dependencies)
+      return persistTransition(task, next, dependencies, (nextTask) => ({
+        ...nextTask,
+        interpretation,
+      }))
     }
 
     if (task.status === "reading-skill") {
@@ -183,9 +282,11 @@ export async function runAgentTaskTick(
       ])
       const compiledPrompt = compileGenerationPrompt({
         taskId: task.id,
-        userInstruction: task.userInstruction,
+        userInstruction:
+          task.interpretation?.normalizedInstruction ?? task.userInstruction,
         context,
         skill,
+        target: task.interpretation?.target,
       })
       return persistTransition(task, "planning", dependencies, (next) => ({
         ...next,

@@ -35,7 +35,18 @@ export function selectForegroundTask(tasks: readonly AgentTask[]) {
 }
 
 function assistantSummary(task: AgentTask) {
-  const sections = [`状态：${STATUS_LABELS[task.status]}`]
+  const sections = task.interpretation
+    ? [
+        task.interpretation.message,
+        `任务摘要：${task.interpretation.summary}`,
+        `理解方式：${
+          task.interpretation.source === "text-model"
+            ? "文字模型"
+            : "本地规则"
+        }`,
+        `状态：${STATUS_LABELS[task.status]}`,
+      ]
+    : [`状态：${STATUS_LABELS[task.status]}`]
 
   if (task.compiledPrompt) {
     sections.push(`提示词摘要：${task.compiledPrompt.summary}`)

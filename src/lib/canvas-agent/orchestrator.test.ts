@@ -51,6 +51,104 @@ function dependencies(root: string) {
 }
 
 describe("runAgentTaskTick", () => {
+  it("uses the text model for auditable understanding before planning", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      { userInstruction: "生成4张国风茶饮海报，比例3:4" },
+      { id: "task-understand", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const textAdapter = {
+      interpret: vi.fn(async () => ({
+        message: "我会生成 4 张国风茶饮海报。",
+        summary: "4 张 3:4 国风茶饮海报",
+        normalizedInstruction: "生成 4 张国风茶饮海报，比例 3:4。",
+        intent: "image" as const,
+        target: { mediaType: "image" as const, count: 4 },
+      })),
+    }
+    const deps = {
+      ...dependencies(root),
+      textAdapter,
+      textCredentials: {
+        apiKey: "text-secret",
+        baseUrl: "https://text.example.com/v1",
+        model: "text-model",
+      },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const understood = await runAgentTaskTick(task.id, deps)
+    const compiled = await runAgentTaskTick(task.id, deps)
+
+    expect(understood.interpretation).toMatchObject({
+      source: "text-model",
+      target: { count: 4 },
+    })
+    expect(compiled.compiledPrompt?.outputs).toHaveLength(4)
+    expect(JSON.stringify(compiled)).not.toContain("text-secret")
+  })
+
+  it("answers unsupported requests without creating canvas output", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      { userInstruction: "帮我修改代码" },
+      { id: "task-unsupported", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      textAdapter: {
+        interpret: vi.fn(async () => ({
+          message: "我目前只处理图片和视频创作任务。",
+          summary: "非创作任务，未执行",
+          normalizedInstruction: "帮我修改代码",
+          intent: "unsupported" as const,
+        })),
+      },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const answered = await runAgentTaskTick(task.id, deps)
+
+    expect(answered.status).toBe("completed")
+    expect(answered.interpretation?.intent).toBe("unsupported")
+    expect(answered.compiledPrompt).toBeUndefined()
+  })
+
+  it("falls back to local planning when the text model is unavailable", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      { userInstruction: "生成一张海报" },
+      { id: "task-text-fallback", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      textAdapter: {
+        interpret: vi.fn(async () => {
+          throw new Error("provider failed with text-secret")
+        }),
+      },
+      textCredentials: {
+        apiKey: "text-secret",
+        baseUrl: "https://text.example.com/v1",
+        model: "text-model",
+      },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const understood = await runAgentTaskTick(task.id, deps)
+
+    expect(understood.status).toBe("compiling-prompt")
+    expect(understood.interpretation).toMatchObject({
+      source: "local-rules",
+      intent: "image",
+    })
+    expect(understood.interpretation?.message).toContain("已切换到本地规则")
+    expect(JSON.stringify(understood)).not.toContain("text-secret")
+  })
+
   it("advances preparation one recoverable status at a time", async () => {
     const root = await createRoot()
     const task = createAgentTask(

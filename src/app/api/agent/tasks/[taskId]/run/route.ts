@@ -13,6 +13,13 @@ type RouteContext = {
 
 const optionalCredential = z.string().max(20_000).optional()
 const requestSchema = z.object({
+  textCredentials: z
+    .object({
+      baseUrl: optionalCredential,
+      apiKey: optionalCredential,
+      model: optionalCredential,
+    })
+    .optional(),
   imageCredentials: z
     .object({
       baseUrl: optionalCredential,
@@ -44,6 +51,7 @@ export async function POST(request: Request, context: RouteContext) {
     const input = requestSchema.parse(await request.json())
     const task = await runAgentTaskTick(taskId, {
       apiOrigin: new URL(request.url).origin,
+      textCredentials: input.textCredentials,
       imageCredentials: input.imageCredentials,
       videoCredentials: input.videoCredentials,
     })

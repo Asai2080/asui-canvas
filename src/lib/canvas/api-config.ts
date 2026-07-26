@@ -1,4 +1,7 @@
 export type ApiConfig = {
+  textBaseUrl: string
+  textApiKey: string
+  textModel: string
   baseUrl: string
   apiKey: string
   model: string
@@ -11,6 +14,9 @@ export const API_CONFIG_SESSION_KEY = "asui-ai-canvas:api-config"
 export const API_CONFIG_CHANGED_EVENT = "asui-ai-canvas:api-config-changed"
 
 export const DEFAULT_API_CONFIG: ApiConfig = {
+  textBaseUrl: "",
+  textApiKey: "",
+  textModel: "gpt-4.1-mini",
   baseUrl: "",
   apiKey: "",
   model: "gpt-image-1",
@@ -26,6 +32,9 @@ export function parseApiConfig(value: string | null): ApiConfig {
     const parsed = JSON.parse(value) as Partial<ApiConfig>
 
     return {
+      textBaseUrl: typeof parsed.textBaseUrl === "string" ? parsed.textBaseUrl : DEFAULT_API_CONFIG.textBaseUrl,
+      textApiKey: typeof parsed.textApiKey === "string" ? parsed.textApiKey : DEFAULT_API_CONFIG.textApiKey,
+      textModel: typeof parsed.textModel === "string" ? parsed.textModel : DEFAULT_API_CONFIG.textModel,
       baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : DEFAULT_API_CONFIG.baseUrl,
       apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey : DEFAULT_API_CONFIG.apiKey,
       model: typeof parsed.model === "string" ? parsed.model : DEFAULT_API_CONFIG.model,

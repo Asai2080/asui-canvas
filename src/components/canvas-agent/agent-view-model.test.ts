@@ -56,6 +56,13 @@ describe("agent view model", () => {
   it("maps tasks to auditable user and assistant messages", () => {
     const planned = {
       ...task("planned", "planning", "2026-07-26T08:00:00.000Z"),
+      interpretation: {
+        message: "我已理解这个海报任务。",
+        summary: "两张茶饮海报",
+        normalizedInstruction: "生成两张茶饮海报",
+        intent: "image" as const,
+        source: "text-model" as const,
+      },
       compiledPrompt: {
         summary: "生成两张克制的茶饮海报",
         sharedConstraints: ["3:4", "保留品牌字样"],
@@ -77,6 +84,8 @@ describe("agent view model", () => {
     expect(messages[1]).toMatchObject({ role: "assistant" })
     expect(serialized).toContain("生成两张克制的茶饮海报")
     expect(serialized).toContain("青绿色茶饮海报，留白排版")
+    expect(serialized).toContain("我已理解这个海报任务")
+    expect(serialized).toContain("理解方式：文字模型")
     expect(serialized).not.toContain("内部状态记录不应原样展示")
   })
 })

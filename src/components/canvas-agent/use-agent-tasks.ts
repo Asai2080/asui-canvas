@@ -129,6 +129,11 @@ export function useAgentTasks({
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
+              textCredentials: {
+                baseUrl: config.textBaseUrl,
+                apiKey: config.textApiKey,
+                model: config.textModel,
+              },
               imageCredentials: {
                 baseUrl: config.baseUrl,
                 apiKey: config.apiKey,
