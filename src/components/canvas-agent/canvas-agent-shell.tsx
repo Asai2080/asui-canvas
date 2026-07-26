@@ -243,7 +243,6 @@ export function CanvasAgentShell({
                       </span>
                       <span className="canvas-agent-selection-copy">
                         <strong>{selectionPreview.label}</strong>
-                        <small>{selectionPreview.detail}</small>
                       </span>
                       <button
                         type="button"

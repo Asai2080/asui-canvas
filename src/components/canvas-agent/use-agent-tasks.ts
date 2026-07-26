@@ -21,7 +21,6 @@ export type AgentCanvasContext = {
 export type AgentCanvasSelectionPreview = {
   nodeId: string
   label: string
-  detail: string
   mediaType?: "image" | "video"
   src?: string
 }

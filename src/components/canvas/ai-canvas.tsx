@@ -1601,7 +1601,6 @@ export function AiCanvas() {
                   snapshot.sourceNode.kind === "holder"
                 ? IMAGE_CANVAS_NAME
                 : "画布节点",
-          detail: `${Math.round(snapshot.sourceNode.bounds.w)} × ${Math.round(snapshot.sourceNode.bounds.h)}`,
           mediaType: sourceMedia?.mediaType,
           src: sourceMedia?.src,
         }
