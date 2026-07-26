@@ -146,7 +146,7 @@
   .canvas-surface .asui-node-frame .tl-frame__body {
     fill: #171719 !important;
     stroke: #393842 !important;
-    stroke-width: 6px !important;
+    stroke-width: 0 !important;
     rx: 30px !important;
     ry: 30px !important;
   }
@@ -790,9 +790,10 @@
 .canvas-surface .asui-node-frame-outline {
   pointer-events: none;
   z-index: 4;
+  box-sizing: border-box;
   overflow: hidden;
-  border-radius: 30px;
-  box-shadow: inset 0 0 0 6px #393842;
+  border-radius: calc(30px * var(--tl-scale));
+  box-shadow: 0 0 0 calc(6px * var(--tl-scale)) #393842;
 }
 
 .canvas-surface .tlui-button__tool[aria-pressed="true"] {
