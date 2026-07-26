@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import {
   maskApiKey,
+  normalizeImageModelName,
   readApiConfigFromSession,
   saveApiConfigToSession,
   type ApiConfig,
@@ -95,8 +96,13 @@ export function CanvasApiConfigDialog() {
       setConfigMessage("Base URL 要填接口地址，例如 https://openrouter.ai/api/v1，API Key 请填到下面一栏。")
       return
     }
-    saveApiConfigToSession(draftConfig)
-    setApiConfig(draftConfig)
+    const nextConfig =
+      configMode === "image"
+        ? { ...draftConfig, model: normalizeImageModelName(draftConfig.model) }
+        : draftConfig
+    saveApiConfigToSession(nextConfig)
+    setApiConfig(nextConfig)
+    setDraftConfig(nextConfig)
     setConfigMessage("")
     setIsConfigOpen(false)
   }
@@ -257,6 +263,7 @@ export function CanvasApiConfigDialog() {
                     id="api-model"
                     value={draftConfig[activeMode.modelKey]}
                     onChange={(event) => updateDraftConfig(activeMode.modelKey, event.target.value)}
+                    onFocus={(event) => event.currentTarget.select()}
                     placeholder={activeMode.modelPlaceholder}
                     className="rounded-xl"
                   />

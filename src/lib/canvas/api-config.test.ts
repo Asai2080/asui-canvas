@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest"
 
-import { DEFAULT_API_CONFIG, maskApiKey, parseApiConfig } from "./api-config"
+import {
+  DEFAULT_API_CONFIG,
+  maskApiKey,
+  normalizeImageModelName,
+  parseApiConfig,
+} from "./api-config"
 
 describe("api config", () => {
   it("falls back to defaults for empty or invalid config", () => {
@@ -42,5 +47,16 @@ describe("api config", () => {
     expect(maskApiKey("")).toBe("未配置")
     expect(maskApiKey("short")).toBe("已配置")
     expect(maskApiKey("sk-1234567890")).toBe("sk-1••••7890")
+  })
+
+  it("repairs an image model accidentally appended to the previous value", () => {
+    expect(normalizeImageModelName("gpt-imagegpt-5.4-image-2-1")).toBe(
+      "openai/gpt-5.4-image-2"
+    )
+    expect(
+      parseApiConfig(
+        JSON.stringify({ model: "gpt-imagegpt-5.4-image-2-1" })
+      ).model
+    ).toBe("openai/gpt-5.4-image-2")
   })
 })

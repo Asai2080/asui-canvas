@@ -3,6 +3,8 @@ import { extname, join } from "node:path"
 
 import type { ImageVersion } from "@/lib/canvas/types"
 
+import { normalizeImageModelName } from "../../../../lib/canvas/api-config"
+
 type GenerateImageRequest = {
   baseUrl?: string
   apiKey?: string
@@ -675,7 +677,7 @@ export async function POST(request: Request) {
   const body = (await request.json()) as GenerateImageRequest
   const baseUrl = body.baseUrl?.trim()
   const apiKey = body.apiKey?.trim()
-  const model = body.model?.trim() || "gpt-image-1"
+  const model = normalizeImageModelName(body.model ?? "") || "gpt-image-1"
   const prompt = body.prompt?.trim() || "生成一张图片"
   const width = Math.max(1, Math.round(body.width ?? 1024))
   const height = Math.max(1, Math.round(body.height ?? 1024))

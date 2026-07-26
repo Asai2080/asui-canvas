@@ -25,6 +25,19 @@ export const DEFAULT_API_CONFIG: ApiConfig = {
   videoModel: "kling-v2.1",
 }
 
+export function normalizeImageModelName(value: string) {
+  const model = value.trim()
+  const starts = Array.from(model.matchAll(/gpt-/gi))
+  const repaired =
+    starts.length < 2 ? model : model.slice(starts[starts.length - 1].index)
+
+  if (/^(?:openai\/)?gpt-5\.4-image-2(?:-1)?$/i.test(repaired)) {
+    return "openai/gpt-5.4-image-2"
+  }
+
+  return repaired
+}
+
 export function parseApiConfig(value: string | null): ApiConfig {
   if (!value) return DEFAULT_API_CONFIG
 
@@ -37,7 +50,7 @@ export function parseApiConfig(value: string | null): ApiConfig {
       textModel: typeof parsed.textModel === "string" ? parsed.textModel : DEFAULT_API_CONFIG.textModel,
       baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : DEFAULT_API_CONFIG.baseUrl,
       apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey : DEFAULT_API_CONFIG.apiKey,
-      model: typeof parsed.model === "string" ? parsed.model : DEFAULT_API_CONFIG.model,
+      model: typeof parsed.model === "string" ? normalizeImageModelName(parsed.model) : DEFAULT_API_CONFIG.model,
       videoBaseUrl: typeof parsed.videoBaseUrl === "string" ? parsed.videoBaseUrl : DEFAULT_API_CONFIG.videoBaseUrl,
       videoApiKey: typeof parsed.videoApiKey === "string" ? parsed.videoApiKey : DEFAULT_API_CONFIG.videoApiKey,
       videoModel: typeof parsed.videoModel === "string" ? parsed.videoModel : DEFAULT_API_CONFIG.videoModel,
@@ -56,8 +69,12 @@ export function readApiConfigFromSession(): ApiConfig {
 }
 
 export function saveApiConfigToSession(config: ApiConfig) {
+  const normalizedConfig = {
+    ...config,
+    model: normalizeImageModelName(config.model),
+  }
   window.localStorage.removeItem(API_CONFIG_SESSION_KEY)
-  window.sessionStorage.setItem(API_CONFIG_SESSION_KEY, JSON.stringify(config))
+  window.sessionStorage.setItem(API_CONFIG_SESSION_KEY, JSON.stringify(normalizedConfig))
   window.dispatchEvent(new Event(API_CONFIG_CHANGED_EVENT))
 }
 

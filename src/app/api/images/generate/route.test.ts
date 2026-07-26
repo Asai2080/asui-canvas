@@ -229,6 +229,32 @@ describe("image generation route", () => {
     expect(body.aspect_ratio).toBe("4:3")
   })
 
+  it("repairs a concatenated GPT image model before calling OpenRouter", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: [{ url: "https://example.test/generated.png" }],
+        }),
+        { status: 200 }
+      )
+    )
+
+    const response = await POST(
+      createRequest({
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKey: "sk-test",
+        model: "gpt-imagegpt-5.4-image-2-1",
+        prompt: "spring poster",
+      })
+    )
+    const body = JSON.parse(
+      String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)
+    ) as { model: string }
+
+    expect(response.status).toBe(200)
+    expect(body.model).toBe("openai/gpt-5.4-image-2")
+  })
+
   it("sends the source image and localized edit instructions for OpenRouter annotation edits", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
