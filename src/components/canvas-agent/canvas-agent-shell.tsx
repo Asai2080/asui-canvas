@@ -17,6 +17,7 @@ import {
   Clock01Icon,
   Image01Icon,
   Loading03Icon,
+  MultiplicationSignIcon,
   Refresh03Icon,
   Settings01Icon,
   SidebarRight01Icon,
@@ -28,11 +29,17 @@ import type { AgentTask } from "@/lib/canvas-agent/task-schema"
 
 import { isAgentTaskTerminal, tasksToThreadMessages } from "./agent-view-model"
 import { SkillPicker } from "./skill-picker"
-import { type AgentCanvasContext, useAgentTasks } from "./use-agent-tasks"
+import {
+  type AgentCanvasContext,
+  type AgentCanvasSelectionPreview,
+  useAgentTasks,
+} from "./use-agent-tasks"
 
 type CanvasAgentShellProps = {
   open: boolean
+  selectionKey: string
   getCanvasContext: () => AgentCanvasContext
+  onClearCanvasContext: () => void
   onClose: () => void
   onBusyChange?: (busy: boolean) => void
 }
@@ -72,7 +79,9 @@ function ThreadMessage() {
 
 export function CanvasAgentShell({
   open,
+  selectionKey,
   getCanvasContext,
+  onClearCanvasContext,
   onClose,
   onBusyChange,
 }: CanvasAgentShellProps) {
@@ -108,6 +117,15 @@ export function CanvasAgentShell({
   const queuedBehind = visibleTasks.filter(
     (task) => task.status === "queued" && task.id !== foregroundTask?.id
   ).length
+
+  const selectionPreview = useMemo<AgentCanvasSelectionPreview | undefined>(() => {
+    if (!open || !selectionKey) return undefined
+    try {
+      return getCanvasContext().selectionPreview
+    } catch {
+      return undefined
+    }
+  }, [getCanvasContext, open, selectionKey])
 
   const startNewConversation = () => {
     setConversationStartedAt(new Date().toISOString())
@@ -208,8 +226,38 @@ export function CanvasAgentShell({
                 className="canvas-agent-composer-beam"
               >
                 <ComposerPrimitive.Root className="canvas-agent-composer">
+                  {selectionPreview && (
+                    <div
+                      className="canvas-agent-selection-reference"
+                      title={`${selectionPreview.label} · ${selectionPreview.nodeId}`}
+                    >
+                      <span className="canvas-agent-selection-thumbnail">
+                        {selectionPreview.src && selectionPreview.mediaType === "video" ? (
+                          <video src={selectionPreview.src} muted playsInline preload="metadata" />
+                        ) : selectionPreview.src ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={selectionPreview.src} alt="当前引用节点" />
+                        ) : (
+                          <HugeiconsIcon icon={Image01Icon} size={17} strokeWidth={1.7} />
+                        )}
+                      </span>
+                      <span className="canvas-agent-selection-copy">
+                        <strong>{selectionPreview.label}</strong>
+                        <small>{selectionPreview.detail}</small>
+                      </span>
+                      <button
+                        type="button"
+                        className="canvas-agent-selection-remove"
+                        onClick={onClearCanvasContext}
+                        aria-label="取消引用当前画布节点"
+                        title="取消引用"
+                      >
+                        <HugeiconsIcon icon={MultiplicationSignIcon} size={14} strokeWidth={1.8} />
+                      </button>
+                    </div>
+                  )}
                   <ComposerPrimitive.Input
-                    className="canvas-agent-input"
+                    className={`canvas-agent-input${selectionPreview ? " has-selection-reference" : ""}`}
                     placeholder="输入消息，Enter 发送"
                     rows={3}
                   />

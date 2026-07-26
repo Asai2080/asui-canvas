@@ -1578,13 +1578,40 @@ export function AiCanvas() {
   const getAgentCanvasContext = useCallback(() => {
     const editor = editorRef.current
     if (!editor) throw new Error("画布尚未准备完成")
-    const snapshot = exportAgentCanvasContextSnapshot(editor)
+    const selection = getSelection(editor)
+    const snapshot = exportAgentCanvasContextSnapshot(editor, { selection })
     const viewportBounds = toBounds(editor.getViewportPageBounds())
+    const sourceShape = snapshot.sourceNode
+      ? editor.getShape(snapshot.sourceNode.id as TLShapeId)
+      : null
+    const sourceBounds = sourceShape
+      ? editor.getShapePageBounds(sourceShape.id)
+      : null
+    const sourceMedia = sourceShape && sourceBounds
+      ? getContextNodeMedia(editor, sourceShape, toBounds(sourceBounds))
+      : undefined
+    const selectionPreview = snapshot.sourceNode
+      ? {
+          nodeId: snapshot.sourceNode.id,
+          label:
+            sourceMedia?.mediaType === "video" || snapshot.sourceNode.kind === "video"
+              ? VIDEO_CANVAS_NAME
+              : sourceMedia?.mediaType === "image" ||
+                  snapshot.sourceNode.kind === "image" ||
+                  snapshot.sourceNode.kind === "holder"
+                ? IMAGE_CANVAS_NAME
+                : "画布节点",
+          detail: `${Math.round(snapshot.sourceNode.bounds.w)} × ${Math.round(snapshot.sourceNode.bounds.h)}`,
+          mediaType: sourceMedia?.mediaType,
+          src: sourceMedia?.src,
+        }
+      : undefined
 
     return {
       snapshot,
       sourceBounds: snapshot.sourceNode?.bounds,
       viewportBounds,
+      selectionPreview,
     }
   }, [])
 
@@ -1901,7 +1928,7 @@ export function AiCanvas() {
       for (const [commandIndex, command] of batch.commands.entries()) {
         try {
           if (command.type === "create-image-node") {
-            const version: ImageVersion = {
+            let version: ImageVersion = {
               versionId: command.artifact.versionId,
               parentVersionId: command.artifact.parentVersionId,
               prompt: command.artifact.prompt,
@@ -1909,6 +1936,11 @@ export function AiCanvas() {
               width: command.artifact.width,
               height: command.artifact.height,
               createdAt: command.artifact.createdAt,
+            }
+            try {
+              version = await persistImageVersion(version)
+            } catch {
+              // Keep the generated result usable when local asset persistence is unavailable.
             }
             const { holderId, imageId } = createImageHolderWithImage(
               editor,
@@ -1949,7 +1981,6 @@ export function AiCanvas() {
             resultNodeIds.push(holderId)
             artifactNodeIds[command.artifact.id] = holderId
             createdImageVersions.push(version)
-            void persistImageVersion(version).catch(() => undefined)
             continue
           }
 
@@ -3561,7 +3592,9 @@ export function AiCanvas() {
       {CANVAS_AGENT_ENABLED && (
         <CanvasAgentShell
           open={isCanvasAgentOpen}
+          selectionKey={selectedShapeIds.join("|")}
           getCanvasContext={getAgentCanvasContext}
+          onClearCanvasContext={() => editorRef.current?.selectNone()}
           onBusyChange={setIsCanvasAgentBusy}
           onClose={() => setIsCanvasAgentOpen(false)}
         />

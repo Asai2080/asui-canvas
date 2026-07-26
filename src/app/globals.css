@@ -981,3 +981,84 @@
   box-shadow: none !important;
   outline: none !important;
 }
+
+/* The selected canvas reference stays compact inside the Agent composer. */
+.canvas-agent-input.has-selection-reference {
+  height: 48px !important;
+  min-height: 48px !important;
+  padding-top: 4px !important;
+}
+
+.canvas-agent-selection-reference {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 6px;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
+}
+
+.canvas-agent-selection-thumbnail {
+  display: flex;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgb(0 0 0 / 35%);
+  color: var(--primary);
+}
+
+.canvas-agent-selection-thumbnail img,
+.canvas-agent-selection-thumbnail video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.canvas-agent-selection-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.canvas-agent-selection-copy strong,
+.canvas-agent-selection-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-agent-selection-copy strong {
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.canvas-agent-selection-copy small {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.canvas-agent-selection-remove {
+  display: flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.canvas-agent-selection-remove:hover {
+  background: rgb(255 255 255 / 10%);
+  color: var(--foreground);
+}

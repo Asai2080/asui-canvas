@@ -15,6 +15,15 @@ export type AgentCanvasContext = {
   snapshot: CanvasContextSnapshot
   sourceBounds?: CanvasCommandBounds
   viewportBounds: CanvasCommandBounds
+  selectionPreview?: AgentCanvasSelectionPreview
+}
+
+export type AgentCanvasSelectionPreview = {
+  nodeId: string
+  label: string
+  detail: string
+  mediaType?: "image" | "video"
+  src?: string
 }
 
 type UseAgentTasksOptions = {
