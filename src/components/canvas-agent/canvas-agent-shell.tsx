@@ -99,6 +99,7 @@ export function CanvasAgentShell({
         className={`canvas-agent-shell${open ? " is-open" : ""}`}
         aria-hidden={!open}
         aria-label="画布 Agent"
+        inert={!open}
         onPointerDown={(event) => event.stopPropagation()}
       >
         <header className="canvas-agent-header">
