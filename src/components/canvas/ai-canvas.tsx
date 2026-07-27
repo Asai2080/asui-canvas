@@ -1680,6 +1680,7 @@ export function AiCanvas() {
   const [floatingSize, setFloatingSize] = useState<CanvasSize>(DEFAULT_HOLDER_SIZE)
   const [selectedShapeIds, setSelectedShapeIds] = useState<string[]>([])
   const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<string[]>([])
+  const [selectedHolderHasImage, setSelectedHolderHasImage] = useState(false)
   const [isCodexTaskOpen, setIsCodexTaskOpen] = useState(false)
   const [codexTaskStatus, setCodexTaskStatus] = useState<"idle" | "generating">("idle")
   const [isCanvasAgentOpen, setIsCanvasAgentOpen] = useState(false)
@@ -1824,6 +1825,10 @@ export function AiCanvas() {
       })
     )
     setSelection(nextSelection)
+    setSelectedHolderHasImage(
+      nextSelection?.kind === "holder" &&
+        Boolean(getLatestImageShapeIdFromHolder(editor, nextSelection.shapeId as TLShapeId))
+    )
 
     if (nextSelection?.kind === "holder") {
       const bounds = editor.getShapePageBounds(nextSelection.shapeId as TLShapeId)
@@ -2958,6 +2963,80 @@ export function AiCanvas() {
     }
   }, [annotationAction])
 
+  const cutoutSelectedHolder = useCallback(async () => {
+    const editor = editorRef.current
+    if (!editor || selection?.kind !== "holder") return
+
+    const holderId = selection.shapeId as TLShapeId
+    const sourceImageId = getLatestImageShapeIdFromHolder(editor, holderId)
+    const sourceImageShape = sourceImageId ? editor.getShape(sourceImageId) : null
+    const holderBounds = editor.getShapePageBounds(holderId)
+    const sourceImageSrc = sourceImageId ? getImageShapeSource(editor, sourceImageId) : null
+    if (!sourceImageId || !sourceImageShape || sourceImageShape.type !== "image" || !holderBounds || !sourceImageSrc) {
+      return
+    }
+
+    const sourceAsset = sourceImageShape.props.assetId
+      ? editor.getAsset(sourceImageShape.props.assetId)
+      : null
+    const sourceWidth =
+      sourceAsset?.type === "image"
+        ? sourceAsset.props.w
+        : Math.max(1, Math.round(holderBounds.w))
+    const sourceHeight =
+      sourceAsset?.type === "image"
+        ? sourceAsset.props.h
+        : Math.max(1, Math.round(holderBounds.h))
+    const sourceVersionId = getCanvasImageVersionId(sourceImageShape)
+
+    showGenerationOverlay(holderId, "正在抠图", "working")
+    setStatus("editing")
+    setStatusDetail("正在识别主体并移除背景")
+
+    try {
+      const cutoutVersion = await generateCutoutVersion({
+        imageSrc: sourceImageSrc,
+        width: sourceWidth,
+        height: sourceHeight,
+      })
+      const version = await persistImageVersion({
+        ...cutoutVersion,
+        parentVersionId: parentVersionIdFromCanvasVersionId(sourceVersionId),
+      })
+      const obstacles = editor
+        .getCurrentPageShapes()
+        .filter((shape) => shape.id !== holderId && shape.parentId !== holderId)
+        .map((shape) => editor.getShapePageBounds(shape.id))
+        .filter((bounds): bounds is NonNullable<typeof bounds> => Boolean(bounds))
+        .map(toBounds)
+      const resultBounds = findClearPlacement({
+        anchor: toBounds(holderBounds),
+        width: holderBounds.w,
+        height: holderBounds.h,
+        obstacles,
+        margin: 190,
+      })
+      const { holderId: resultHolderId, imageId: resultImageId } =
+        createImageHolderWithImage(editor, version, resultBounds)
+      attachVersionLinkToImage(editor, resultImageId, sourceImageId)
+      setVersionNodeLinks(getVersionNodeLinks(editor))
+      setVersions((current) => [...current, version])
+      editor.select(resultHolderId)
+      editor.zoomToSelection({ animation: { duration: 240 } })
+      setStatus("success")
+      setStatusDetail("")
+      clearGenerationOverlay()
+    } catch (error) {
+      console.error("Failed to cut out selected image holder", error)
+      const message = errorMessage(error, "抠图失败")
+      editor.select(holderId)
+      setStatus("error")
+      setStatusDetail(message)
+      setToastMessage(message)
+      clearGenerationOverlay()
+    }
+  }, [clearGenerationOverlay, selection, showGenerationOverlay])
+
   const editFromAllAnnotations = useCallback(async (options: { rethrow?: boolean } = {}) => {
     const editor = editorRef.current
     if (!editor || !multiAnnotationAction) return
@@ -3329,6 +3408,7 @@ export function AiCanvas() {
   const canGenerateFromAnnotation = Boolean(annotationAction) && status !== "editing"
   const canGenerateFromAllAnnotations = Boolean(multiAnnotationAction) && status !== "editing"
   const canCutoutFromAnnotation = Boolean(annotationAction) && status !== "editing"
+  const canCutoutSelectedHolder = selection?.kind === "holder" && selectedHolderHasImage
   const fillVideoNode = useCallback(async () => {
     const editor = editorRef.current
     if (selection?.kind !== "video") return
@@ -3721,6 +3801,9 @@ export function AiCanvas() {
           presetId={sizeBar.presetId}
           onPresetChange={applySelectedPreset}
           onSizeChange={(nextSize) => updateSelectedCanvasSize(nextSize, "custom")}
+          showCutout={canCutoutSelectedHolder}
+          isCuttingOut={status === "editing"}
+          onCutout={canCutoutSelectedHolder ? () => void cutoutSelectedHolder() : undefined}
         />
       )}
       {multiAnnotationAction && (

@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState, type FocusEvent } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
-import { AspectRatioIcon, ArrowDown01Icon } from "@hugeicons/core-free-icons"
+import {
+  AiEraserIcon,
+  AspectRatioIcon,
+  ArrowDown01Icon,
+  Loading03Icon,
+} from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { Button } from "@/components/ui/button"
@@ -24,6 +29,9 @@ type CanvasSizeFloatingBarProps = {
   presetId: CanvasSizePresetId
   onPresetChange: (presetId: CanvasSizePresetId) => void
   onSizeChange: (size: CanvasSize) => void
+  showCutout?: boolean
+  isCuttingOut?: boolean
+  onCutout?: () => void
 }
 
 export function CanvasSizeFloatingBar({
@@ -33,6 +41,9 @@ export function CanvasSizeFloatingBar({
   presetId,
   onPresetChange,
   onSizeChange,
+  showCutout = false,
+  isCuttingOut = false,
+  onCutout,
 }: CanvasSizeFloatingBarProps) {
   const reduceMotion = useReducedMotion()
   const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -180,46 +191,71 @@ export function CanvasSizeFloatingBar({
 
       <AnimatePresence initial={false}>
         {isExpanded && (
-          <motion.form
+          <motion.div
             initial={reduceMotion ? false : { opacity: 0, width: 0 }}
             animate={{ opacity: 1, width: "auto" }}
             exit={reduceMotion ? undefined : { opacity: 0, width: 0 }}
             transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeOut" }}
-            className="canvas-size-floating-bar__dimensions flex h-9 items-center gap-1.5 overflow-hidden border-l px-2"
-            onSubmit={(event) => {
-              event.preventDefault()
-              commitDraftSize()
-            }}
+            className="flex h-9 items-center overflow-hidden"
           >
-            <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              W
-              <Input
-                aria-label="画布宽度"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={draftSize.width}
-                onChange={(event) =>
-                  updateDraftSize({ ...draftSize, width: sanitizeCanvasSizeInput(event.target.value) })
-                }
-                onBlur={commitDraftSize}
-                className="h-7 w-[52px] rounded-[9px] border-0 bg-background/55 px-2 text-xs font-medium shadow-none focus-visible:ring-1 focus-visible:ring-primary/65"
-              />
-            </label>
-            <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              H
-              <Input
-                aria-label="画布高度"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={draftSize.height}
-                onChange={(event) =>
-                  updateDraftSize({ ...draftSize, height: sanitizeCanvasSizeInput(event.target.value) })
-                }
-                onBlur={commitDraftSize}
-                className="h-7 w-[52px] rounded-[9px] border-0 bg-background/55 px-2 text-xs font-medium shadow-none focus-visible:ring-1 focus-visible:ring-primary/65"
-              />
-            </label>
-          </motion.form>
+            <form
+              className="canvas-size-floating-bar__dimensions flex h-9 items-center gap-1.5 border-l px-2"
+              onSubmit={(event) => {
+                event.preventDefault()
+                commitDraftSize()
+              }}
+            >
+              <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                W
+                <Input
+                  aria-label="画布宽度"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={draftSize.width}
+                  onChange={(event) =>
+                    updateDraftSize({ ...draftSize, width: sanitizeCanvasSizeInput(event.target.value) })
+                  }
+                  onBlur={commitDraftSize}
+                  className="h-7 w-[52px] rounded-[9px] border-0 bg-background/55 px-2 text-xs font-medium shadow-none focus-visible:ring-1 focus-visible:ring-primary/65"
+                />
+              </label>
+              <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                H
+                <Input
+                  aria-label="画布高度"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={draftSize.height}
+                  onChange={(event) =>
+                    updateDraftSize({ ...draftSize, height: sanitizeCanvasSizeInput(event.target.value) })
+                  }
+                  onBlur={commitDraftSize}
+                  className="h-7 w-[52px] rounded-[9px] border-0 bg-background/55 px-2 text-xs font-medium shadow-none focus-visible:ring-1 focus-visible:ring-primary/65"
+                />
+              </label>
+            </form>
+            {showCutout && (
+              <div className="canvas-size-floating-bar__action flex h-9 items-center border-l pl-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-8 gap-1.5 rounded-[10px] px-2.5 text-xs text-[#b8b8c0] hover:bg-white/[0.07] hover:text-[#f2f2f4]"
+                  disabled={isCuttingOut || !onCutout}
+                  aria-label={isCuttingOut ? "正在抠图" : "抠图"}
+                  title="抠图"
+                  onClick={onCutout}
+                >
+                  <HugeiconsIcon
+                    icon={isCuttingOut ? Loading03Icon : AiEraserIcon}
+                    size={15}
+                    strokeWidth={1.8}
+                    className={cn(isCuttingOut && "animate-spin")}
+                  />
+                  <span>{isCuttingOut ? "抠图中" : "抠图"}</span>
+                </Button>
+              </div>
+            )}
+          </motion.div>
         )}
       </AnimatePresence>
     </motion.div>
