@@ -1,23 +1,17 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { BorderBeam } from "border-beam"
 import { ThinkingOrb, type OrbState } from "thinking-orbs"
 
-import { Aurora } from "@/components/canvas/aurora"
 import type { Bounds } from "@/lib/canvas/types"
 
 type CanvasGenerationStatusOverlayProps = {
   bounds: Bounds
   label: string
   state?: OrbState
-  effect?: "orb" | "aurora"
+  effect?: "orb" | "border-beam"
 }
-
-const AURORA_COLOR_STOPS: [string, string, string] = [
-  "#7cff67",
-  "#B497CF",
-  "#5227FF",
-]
 
 export function CanvasGenerationStatusOverlay({
   bounds,
@@ -39,7 +33,7 @@ export function CanvasGenerationStatusOverlay({
   return (
     <div
       className={`canvas-generation-status-overlay ${
-        effect === "aurora" ? "is-aurora" : ""
+        effect === "border-beam" ? "is-border-beam" : ""
       }`}
       style={{
         left: bounds.x,
@@ -50,21 +44,23 @@ export function CanvasGenerationStatusOverlay({
       aria-live="polite"
       aria-label={label}
     >
-      {effect === "aurora" && (
-        <Aurora
-          colorStops={AURORA_COLOR_STOPS}
-          blend={0.5}
-          amplitude={1}
-          speed={1}
-          paused={paused}
-        />
+      {effect === "border-beam" && (
+        <BorderBeam
+          size="md"
+          colorVariant="sunset"
+          strength={0.61}
+          borderRadius={30}
+          className="canvas-generation-status-border-beam"
+        >
+          <div className="canvas-generation-status-border-beam__surface" />
+        </BorderBeam>
       )}
-      <div
-        className={`canvas-generation-status-overlay__content ${
-          compact ? "is-compact" : ""
-        } ${effect === "aurora" ? "is-aurora" : ""}`}
-      >
-        {effect === "orb" && (
+      {effect === "orb" && (
+        <div
+          className={`canvas-generation-status-overlay__content ${
+            compact ? "is-compact" : ""
+          }`}
+        >
           <ThinkingOrb
             state={state}
             size={compact ? 20 : 64}
@@ -73,9 +69,9 @@ export function CanvasGenerationStatusOverlay({
             paused={paused}
             aria-label={label}
           />
-        )}
-        <span>{label}</span>
-      </div>
+          <span>{label}</span>
+        </div>
+      )}
     </div>
   )
 }
