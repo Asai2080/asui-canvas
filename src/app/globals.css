@@ -990,7 +990,22 @@
   }
 
   .canvas-size-floating-bar {
-    @apply absolute z-30 flex max-w-[calc(100vw-2rem)] items-center overflow-visible rounded-xl border bg-card/95 shadow-xl backdrop-blur-xl;
+    @apply absolute z-30 flex max-w-[calc(100vw-2rem)] items-center overflow-visible rounded-[14px] border border-white/10 bg-[#1c1c21]/95 p-1 text-[#f2f2f4] shadow-xl backdrop-blur-xl;
+    box-shadow:
+      0 14px 34px rgb(0 0 0 / 34%),
+      inset 0 1px 0 rgb(255 255 255 / 4%);
+  }
+
+  .canvas-size-floating-bar__preset {
+    @apply text-[#a6a6af] transition-colors hover:bg-white/[0.06] hover:text-[#f2f2f4];
+  }
+
+  .canvas-size-floating-bar__preset.is-active {
+    @apply bg-white/[0.07] text-[#f2f2f4] hover:bg-white/[0.09];
+  }
+
+  .canvas-size-floating-bar__dimensions {
+    border-color: rgb(255 255 255 / 10%);
   }
 
   .canvas-generation-status-overlay {
@@ -1132,9 +1147,9 @@
   }
 
   .canvas-size-floating-bar {
-    @apply left-3 right-3 max-w-[calc(100vw-1.5rem)] flex-wrap;
+    @apply left-3 right-auto max-w-[calc(100vw-1.5rem)];
     left: 12px !important;
-    right: 12px !important;
+    right: auto !important;
     top: 104px !important;
     width: auto !important;
   }

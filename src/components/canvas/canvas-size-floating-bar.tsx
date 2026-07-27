@@ -1,7 +1,9 @@
 "use client"
 
-import { useState } from "react"
-import { ChevronDown } from "lucide-react"
+import { useEffect, useRef, useState, type FocusEvent } from "react"
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
+import { AspectRatioIcon, ArrowDown01Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,40 +26,6 @@ type CanvasSizeFloatingBarProps = {
   onSizeChange: (size: CanvasSize) => void
 }
 
-const presetIconClass = (presetId: CanvasSizePresetId) => {
-  switch (presetId) {
-    case "1:1":
-      return "h-4 w-4 rounded-[3px]"
-    case "2:3":
-      return "h-4 w-3 rounded-[3px]"
-    case "3:4":
-      return "h-4 w-3 rounded-[3px]"
-    case "9:16":
-      return "h-4 w-2.5 rounded-[3px]"
-    case "3:2":
-      return "h-3 w-4 rounded-[3px]"
-    case "16:9":
-      return "h-2.5 w-4 rounded-[3px]"
-    case "a4":
-    case "web":
-      return "h-3.5 w-4 rounded-[3px] before:absolute before:-left-0.5 before:-top-0.5 before:h-3.5 before:w-4 before:rounded-[3px] before:border before:border-current before:bg-card"
-    default:
-      return "h-4 w-4 rounded-[3px]"
-  }
-}
-
-function PresetIcon({ presetId }: { presetId: CanvasSizePresetId }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "relative inline-flex shrink-0 border border-current bg-background text-foreground",
-        presetIconClass(presetId)
-      )}
-    />
-  )
-}
-
 export function CanvasSizeFloatingBar({
   x,
   y,
@@ -66,9 +34,44 @@ export function CanvasSizeFloatingBar({
   onPresetChange,
   onSizeChange,
 }: CanvasSizeFloatingBarProps) {
+  const reduceMotion = useReducedMotion()
+  const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [isExpanded, setIsExpanded] = useState(false)
   const [isPresetOpen, setIsPresetOpen] = useState(false)
   const [draftSize, setDraftSize] = useState({ width: String(size.width), height: String(size.height) })
   const selectedPreset = getCanvasSizePreset(presetId)
+
+  useEffect(
+    () => () => {
+      if (collapseTimerRef.current) {
+        clearTimeout(collapseTimerRef.current)
+      }
+    },
+    []
+  )
+
+  const expand = () => {
+    if (collapseTimerRef.current) {
+      clearTimeout(collapseTimerRef.current)
+      collapseTimerRef.current = null
+    }
+    setIsExpanded(true)
+  }
+
+  const collapse = () => {
+    if (isPresetOpen) return
+
+    if (collapseTimerRef.current) {
+      clearTimeout(collapseTimerRef.current)
+    }
+    collapseTimerRef.current = setTimeout(() => setIsExpanded(false), 120)
+  }
+
+  const handleBlur = (event: FocusEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      collapse()
+    }
+  }
 
   const commitDraftSize = () => {
     onSizeChange(resolveDraftCanvasSize(draftSize, size))
@@ -83,28 +86,69 @@ export function CanvasSizeFloatingBar({
   }
 
   return (
-    <div
+    <motion.div
+      layout="size"
       data-canvas-size-bar
-      className="canvas-size-floating-bar"
+      className={cn("canvas-size-floating-bar", isExpanded && "is-expanded")}
       style={{ left: x, top: y }}
+      transition={
+        reduceMotion
+          ? { duration: 0 }
+          : { type: "spring", stiffness: 460, damping: 34, mass: 0.62 }
+      }
+      onMouseEnter={expand}
+      onMouseLeave={collapse}
+      onFocusCapture={expand}
+      onBlurCapture={handleBlur}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <div className="relative flex h-8 items-center gap-1.5 border-r px-2.5">
-        <span className="text-xs text-muted-foreground">尺寸：</span>
+      <div className="relative flex h-9 items-center">
         <Button
           type="button"
           variant="ghost"
-          className="h-6 gap-1 rounded-md px-1.5 text-xs"
+          className={cn(
+            "canvas-size-floating-bar__preset h-8 min-w-8 gap-1.5 rounded-[10px] px-2 text-xs",
+            isExpanded && "is-active"
+          )}
           aria-expanded={isPresetOpen}
-          onClick={() => setIsPresetOpen((current) => !current)}
+          aria-label={isExpanded ? `选择画布尺寸，当前为${selectedPreset.label}` : "展开画布尺寸"}
+          title={isExpanded ? "选择尺寸预设" : `${draftSize.width} × ${draftSize.height}`}
+          onClick={() => {
+            if (!isExpanded) {
+              expand()
+              return
+            }
+            setIsPresetOpen((current) => !current)
+          }}
         >
-          <PresetIcon presetId={selectedPreset.id} />
-          {selectedPreset.label}
-          <ChevronDown className={cn("size-3 transition-transform", isPresetOpen && "rotate-180")} />
+          <HugeiconsIcon icon={AspectRatioIcon} size={15} strokeWidth={1.8} />
+          <AnimatePresence initial={false} mode="popLayout">
+            <motion.span
+              key={isExpanded ? "preset" : "size"}
+              initial={reduceMotion ? false : { opacity: 0, y: -8, filter: "blur(3px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              exit={reduceMotion ? undefined : { opacity: 0, y: 8, filter: "blur(3px)" }}
+              transition={{ duration: reduceMotion ? 0 : 0.18 }}
+              className="whitespace-nowrap"
+            >
+              {isExpanded ? selectedPreset.label : `${draftSize.width} × ${draftSize.height}`}
+            </motion.span>
+          </AnimatePresence>
+          {isExpanded && (
+            <HugeiconsIcon
+              icon={ArrowDown01Icon}
+              size={13}
+              strokeWidth={1.8}
+              className={cn("transition-transform", isPresetOpen && "rotate-180")}
+            />
+          )}
         </Button>
 
         {isPresetOpen && (
-          <div className="absolute left-0 top-8 z-40 w-[166px] rounded-[12px] border bg-popover p-[5px] text-popover-foreground shadow-xl">
+          <div
+            className="absolute left-0 top-10 z-40 w-[176px] rounded-[14px] border bg-popover p-[5px] text-popover-foreground shadow-xl"
+            onMouseEnter={expand}
+          >
             {CANVAS_SIZE_PRESETS.filter((preset) => preset.id !== "custom").map((preset) => (
               <Button
                 key={preset.id}
@@ -121,7 +165,7 @@ export function CanvasSizeFloatingBar({
                   setIsPresetOpen(false)
                 }}
               >
-                <PresetIcon presetId={preset.id} />
+                <HugeiconsIcon icon={AspectRatioIcon} size={15} strokeWidth={1.8} />
                 <span className="font-normal">{preset.label}</span>
                 {preset.width && preset.height && preset.group !== "ratio" ? (
                   <span className="text-[13px] font-normal leading-5 opacity-45">
@@ -134,40 +178,50 @@ export function CanvasSizeFloatingBar({
         )}
       </div>
 
-      <form
-        className="flex h-8 items-center gap-2 px-2.5"
-        onSubmit={(event) => {
-          event.preventDefault()
-          commitDraftSize()
-        }}
-      >
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          W
-          <Input
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={draftSize.width}
-            onChange={(event) =>
-              updateDraftSize({ ...draftSize, width: sanitizeCanvasSizeInput(event.target.value) })
-            }
-            onBlur={commitDraftSize}
-            className="h-6 w-12 border-0 bg-transparent px-1 text-xs font-medium shadow-none focus-visible:ring-0"
-          />
-        </label>
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          H
-          <Input
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={draftSize.height}
-            onChange={(event) =>
-              updateDraftSize({ ...draftSize, height: sanitizeCanvasSizeInput(event.target.value) })
-            }
-            onBlur={commitDraftSize}
-            className="h-6 w-12 border-0 bg-transparent px-1 text-xs font-medium shadow-none focus-visible:ring-0"
-          />
-        </label>
-      </form>
-    </div>
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.form
+            initial={reduceMotion ? false : { opacity: 0, width: 0 }}
+            animate={{ opacity: 1, width: "auto" }}
+            exit={reduceMotion ? undefined : { opacity: 0, width: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeOut" }}
+            className="canvas-size-floating-bar__dimensions flex h-9 items-center gap-1.5 overflow-hidden border-l px-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              commitDraftSize()
+            }}
+          >
+            <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              W
+              <Input
+                aria-label="画布宽度"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={draftSize.width}
+                onChange={(event) =>
+                  updateDraftSize({ ...draftSize, width: sanitizeCanvasSizeInput(event.target.value) })
+                }
+                onBlur={commitDraftSize}
+                className="h-7 w-[52px] rounded-[9px] border-0 bg-background/55 px-2 text-xs font-medium shadow-none focus-visible:ring-1 focus-visible:ring-primary/65"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              H
+              <Input
+                aria-label="画布高度"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={draftSize.height}
+                onChange={(event) =>
+                  updateDraftSize({ ...draftSize, height: sanitizeCanvasSizeInput(event.target.value) })
+                }
+                onBlur={commitDraftSize}
+                className="h-7 w-[52px] rounded-[9px] border-0 bg-background/55 px-2 text-xs font-medium shadow-none focus-visible:ring-1 focus-visible:ring-primary/65"
+              />
+            </label>
+          </motion.form>
+        )}
+      </AnimatePresence>
+    </motion.div>
   )
 }
