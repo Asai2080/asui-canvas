@@ -407,6 +407,43 @@
     @apply mx-auto my-auto flex max-w-[340px] -translate-y-5 flex-col items-center px-5 text-center;
   }
 
+  .curious-ai-orb {
+    @apply relative mb-4 size-[150px] shrink-0 cursor-pointer select-none touch-none;
+  }
+
+  .curious-ai-orb__canvas {
+    @apply absolute inset-0;
+  }
+
+  .curious-ai-orb__canvas canvas {
+    @apply block size-full;
+  }
+
+  .curious-ai-orb__canvas[data-webgl-unavailable="true"]::after {
+    @apply absolute inset-[26%] rounded-full border border-primary/30 bg-primary/5;
+    content: "";
+    box-shadow: 0 0 30px rgb(163 254 68 / 10%);
+  }
+
+  .curious-ai-orb__eyes {
+    @apply pointer-events-none absolute left-1/2 top-1/2 z-[2] flex items-center justify-between;
+    width: 11%;
+    height: 15%;
+    margin-left: -5.5%;
+    margin-top: -7.5%;
+  }
+
+  .curious-ai-orb__eye {
+    @apply origin-center overflow-hidden rounded-full;
+    width: 32%;
+    height: 100%;
+  }
+
+  .curious-ai-orb__eye > span {
+    @apply block size-full origin-center rounded-full;
+    background: inherit;
+  }
+
   .canvas-agent-empty h3 {
     @apply text-[26px] font-semibold leading-9 text-[#F4F4F5];
   }

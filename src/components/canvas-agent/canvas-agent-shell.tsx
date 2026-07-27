@@ -29,6 +29,7 @@ import { BorderBeam } from "border-beam"
 
 import type { AgentTask } from "@/lib/canvas-agent/task-schema"
 
+import { CuriousAiOrb } from "./curious-ai-orb"
 import { isAgentTaskTerminal, tasksToThreadMessages } from "./agent-view-model"
 import { SkillPicker } from "./skill-picker"
 import {
@@ -369,6 +370,7 @@ export function CanvasAgentShell({
             <ThreadPrimitive.Viewport className="canvas-agent-viewport">
             <ThreadPrimitive.Empty>
               <div className="canvas-agent-empty">
+                <CuriousAiOrb />
                 <h3>有什么可以帮你？</h3>
                 <p>生成的图片、视频会放到画布上，点击画布内容即可继续引用给我。</p>
               </div>
