@@ -1,11 +1,15 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
+  AiBrain03Icon,
   ArrowDown01Icon,
+  CheckmarkCircle02Icon,
   FolderInputIcon,
   Refresh03Icon,
+  Search01Icon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons"
 
@@ -13,17 +17,38 @@ import type {
   DiscoveredSkill,
   SkillRecord,
 } from "@/lib/canvas-agent/skills/schema"
+import {
+  API_CONFIG_CHANGED_EVENT,
+  readApiConfigFromSession,
+} from "@/lib/canvas/api-config"
 
 type SkillPickerProps = {
   value: string
   onChange: (skillId: string) => void
+  modelValue: string
+  onModelChange: (model: string) => void
   compact?: boolean
 }
 
-export function SkillPicker({ value, onChange, compact = false }: SkillPickerProps) {
+type PickerTab = "model" | "skill"
+
+export function SkillPicker({
+  value,
+  onChange,
+  modelValue,
+  onModelChange,
+  compact = false,
+}: SkillPickerProps) {
+  const rootRef = useRef<HTMLDivElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
   const [skills, setSkills] = useState<SkillRecord[]>([])
   const [discovered, setDiscovered] = useState<DiscoveredSkill[]>([])
   const [isOpen, setIsOpen] = useState(false)
+  const [popoverPosition, setPopoverPosition] = useState({ left: 12, bottom: 12 })
+  const [activeTab, setActiveTab] = useState<PickerTab>("model")
+  const [configuredModel, setConfiguredModel] = useState("")
+  const [modelDraft, setModelDraft] = useState("")
+  const [skillQuery, setSkillQuery] = useState("")
   const [sourcePath, setSourcePath] = useState("")
   const [error, setError] = useState("")
 
@@ -65,6 +90,55 @@ export function SkillPicker({ value, onChange, compact = false }: SkillPickerPro
     }
   }, [])
 
+  useEffect(() => {
+    const readConfiguredModel = () => {
+      setConfiguredModel(readApiConfigFromSession().textModel.trim())
+    }
+    readConfiguredModel()
+    window.addEventListener(API_CONFIG_CHANGED_EVENT, readConfiguredModel)
+    return () =>
+      window.removeEventListener(API_CONFIG_CHANGED_EVENT, readConfiguredModel)
+  }, [])
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const updatePopoverPosition = () => {
+      const trigger = rootRef.current?.getBoundingClientRect()
+      if (!trigger) return
+      const width = Math.min(324, window.innerWidth - 24)
+      setPopoverPosition({
+        left: Math.min(Math.max(12, trigger.left), window.innerWidth - width - 12),
+        bottom: Math.max(12, window.innerHeight - trigger.top + 10),
+      })
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (
+        !rootRef.current?.contains(target) &&
+        !popoverRef.current?.contains(target)
+      ) {
+        setIsOpen(false)
+      }
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsOpen(false)
+    }
+
+    updatePopoverPosition()
+    document.addEventListener("pointerdown", handlePointerDown)
+    document.addEventListener("keydown", handleKeyDown)
+    window.addEventListener("resize", updatePopoverPosition)
+    window.addEventListener("scroll", updatePopoverPosition, true)
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown)
+      document.removeEventListener("keydown", handleKeyDown)
+      window.removeEventListener("resize", updatePopoverPosition)
+      window.removeEventListener("scroll", updatePopoverPosition, true)
+    }
+  }, [isOpen])
+
   const registerSkill = async (mode: "import" | "local", path: string) => {
     setError("")
     const response = await fetch("/api/agent/skills/import", {
@@ -83,6 +157,19 @@ export function SkillPicker({ value, onChange, compact = false }: SkillPickerPro
   }
 
   const selected = skills.find((skill) => skill.id === value)
+  const normalizedQuery = skillQuery.trim().toLocaleLowerCase()
+  const filteredSkills = normalizedQuery
+    ? skills.filter((skill) =>
+        `${skill.name} ${skill.description}`.toLocaleLowerCase().includes(normalizedQuery)
+      )
+    : skills
+  const filteredDiscovered = normalizedQuery
+    ? discovered.filter((skill) =>
+        `${skill.name} ${skill.path}`.toLocaleLowerCase().includes(normalizedQuery)
+      )
+    : discovered
+  const activeModel = modelValue.trim() || configuredModel
+  const triggerLabel = selected?.name ?? (modelValue.trim() || "模型 / Skill")
   const importSkill = () => {
     if (!sourcePath.trim()) return
     void registerSkill("import", sourcePath.trim()).catch((reason) =>
@@ -90,21 +177,35 @@ export function SkillPicker({ value, onChange, compact = false }: SkillPickerPro
     )
   }
 
+  const applyCustomModel = () => {
+    const model = modelDraft.trim()
+    if (!model) return
+    onModelChange(model)
+    setModelDraft("")
+    setIsOpen(false)
+  }
+
+  const openModelSettings = () => {
+    setIsOpen(false)
+    window.dispatchEvent(new Event("asui:open-api-config"))
+  }
+
   return (
-    <div className={`agent-skill-picker${compact ? " is-compact" : ""}`}>
+    <div ref={rootRef} className={`agent-skill-picker${compact ? " is-compact" : ""}`}>
       <button
         type="button"
         className={`agent-skill-trigger${compact ? " is-compact" : ""}`}
         onClick={() => setIsOpen((current) => !current)}
         aria-expanded={isOpen}
-        aria-haspopup="menu"
-        aria-label={selected ? `我的 Skill：${selected.name}` : "我的 Skill"}
-        title={selected ? `我的 Skill：${selected.name}` : "我的 Skill"}
+        aria-haspopup="dialog"
+        aria-label={`选择模型与 Skill：${triggerLabel}`}
+        title={`选择模型与 Skill：${triggerLabel}`}
       >
         {compact ? (
           <>
             <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.7} />
-            <span>{selected?.name ?? "我的 Skill"}</span>
+            <span>{triggerLabel}</span>
+            <HugeiconsIcon icon={ArrowDown01Icon} size={12} strokeWidth={1.8} />
           </>
         ) : (
           <>
@@ -113,42 +214,206 @@ export function SkillPicker({ value, onChange, compact = false }: SkillPickerPro
           </>
         )}
       </button>
-      {isOpen && (
-        <div className="agent-skill-menu" role="menu">
-          <button type="button" role="menuitem" onClick={() => { onChange(""); setIsOpen(false) }}>
-            不使用 Skill
-          </button>
-          {skills.map((skill) => (
-            <button key={skill.id} type="button" role="menuitem" onClick={() => { onChange(skill.id); setIsOpen(false) }}>
-              <span>{skill.name}</span>
-              <small>{skill.description}</small>
+      {isOpen && typeof document !== "undefined" && createPortal(
+        <div
+          ref={popoverRef}
+          className="agent-resource-popover"
+          role="dialog"
+          aria-label="模型与 Skill 选择"
+          style={popoverPosition}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <div className="agent-resource-tabs" role="tablist" aria-label="选择类型">
+            <button
+              type="button"
+              role="tab"
+              id="agent-resource-model-tab"
+              aria-selected={activeTab === "model"}
+              aria-controls="agent-resource-model-panel"
+              className={activeTab === "model" ? "is-active" : undefined}
+              onClick={() => setActiveTab("model")}
+            >
+              <HugeiconsIcon icon={AiBrain03Icon} size={14} strokeWidth={1.7} />
+              模型
             </button>
-          ))}
-          {discovered.map((skill) => (
-            <button key={skill.path} type="button" role="menuitem" onClick={() => void registerSkill("local", skill.path).catch((reason) => setError(reason.message))}>
-              <span>{skill.name}</span>
-              <small>本地 Skill · 点击调用</small>
-            </button>
-          ))}
-          <div className="agent-skill-import">
-            <HugeiconsIcon icon={FolderInputIcon} size={16} strokeWidth={1.7} />
-            <input
-              value={sourcePath}
-              onChange={(event) => setSourcePath(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault()
-                  importSkill()
-                }
-              }}
-              placeholder="导入本地 Skill 路径"
-            />
-            <button type="button" aria-label="导入 Skill" onClick={importSkill}>
-              <HugeiconsIcon icon={Refresh03Icon} size={14} strokeWidth={1.7} />
+            <button
+              type="button"
+              role="tab"
+              id="agent-resource-skill-tab"
+              aria-selected={activeTab === "skill"}
+              aria-controls="agent-resource-skill-panel"
+              className={activeTab === "skill" ? "is-active" : undefined}
+              onClick={() => setActiveTab("skill")}
+            >
+              <HugeiconsIcon icon={SparklesIcon} size={14} strokeWidth={1.7} />
+              Skill
             </button>
           </div>
-          {error && <p className="agent-skill-error">{error}</p>}
-        </div>
+
+          {activeTab === "model" ? (
+            <div
+              id="agent-resource-model-panel"
+              className="agent-resource-panel"
+              role="tabpanel"
+              aria-labelledby="agent-resource-model-tab"
+            >
+              <div className="agent-resource-heading">
+                <strong>思考模型</strong>
+                <span>用于理解需求、规划与对话</span>
+              </div>
+              <button
+                type="button"
+                className={`agent-resource-option${!modelValue.trim() ? " is-selected" : ""}`}
+                onClick={() => {
+                  onModelChange("")
+                  setIsOpen(false)
+                }}
+              >
+                <span className="agent-resource-option-icon">
+                  <HugeiconsIcon icon={AiBrain03Icon} size={15} strokeWidth={1.7} />
+                </span>
+                <span className="agent-resource-option-copy">
+                  <strong>跟随 API 设置</strong>
+                  <small>{configuredModel || "未配置文字模型"}</small>
+                </span>
+                {!modelValue.trim() && (
+                  <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} strokeWidth={1.8} />
+                )}
+              </button>
+
+              {modelValue.trim() && (
+                <button type="button" className="agent-resource-option is-selected" onClick={() => setIsOpen(false)}>
+                  <span className="agent-resource-option-icon">
+                    <HugeiconsIcon icon={AiBrain03Icon} size={15} strokeWidth={1.7} />
+                  </span>
+                  <span className="agent-resource-option-copy">
+                    <strong>当前模型</strong>
+                    <small>{activeModel}</small>
+                  </span>
+                  <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} strokeWidth={1.8} />
+                </button>
+              )}
+
+              <div className="agent-model-entry">
+                <input
+                  value={modelDraft}
+                  onChange={(event) => setModelDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault()
+                      applyCustomModel()
+                    }
+                  }}
+                  placeholder="输入自定义模型 ID"
+                  aria-label="自定义思考模型 ID"
+                />
+                <button type="button" onClick={applyCustomModel} disabled={!modelDraft.trim()}>
+                  使用
+                </button>
+              </div>
+              <button type="button" className="agent-resource-settings" onClick={openModelSettings}>
+                管理 API 与生成模型
+              </button>
+            </div>
+          ) : (
+            <div
+              id="agent-resource-skill-panel"
+              className="agent-resource-panel"
+              role="tabpanel"
+              aria-labelledby="agent-resource-skill-tab"
+            >
+              <label className="agent-resource-search">
+                <HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={1.7} />
+                <input
+                  value={skillQuery}
+                  onChange={(event) => setSkillQuery(event.target.value)}
+                  placeholder="搜索 Skill"
+                />
+              </label>
+              <div className="agent-resource-list">
+                <button
+                  type="button"
+                  className={`agent-resource-option${!value ? " is-selected" : ""}`}
+                  onClick={() => {
+                    onChange("")
+                    setIsOpen(false)
+                  }}
+                >
+                  <span className="agent-resource-option-icon">
+                    <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.7} />
+                  </span>
+                  <span className="agent-resource-option-copy">
+                    <strong>不使用 Skill</strong>
+                    <small>仅使用 Agent 的默认创作能力</small>
+                  </span>
+                  {!value && <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} strokeWidth={1.8} />}
+                </button>
+                {filteredSkills.map((skill) => (
+                  <button
+                    key={skill.id}
+                    type="button"
+                    className={`agent-resource-option${skill.id === value ? " is-selected" : ""}`}
+                    onClick={() => {
+                      onChange(skill.id)
+                      setIsOpen(false)
+                    }}
+                  >
+                    <span className="agent-resource-option-icon">
+                      <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.7} />
+                    </span>
+                    <span className="agent-resource-option-copy">
+                      <strong>{skill.name}</strong>
+                      <small>{skill.description}</small>
+                    </span>
+                    {skill.id === value && <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} strokeWidth={1.8} />}
+                  </button>
+                ))}
+                {filteredDiscovered.map((skill) => (
+                  <button
+                    key={skill.path}
+                    type="button"
+                    className="agent-resource-option"
+                    onClick={() =>
+                      void registerSkill("local", skill.path).catch((reason) =>
+                        setError(reason instanceof Error ? reason.message : "Skill 调用失败")
+                      )
+                    }
+                  >
+                    <span className="agent-resource-option-icon">
+                      <HugeiconsIcon icon={FolderInputIcon} size={15} strokeWidth={1.7} />
+                    </span>
+                    <span className="agent-resource-option-copy">
+                      <strong>{skill.name}</strong>
+                      <small>本地 Skill · 点击调用</small>
+                    </span>
+                  </button>
+                ))}
+                {filteredSkills.length === 0 && filteredDiscovered.length === 0 && normalizedQuery && (
+                  <p className="agent-resource-empty">没有找到匹配的 Skill</p>
+                )}
+              </div>
+              <div className="agent-skill-import">
+                <HugeiconsIcon icon={FolderInputIcon} size={15} strokeWidth={1.7} />
+                <input
+                  value={sourcePath}
+                  onChange={(event) => setSourcePath(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault()
+                      importSkill()
+                    }
+                  }}
+                  placeholder="导入本地 Skill 路径"
+                />
+                <button type="button" aria-label="导入 Skill" onClick={importSkill} disabled={!sourcePath.trim()}>
+                  <HugeiconsIcon icon={Refresh03Icon} size={14} strokeWidth={1.7} />
+                </button>
+              </div>
+              {error && <p className="agent-skill-error" role="alert">{error}</p>}
+            </div>
+          )}
+        </div>,
+        document.body
       )}
     </div>
   )

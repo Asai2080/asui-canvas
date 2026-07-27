@@ -747,27 +747,122 @@
   }
 
   .agent-skill-trigger.is-compact {
-    @apply h-8 w-auto max-w-[132px] justify-start gap-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-full border border-primary/25 bg-primary/10 px-2 text-[11px] font-medium text-primary hover:border-primary/40 hover:bg-primary/15 hover:text-primary;
+    @apply h-8 w-auto max-w-[156px] justify-start gap-1.5 overflow-hidden text-ellipsis whitespace-nowrap rounded-full border border-primary/25 bg-primary/10 px-2.5 text-[11px] font-medium text-primary hover:border-primary/40 hover:bg-primary/15 hover:text-primary;
   }
 
   .agent-skill-trigger.is-compact span {
     @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap;
   }
 
-  .agent-skill-menu {
-    @apply absolute bottom-11 left-0 z-20 max-h-[300px] w-[290px] overflow-y-auto rounded-xl border border-[#333239] bg-[#1B1B1E] p-1.5 shadow-2xl;
+  .agent-resource-popover {
+    @apply fixed z-[1200] overflow-hidden border border-[#35353B] bg-[#1A1A1D] p-1.5 text-[#E9E9EC] shadow-2xl;
+    width: min(324px, calc(100vw - 3.5rem));
+    border-radius: 8px;
+    box-shadow: 0 18px 48px rgb(0 0 0 / 46%), 0 0 0 1px rgb(255 255 255 / 2%);
   }
 
-  .agent-skill-menu > button {
-    @apply flex w-full flex-col rounded-md px-2.5 py-2 text-left text-xs text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent;
+  .agent-resource-tabs {
+    @apply grid h-9 grid-cols-2 gap-1 border-b border-white/[0.07] px-0.5 pb-1;
   }
 
-  .agent-skill-menu small {
-    @apply mt-0.5 line-clamp-2 text-[10px] leading-4 text-muted-foreground;
+  .agent-resource-tabs button {
+    @apply relative flex min-w-0 items-center justify-center gap-1.5 rounded-md text-[11px] font-medium text-[#85858D] outline-none transition-colors hover:bg-white/[0.04] hover:text-[#D5D5D9] focus-visible:ring-1 focus-visible:ring-primary/70;
+  }
+
+  .agent-resource-tabs button.is-active {
+    @apply bg-white/[0.07] text-primary;
+  }
+
+  .agent-resource-tabs button.is-active::after {
+    @apply absolute -bottom-1 left-1/2 h-px w-7 -translate-x-1/2 bg-primary content-[''];
+  }
+
+  .agent-resource-panel {
+    @apply pt-1.5;
+  }
+
+  .agent-resource-heading {
+    @apply flex flex-col gap-0.5 px-2 pb-1.5 pt-1;
+  }
+
+  .agent-resource-heading strong {
+    @apply text-[11px] font-medium text-[#D7D7DB];
+  }
+
+  .agent-resource-heading span {
+    @apply text-[10px] leading-4 text-[#717179];
+  }
+
+  .agent-resource-list {
+    @apply max-h-[218px] overflow-y-auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 14%) transparent;
+  }
+
+  .agent-resource-option {
+    @apply flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[#B9B9C0] outline-none transition-colors hover:bg-white/[0.05] hover:text-[#ECECEF] focus-visible:ring-1 focus-visible:ring-primary/65;
+  }
+
+  .agent-resource-option.is-selected {
+    @apply bg-primary/[0.08] text-primary;
+  }
+
+  .agent-resource-option-icon {
+    @apply flex size-7 shrink-0 items-center justify-center rounded-md border border-white/[0.07] bg-[#222226] text-[#97979F];
+  }
+
+  .agent-resource-option.is-selected .agent-resource-option-icon {
+    @apply border-primary/25 bg-primary/10 text-primary;
+  }
+
+  .agent-resource-option-copy {
+    @apply flex min-w-0 flex-1 flex-col gap-0.5;
+  }
+
+  .agent-resource-option-copy strong {
+    @apply truncate text-[11px] font-medium;
+  }
+
+  .agent-resource-option-copy small {
+    @apply line-clamp-1 text-[9px] leading-3 text-[#72727A];
+  }
+
+  .agent-resource-option.is-selected .agent-resource-option-copy small {
+    @apply text-primary/55;
+  }
+
+  .agent-resource-option > svg:last-child {
+    @apply shrink-0 text-primary;
+  }
+
+  .agent-model-entry,
+  .agent-resource-search {
+    @apply mx-1.5 mt-1 flex h-9 items-center gap-2 rounded-md border border-white/[0.08] bg-[#121214] px-2 text-[#777780] transition-colors focus-within:border-primary/35 focus-within:text-[#A8A8AF];
+  }
+
+  .agent-model-entry input,
+  .agent-resource-search input {
+    @apply min-w-0 flex-1 bg-transparent text-[10px] text-[#DDDEE1] outline-none placeholder:text-[#66666E];
+  }
+
+  .agent-model-entry button {
+    @apply h-6 shrink-0 rounded-md bg-primary px-2 text-[9px] font-medium text-primary-foreground transition-colors hover:bg-primary/85 disabled:cursor-not-allowed disabled:opacity-30;
+  }
+
+  .agent-resource-search {
+    @apply mb-1 mt-0.5;
+  }
+
+  .agent-resource-settings {
+    @apply mx-1.5 mt-1 flex h-7 items-center text-[9px] text-[#74747C] transition-colors hover:text-primary;
+  }
+
+  .agent-resource-empty {
+    @apply px-3 py-6 text-center text-[10px] text-[#686870];
   }
 
   .agent-skill-import {
-    @apply mt-1 flex h-9 items-center gap-2 border-t border-sidebar-border px-2 pt-1 text-muted-foreground;
+    @apply mt-1.5 flex h-9 items-center gap-2 border-t border-white/[0.07] px-2 pt-1 text-[#777780];
   }
 
   .agent-skill-import input {
@@ -775,7 +870,11 @@
   }
 
   .agent-skill-import button {
-    @apply flex size-6 items-center justify-center hover:text-sidebar-foreground;
+    @apply flex size-6 items-center justify-center rounded-md transition-colors hover:bg-white/[0.05] hover:text-primary disabled:cursor-not-allowed disabled:opacity-30;
+  }
+
+  .agent-resource-panel .agent-skill-error {
+    @apply mb-0 mt-1 px-2;
   }
 
   .generation-panel-composer {

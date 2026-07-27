@@ -29,6 +29,7 @@ export type AgentCanvasSelectionPreview = {
 type UseAgentTasksOptions = {
   getCanvasContext: () => AgentCanvasContext
   selectedSkillId?: string
+  selectedTextModel?: string
   onBusyChange?: (busy: boolean) => void
   onForegroundTaskChange?: (task?: AgentTask) => void
 }
@@ -54,6 +55,7 @@ async function readTaskResponse(response: Response) {
 export function useAgentTasks({
   getCanvasContext,
   selectedSkillId,
+  selectedTextModel,
   onBusyChange,
   onForegroundTaskChange,
 }: UseAgentTasksOptions) {
@@ -67,6 +69,7 @@ export function useAgentTasks({
     >()
   )
   const writebackRevisionRef = useRef("")
+  const textModelByTaskRef = useRef(new Map<string, string>())
   const foregroundTask = useMemo(() => selectForegroundTask(tasks), [tasks])
 
   const upsertTask = useCallback((task: AgentTask) => {
@@ -135,7 +138,9 @@ export function useAgentTasks({
               textCredentials: {
                 baseUrl: config.textBaseUrl,
                 apiKey: config.textApiKey,
-                model: config.textModel,
+                model:
+                  textModelByTaskRef.current.get(foregroundTask.id) ||
+                  config.textModel,
               },
               imageCredentials: {
                 baseUrl: config.baseUrl,
@@ -188,9 +193,11 @@ export function useAgentTasks({
         sourceBounds: context.sourceBounds,
         viewportBounds: context.viewportBounds,
       })
+      const textModel = selectedTextModel?.trim()
+      if (textModel) textModelByTaskRef.current.set(created.id, textModel)
       upsertTask(created)
     },
-    [getCanvasContext, selectedSkillId, upsertTask]
+    [getCanvasContext, selectedSkillId, selectedTextModel, upsertTask]
   )
 
   const performTaskAction = useCallback(

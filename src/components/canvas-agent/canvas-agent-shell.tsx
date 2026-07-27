@@ -345,6 +345,7 @@ export function CanvasAgentShell({
   onForegroundTaskChange,
 }: CanvasAgentShellProps) {
   const [selectedSkillId, setSelectedSkillId] = useState("")
+  const [selectedTextModel, setSelectedTextModel] = useState("")
   const [conversationStartedAt, setConversationStartedAt] = useState("")
   const [showHistory, setShowHistory] = useState(false)
   const {
@@ -358,6 +359,7 @@ export function CanvasAgentShell({
   } = useAgentTasks({
     getCanvasContext,
     selectedSkillId,
+    selectedTextModel,
     onBusyChange,
     onForegroundTaskChange,
   })
@@ -409,6 +411,7 @@ export function CanvasAgentShell({
     setConversationStartedAt(new Date().toISOString())
     setShowHistory(false)
     setSelectedSkillId("")
+    setSelectedTextModel("")
   }
 
   const openApiSettings = () => {
@@ -524,7 +527,13 @@ export function CanvasAgentShell({
                       <span className="canvas-agent-context-button" title="自动读取当前画布选区" aria-label="自动读取当前画布选区">
                         <HugeiconsIcon icon={Add01Icon} size={18} strokeWidth={1.7} />
                       </span>
-                      <SkillPicker compact value={selectedSkillId} onChange={setSelectedSkillId} />
+                      <SkillPicker
+                        compact
+                        value={selectedSkillId}
+                        onChange={setSelectedSkillId}
+                        modelValue={selectedTextModel}
+                        onModelChange={setSelectedTextModel}
+                      />
                       <span className="canvas-agent-canvas-button" title="当前画布" aria-label="当前画布">
                         <HugeiconsIcon icon={Image01Icon} size={17} strokeWidth={1.7} />
                       </span>
