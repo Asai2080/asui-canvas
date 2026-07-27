@@ -742,7 +742,7 @@
   .agent-resource-popover {
     @apply fixed z-[1200] overflow-hidden border border-[#35353B] bg-[#1A1A1D] p-1.5 text-[#E9E9EC] shadow-2xl;
     width: min(324px, calc(100vw - 3.5rem));
-    border-radius: 8px;
+    border-radius: 16px;
     box-shadow: 0 18px 48px rgb(0 0 0 / 46%), 0 0 0 1px rgb(255 255 255 / 2%);
   }
 
@@ -820,18 +820,12 @@
     @apply shrink-0 text-primary;
   }
 
-  .agent-model-entry,
   .agent-resource-search {
     @apply mx-1.5 mt-1 flex h-9 items-center gap-2 rounded-md border border-white/[0.08] bg-[#121214] px-2 text-[#777780] transition-colors focus-within:border-primary/35 focus-within:text-[#A8A8AF];
   }
 
-  .agent-model-entry input,
   .agent-resource-search input {
     @apply min-w-0 flex-1 bg-transparent text-[10px] text-[#DDDEE1] outline-none placeholder:text-[#66666E];
-  }
-
-  .agent-model-entry button {
-    @apply h-6 shrink-0 rounded-md bg-primary px-2 text-[9px] font-medium text-primary-foreground transition-colors hover:bg-primary/85 disabled:cursor-not-allowed disabled:opacity-30;
   }
 
   .agent-resource-search {
@@ -839,7 +833,7 @@
   }
 
   .agent-resource-settings {
-    @apply mx-1.5 mt-1 flex h-7 items-center text-[9px] text-[#74747C] transition-colors hover:text-primary;
+    @apply mx-1.5 mt-1 flex h-8 items-center gap-1.5 text-[9px] text-[#74747C] transition-colors hover:text-primary;
   }
 
   .agent-resource-empty {

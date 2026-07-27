@@ -10,6 +10,7 @@ import {
   FolderInputIcon,
   Refresh03Icon,
   Search01Icon,
+  Settings01Icon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons"
 
@@ -47,7 +48,6 @@ export function SkillPicker({
   const [popoverPosition, setPopoverPosition] = useState({ left: 12, bottom: 12 })
   const [activeTab, setActiveTab] = useState<PickerTab>("model")
   const [configuredModel, setConfiguredModel] = useState("")
-  const [modelDraft, setModelDraft] = useState("")
   const [skillQuery, setSkillQuery] = useState("")
   const [sourcePath, setSourcePath] = useState("")
   const [error, setError] = useState("")
@@ -99,6 +99,12 @@ export function SkillPicker({
     return () =>
       window.removeEventListener(API_CONFIG_CHANGED_EVENT, readConfiguredModel)
   }, [])
+
+  useEffect(() => {
+    if (modelValue && configuredModel && modelValue !== configuredModel) {
+      onModelChange("")
+    }
+  }, [configuredModel, modelValue, onModelChange])
 
   useEffect(() => {
     if (!isOpen) return
@@ -168,21 +174,12 @@ export function SkillPicker({
         `${skill.name} ${skill.path}`.toLocaleLowerCase().includes(normalizedQuery)
       )
     : discovered
-  const activeModel = modelValue.trim() || configuredModel
   const triggerLabel = selected?.name ?? (modelValue.trim() || "模型 / Skill")
   const importSkill = () => {
     if (!sourcePath.trim()) return
     void registerSkill("import", sourcePath.trim()).catch((reason) =>
       setError(reason instanceof Error ? reason.message : "Skill 导入失败")
     )
-  }
-
-  const applyCustomModel = () => {
-    const model = modelDraft.trim()
-    if (!model) return
-    onModelChange(model)
-    setModelDraft("")
-    setIsOpen(false)
   }
 
   const openModelSettings = () => {
@@ -263,9 +260,13 @@ export function SkillPicker({
               </div>
               <button
                 type="button"
-                className={`agent-resource-option${!modelValue.trim() ? " is-selected" : ""}`}
+                className={`agent-resource-option${configuredModel && (!modelValue.trim() || modelValue === configuredModel) ? " is-selected" : ""}`}
                 onClick={() => {
-                  onModelChange("")
+                  if (!configuredModel) {
+                    openModelSettings()
+                    return
+                  }
+                  onModelChange(configuredModel)
                   setIsOpen(false)
                 }}
               >
@@ -273,46 +274,17 @@ export function SkillPicker({
                   <HugeiconsIcon icon={AiBrain03Icon} size={15} strokeWidth={1.7} />
                 </span>
                 <span className="agent-resource-option-copy">
-                  <strong>跟随 API 设置</strong>
-                  <small>{configuredModel || "未配置文字模型"}</small>
+                  <strong>{configuredModel || "未配置思考模型"}</strong>
+                  <small>{configuredModel ? "Agent 思考模型" : "请先在设置中填写模型 ID"}</small>
                 </span>
-                {!modelValue.trim() && (
+                {configuredModel && (!modelValue.trim() || modelValue === configuredModel) && (
                   <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} strokeWidth={1.8} />
                 )}
               </button>
 
-              {modelValue.trim() && (
-                <button type="button" className="agent-resource-option is-selected" onClick={() => setIsOpen(false)}>
-                  <span className="agent-resource-option-icon">
-                    <HugeiconsIcon icon={AiBrain03Icon} size={15} strokeWidth={1.7} />
-                  </span>
-                  <span className="agent-resource-option-copy">
-                    <strong>当前模型</strong>
-                    <small>{activeModel}</small>
-                  </span>
-                  <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} strokeWidth={1.8} />
-                </button>
-              )}
-
-              <div className="agent-model-entry">
-                <input
-                  value={modelDraft}
-                  onChange={(event) => setModelDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault()
-                      applyCustomModel()
-                    }
-                  }}
-                  placeholder="输入自定义模型 ID"
-                  aria-label="自定义思考模型 ID"
-                />
-                <button type="button" onClick={applyCustomModel} disabled={!modelDraft.trim()}>
-                  使用
-                </button>
-              </div>
               <button type="button" className="agent-resource-settings" onClick={openModelSettings}>
-                管理 API 与生成模型
+                <HugeiconsIcon icon={Settings01Icon} size={13} strokeWidth={1.7} />
+                前往设置添加或修改模型
               </button>
             </div>
           ) : (
