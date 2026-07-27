@@ -16,8 +16,10 @@ import {
   createShapeId,
   Editor,
   FrameShapeUtil,
+  Group2d,
   HTMLContainer,
   ImageShapeUtil,
+  Rectangle2d,
   Tldraw,
   TLAssetId,
   TLFrameShape,
@@ -114,6 +116,26 @@ const isVideoNodeShape = (shape?: TLShape | null) => {
 }
 
 class AsuiFrameShapeUtil extends FrameShapeUtil {
+  override getGeometry(shape: TLFrameShape) {
+    if (!isImageHolderShape(shape) && !isVideoNodeShape(shape)) {
+      return super.getGeometry(shape)
+    }
+
+    const geometry = super.getGeometry(shape)
+    if (!(geometry instanceof Group2d)) return geometry
+
+    return new Group2d({
+      children: [
+        new Rectangle2d({
+          width: shape.props.w,
+          height: shape.props.h,
+          isFilled: true,
+        }),
+        ...geometry.children.slice(1),
+      ],
+    })
+  }
+
   override component(shape: TLFrameShape) {
     const content = super.component(shape)
     const isAsuiNode = isImageHolderShape(shape) || isVideoNodeShape(shape)
