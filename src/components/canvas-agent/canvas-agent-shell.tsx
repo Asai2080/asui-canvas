@@ -13,7 +13,9 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Add01Icon,
+  AiBrain03Icon,
   AlertCircleIcon,
+  ArrowDown01Icon,
   ArrowUp01Icon,
   CheckmarkCircle02Icon,
   Clock01Icon,
@@ -109,6 +111,93 @@ function TaskStatusIcon({ status }: { status: AgentTask["status"] }) {
   return <HugeiconsIcon icon={Clock01Icon} size={14} strokeWidth={1.8} />
 }
 
+function AgentThinkingDisclosure({ task }: { task: AgentTask }) {
+  const isTerminal = isAgentTaskTerminal(task)
+  const [open, setOpen] = useState(!isTerminal)
+  const steps = task.executionPlan?.steps ?? []
+  const completedSteps = steps.filter((step) => step.status === "completed").length
+  const thinkingLabel =
+    task.status === "completed" || task.status === "partially-completed"
+      ? "已完成思考"
+      : task.status === "failed"
+        ? "思考已停止"
+        : task.status === "cancelled"
+          ? "已取消思考"
+          : "思考中"
+  const stageSummary =
+    task.status === "queued"
+      ? "任务正在等待执行，我会自动读取目标和画布上下文。"
+      : task.status === "understanding"
+        ? "正在识别创作目标、媒体类型、数量和尺寸要求。"
+        : task.status === "reading-skill"
+          ? "正在读取所选 Skill，并整理可执行约束。"
+          : task.status === "reading-canvas"
+            ? "正在读取当前画布、选区和引用节点。"
+            : task.status === "compiling-prompt"
+              ? "正在把目标整理为可执行的生成提示词。"
+              : task.status === "planning"
+                ? "正在拆分生成、写回画布和版本关系步骤。"
+                : task.status === "executing"
+                  ? "执行计划已就绪，正在生成图片或视频。"
+                  : task.status === "writing-canvas"
+                    ? "生成已完成，正在把结果写回对应画布节点。"
+                    : task.status === "completed"
+                      ? "目标已经执行完成，结果已写回画布。"
+                      : task.status === "partially-completed"
+                        ? "部分结果已经完成，其余步骤未能全部执行。"
+                        : task.status === "failed"
+                          ? "执行遇到问题，已保留当前计划和可恢复状态。"
+                          : "任务已经取消，当前执行状态已保留。"
+
+  return (
+    <details
+      className="agent-thinking"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>
+        <span className="agent-thinking-title">
+          <HugeiconsIcon
+            icon={AiBrain03Icon}
+            size={14}
+            strokeWidth={1.7}
+            className={isTerminal ? undefined : "agent-thinking-pulse"}
+          />
+          <strong>{thinkingLabel}</strong>
+        </span>
+        <HugeiconsIcon
+          icon={ArrowDown01Icon}
+          size={14}
+          strokeWidth={1.8}
+          className="agent-thinking-chevron"
+        />
+      </summary>
+      <div className="agent-thinking-content">
+        <p>{stageSummary}</p>
+        {task.interpretation?.summary && (
+          <p>
+            <span>目标理解</span>
+            {task.interpretation.summary}
+          </p>
+        )}
+        {task.compiledPrompt && (
+          <p>
+            <span>生成输出</span>
+            已整理 {task.compiledPrompt.outputs.length} 个提示词
+          </p>
+        )}
+        {steps.length > 0 && (
+          <p>
+            <span>执行进度</span>
+            {completedSteps} / {steps.length} 个步骤已完成
+          </p>
+        )}
+        <small>仅展示可审计的任务摘要</small>
+      </div>
+    </details>
+  )
+}
+
 function AgentTaskBubble({ task }: { task: AgentTask }) {
   const context = useContext(AgentMessageContext)
   const isTerminal = isAgentTaskTerminal(task)
@@ -128,6 +217,11 @@ function AgentTaskBubble({ task }: { task: AgentTask }) {
           {statusLabel}
         </span>
       </div>
+
+      <AgentThinkingDisclosure
+        key={`${task.id}-${isTerminal ? "terminal" : "active"}`}
+        task={task}
+      />
 
       <p className="agent-bubble-reply">{reply}</p>
 
