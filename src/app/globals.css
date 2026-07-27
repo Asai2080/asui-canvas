@@ -1016,8 +1016,40 @@
     backdrop-filter: blur(2px);
   }
 
+  .canvas-generation-status-overlay.is-aurora {
+    background: rgb(8 6 10 / 28%);
+    backdrop-filter: none;
+  }
+
+  .canvas-generation-status-overlay.is-aurora::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background:
+      linear-gradient(180deg, rgb(8 6 10 / 8%), rgb(8 6 10 / 30%)),
+      radial-gradient(circle at 50% 55%, transparent 0 24%, rgb(8 6 10 / 18%) 72%);
+  }
+
+  .aurora-container {
+    @apply absolute inset-0 size-full;
+    z-index: 0;
+    opacity: 0.9;
+  }
+
+  .aurora-container canvas {
+    @apply block size-full;
+  }
+
   .canvas-generation-status-overlay__content {
     @apply relative z-10 flex min-h-24 max-w-[calc(100%_-_32px)] items-center justify-center gap-3.5 rounded-full border border-white/10 bg-[#111113]/95 py-3 pl-3 pr-7 text-center text-sm font-medium text-[#d7d7da] shadow-2xl;
+  }
+
+  .canvas-generation-status-overlay__content.is-aurora {
+    @apply min-h-0 gap-0 border-white/15 bg-[#111113]/80 px-5 py-3 text-[#f2f2f4] backdrop-blur-md;
+    box-shadow:
+      0 12px 34px rgb(0 0 0 / 32%),
+      inset 0 1px 0 rgb(255 255 255 / 7%);
   }
 
   .canvas-generation-status-overlay__content.is-compact {

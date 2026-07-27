@@ -1712,6 +1712,7 @@ export function AiCanvas() {
     bounds: Bounds
     label: string
     state: OrbState
+    effect: "orb" | "aurora"
     owner: "direct" | "agent"
   } | null>(null)
   const codexPollingTaskRef = useRef("")
@@ -2042,7 +2043,8 @@ export function AiCanvas() {
   const showGenerationOverlay = useCallback((
     shapeId: TLShapeId,
     label: string,
-    state: OrbState = "working"
+    state: OrbState = "working",
+    effect: "orb" | "aurora" = "orb"
   ) => {
     const editor = editorRef.current
     if (!editor) return
@@ -2050,7 +2052,7 @@ export function AiCanvas() {
     const bounds = getViewportShapeBounds(editor, shapeId)
     if (!bounds) return
 
-    setGenerationOverlay({ shapeId, bounds, label, state, owner: "direct" })
+    setGenerationOverlay({ shapeId, bounds, label, state, effect, owner: "direct" })
   }, [])
 
   const clearGenerationOverlay = useCallback(() => {
@@ -2102,6 +2104,7 @@ export function AiCanvas() {
             bounds,
             label: presentation.label,
             state: presentation.state,
+            effect: "orb",
             owner: "agent",
           }
     )
@@ -2859,7 +2862,7 @@ export function AiCanvas() {
     if (!sourceBounds) return
     const source = versions.find((version) => version.versionId === annotationAction.versionId)
 
-    showGenerationOverlay(annotationAction.imageId, "正在生成新版本", "composing")
+    showGenerationOverlay(annotationAction.imageId, "正在生成新版本", "composing", "aurora")
     setStatus("editing")
     setStatusDetail("")
     try {
@@ -2931,12 +2934,22 @@ export function AiCanvas() {
     const regionBounds = getCutoutRegionBounds(editor, annotationAction.imageId, annotationAction.annotationId)
     if (!sourceImageSrc || !regionBounds) return
 
+    showGenerationOverlay(annotationAction.imageId, "正在启动抠图服务", "searching", "aurora")
     setStatus("editing")
     setStatusDetail("正在抠取圈选区域主体")
     try {
       const cropped = await cropImageRegionToDataUrl(sourceImageSrc, toBounds(sourceBounds), regionBounds)
       const version = await runWithAutoManagedCutoutService({
-        onPhase: (phase) => setStatusDetail(cutoutPhaseLabel[phase]),
+        onPhase: (phase) => {
+          const label = cutoutPhaseLabel[phase]
+          setStatusDetail(label)
+          showGenerationOverlay(
+            annotationAction.imageId,
+            label,
+            phase === "processing" ? "working" : "searching",
+            "aurora"
+          )
+        },
         run: async () =>
           persistImageVersion(
             await generateCutoutVersion({
@@ -2967,14 +2980,16 @@ export function AiCanvas() {
       setVersions((current) => [...current, version])
       setStatus("success")
       setStatusDetail("")
+      clearGenerationOverlay()
     } catch (error) {
       console.error("Failed to cut out annotation region", error)
       const message = errorMessage(error, "抠图失败")
       setStatus("error")
       setStatusDetail(message)
       setToastMessage(message)
+      clearGenerationOverlay()
     }
-  }, [annotationAction])
+  }, [annotationAction, clearGenerationOverlay, showGenerationOverlay])
 
   const cutoutSelectedHolder = useCallback(async () => {
     const editor = editorRef.current
@@ -3002,7 +3017,7 @@ export function AiCanvas() {
         : Math.max(1, Math.round(holderBounds.h))
     const sourceVersionId = getCanvasImageVersionId(sourceImageShape)
 
-    showGenerationOverlay(holderId, "正在启动抠图服务", "searching")
+    showGenerationOverlay(holderId, "正在启动抠图服务", "searching", "aurora")
     setStatus("editing")
     setStatusDetail("正在启动抠图服务")
 
@@ -3014,7 +3029,8 @@ export function AiCanvas() {
           showGenerationOverlay(
             holderId,
             label,
-            phase === "processing" ? "working" : "searching"
+            phase === "processing" ? "working" : "searching",
+            "aurora"
           )
         },
         run: async () => {
@@ -3070,7 +3086,12 @@ export function AiCanvas() {
     if (!sourceBounds) return
     const source = versions.find((version) => version.versionId === multiAnnotationAction.versionId)
 
-    showGenerationOverlay(multiAnnotationAction.imageId, "正在整合多个标注", "solving")
+    showGenerationOverlay(
+      multiAnnotationAction.imageId,
+      "正在整合多个标注",
+      "solving",
+      "aurora"
+    )
     setStatus("editing")
     setStatusDetail("")
     try {
@@ -3690,6 +3711,7 @@ export function AiCanvas() {
           bounds={generationOverlay.bounds}
           label={generationOverlay.label}
           state={generationOverlay.state}
+          effect={generationOverlay.effect}
         />
       )}
       {toastMessage && (
