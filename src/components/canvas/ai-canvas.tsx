@@ -68,6 +68,10 @@ import { generatePoster } from "@/lib/canvas/poster-generator"
 import { resolveCanvasSizePreset, type CanvasSizePresetId } from "@/lib/canvas/size-presets"
 import { normalizeCanvasSize } from "@/lib/canvas/size"
 import type { Bounds, CanvasSelection, CanvasSize, GenerationStatus, ImageVersion, ReferenceImage } from "@/lib/canvas/types"
+import {
+  runWithAutoManagedCutoutService,
+  type CutoutServicePhase,
+} from "@/lib/cutout/client-service"
 import { normalizeVideoReferenceSource } from "@/lib/video-generation/reference-source"
 
 const CanvasAgentShell = dynamic(
@@ -211,6 +215,11 @@ const isCanvasSizePresetId = (value: unknown): value is CanvasSizePresetId =>
   typeof value === "string" && ["custom", "1:1", "2:3", "3:4", "9:16", "3:2", "16:9", "a4", "web"].includes(value)
 
 const errorMessage = (error: unknown, fallback: string) => (error instanceof Error ? error.message : fallback)
+const cutoutPhaseLabel: Record<CutoutServicePhase, string> = {
+  starting: "正在启动抠图服务",
+  processing: "正在识别主体并移除背景",
+  stopping: "正在关闭抠图服务",
+}
 
 const toBounds = (box: { x: number; y: number; w: number; h: number }): Bounds => ({
   x: box.x,
@@ -2926,13 +2935,17 @@ export function AiCanvas() {
     setStatusDetail("正在抠取圈选区域主体")
     try {
       const cropped = await cropImageRegionToDataUrl(sourceImageSrc, toBounds(sourceBounds), regionBounds)
-      const version = await persistImageVersion(
-        await generateCutoutVersion({
-          imageSrc: cropped.src,
-          width: cropped.width,
-          height: cropped.height,
-        })
-      )
+      const version = await runWithAutoManagedCutoutService({
+        onPhase: (phase) => setStatusDetail(cutoutPhaseLabel[phase]),
+        run: async () =>
+          persistImageVersion(
+            await generateCutoutVersion({
+              imageSrc: cropped.src,
+              width: cropped.width,
+              height: cropped.height,
+            })
+          ),
+      })
       const obstacles = editor
         .getCurrentPageShapes()
         .filter((shape) => shape.id !== annotationAction.imageId)
@@ -2989,19 +3002,32 @@ export function AiCanvas() {
         : Math.max(1, Math.round(holderBounds.h))
     const sourceVersionId = getCanvasImageVersionId(sourceImageShape)
 
-    showGenerationOverlay(holderId, "正在抠图", "working")
+    showGenerationOverlay(holderId, "正在启动抠图服务", "searching")
     setStatus("editing")
-    setStatusDetail("正在识别主体并移除背景")
+    setStatusDetail("正在启动抠图服务")
 
     try {
-      const cutoutVersion = await generateCutoutVersion({
-        imageSrc: sourceImageSrc,
-        width: sourceWidth,
-        height: sourceHeight,
-      })
-      const version = await persistImageVersion({
-        ...cutoutVersion,
-        parentVersionId: parentVersionIdFromCanvasVersionId(sourceVersionId),
+      const version = await runWithAutoManagedCutoutService({
+        onPhase: (phase) => {
+          const label = cutoutPhaseLabel[phase]
+          setStatusDetail(label)
+          showGenerationOverlay(
+            holderId,
+            label,
+            phase === "processing" ? "working" : "searching"
+          )
+        },
+        run: async () => {
+          const cutoutVersion = await generateCutoutVersion({
+            imageSrc: sourceImageSrc,
+            width: sourceWidth,
+            height: sourceHeight,
+          })
+          return persistImageVersion({
+            ...cutoutVersion,
+            parentVersionId: parentVersionIdFromCanvasVersionId(sourceVersionId),
+          })
+        },
       })
       const obstacles = editor
         .getCurrentPageShapes()
