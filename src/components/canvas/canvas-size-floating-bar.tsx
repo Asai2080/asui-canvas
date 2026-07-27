@@ -239,10 +239,10 @@ export function CanvasSizeFloatingBar({
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-8 gap-1.5 rounded-[10px] px-2.5 text-xs text-[#b8b8c0] hover:bg-white/[0.07] hover:text-[#f2f2f4]"
+                  className="h-8 gap-1.5 rounded-[10px] px-2.5 text-xs text-[#b8b8c0] hover:bg-white/[0.07] hover:text-[#f2f2f4] disabled:text-[#73737c] disabled:opacity-100"
                   disabled={isCuttingOut || !onCutout}
-                  aria-label={isCuttingOut ? "正在抠图" : "抠图"}
-                  title="抠图"
+                  aria-label={isCuttingOut ? "正在抠图" : onCutout ? "抠图" : "抠图，请先生成或放入图片"}
+                  title={onCutout ? "抠图" : "请先生成或放入图片"}
                   onClick={onCutout}
                 >
                   <HugeiconsIcon

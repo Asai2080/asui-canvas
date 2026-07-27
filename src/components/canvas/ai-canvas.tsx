@@ -3801,7 +3801,7 @@ export function AiCanvas() {
           presetId={sizeBar.presetId}
           onPresetChange={applySelectedPreset}
           onSizeChange={(nextSize) => updateSelectedCanvasSize(nextSize, "custom")}
-          showCutout={canCutoutSelectedHolder}
+          showCutout={selection.kind === "holder"}
           isCuttingOut={status === "editing"}
           onCutout={canCutoutSelectedHolder ? () => void cutoutSelectedHolder() : undefined}
         />
