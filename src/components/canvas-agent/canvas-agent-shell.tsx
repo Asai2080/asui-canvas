@@ -28,6 +28,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { BorderBeam } from "border-beam"
 
+import { EdgeBlur } from "@/components/ui/edge-blur"
 import type { AgentTask } from "@/lib/canvas-agent/task-schema"
 
 import { CuriousAiOrb } from "./curious-ai-orb"
@@ -469,6 +470,11 @@ export function CanvasAgentShell({
             </ThreadPrimitive.Empty>
             <ThreadPrimitive.Messages components={{ Message: ThreadMessage }} />
             <ThreadPrimitive.ViewportFooter className="canvas-agent-composer-wrap">
+              <EdgeBlur
+                position="bottom"
+                height={68}
+                className="canvas-agent-scroll-edge-blur"
+              />
               {error && <p className="canvas-agent-error" role="alert">{error}</p>}
               <BorderBeam
                 size="md"

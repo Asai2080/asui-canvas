@@ -403,6 +403,22 @@
     scrollbar-color: rgb(255 255 255 / 18%) transparent;
   }
 
+  .edge-blur {
+    @apply pointer-events-none absolute left-0 right-0 overflow-hidden;
+  }
+
+  .edge-blur[data-position="top"] {
+    top: 0;
+  }
+
+  .edge-blur[data-position="bottom"] {
+    bottom: 0;
+  }
+
+  .edge-blur__layer {
+    @apply absolute inset-0;
+  }
+
   .canvas-agent-empty {
     @apply mx-auto my-auto flex max-w-[340px] -translate-y-5 flex-col items-center px-5 text-center;
   }
@@ -671,6 +687,16 @@
 
   .canvas-agent-composer-wrap {
     @apply sticky bottom-0 mt-auto bg-[#151515] px-5 pb-5 pt-3;
+    z-index: 10;
+  }
+
+  .canvas-agent-scroll-edge-blur {
+    bottom: calc(100% - 1px) !important;
+  }
+
+  .canvas-agent-scroll-edge-blur::after {
+    @apply absolute inset-0 content-[''];
+    background: linear-gradient(to bottom, transparent 8%, rgb(21 21 21 / 76%) 100%);
   }
 
   .canvas-agent-error,
