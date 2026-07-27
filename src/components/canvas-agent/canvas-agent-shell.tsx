@@ -13,7 +13,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Add01Icon,
-  AiBrain03Icon,
   AlertCircleIcon,
   ArrowDown01Icon,
   ArrowUp01Icon,
@@ -34,6 +33,7 @@ import type { AgentTask } from "@/lib/canvas-agent/task-schema"
 import { CuriousAiOrb } from "./curious-ai-orb"
 import { isAgentTaskTerminal, tasksToThreadMessages } from "./agent-view-model"
 import { SkillPicker } from "./skill-picker"
+import { ThinkingAnimationIcon } from "./thinking-animation-icon"
 import {
   type AgentCanvasContext,
   type AgentCanvasSelectionPreview,
@@ -157,12 +157,7 @@ function AgentThinkingDisclosure({ task }: { task: AgentTask }) {
     >
       <summary>
         <span className="agent-thinking-title">
-          <HugeiconsIcon
-            icon={AiBrain03Icon}
-            size={14}
-            strokeWidth={1.7}
-            className={isTerminal ? undefined : "agent-thinking-pulse"}
-          />
+          <ThinkingAnimationIcon active={!isTerminal} />
           <strong>{thinkingLabel}</strong>
         </span>
         <HugeiconsIcon

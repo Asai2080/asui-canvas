@@ -541,16 +541,12 @@
     gap: 6px;
   }
 
-  .agent-thinking-title > svg {
-    @apply text-primary;
+  .agent-thinking-animation {
+    @apply size-[18px] shrink-0;
   }
 
   .agent-thinking-title strong {
     @apply font-medium text-[#D5D5DA];
-  }
-
-  .agent-thinking-pulse {
-    animation: agent-thinking-pulse 1600ms ease-in-out infinite;
   }
 
   .agent-thinking-chevron {
@@ -579,17 +575,6 @@
 
   .agent-thinking-content small {
     @apply block pt-0.5 text-[9px] text-[#5F5F66];
-  }
-
-  @keyframes agent-thinking-pulse {
-    0%,
-    100% {
-      opacity: 0.55;
-    }
-    50% {
-      opacity: 1;
-      filter: drop-shadow(0 0 5px rgb(163 254 68 / 48%));
-    }
   }
 
   .agent-bubble-reply {
