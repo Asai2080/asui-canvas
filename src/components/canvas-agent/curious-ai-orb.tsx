@@ -157,11 +157,11 @@ const LOOK_SEQUENCE = [
 const PALETTE = {
   base: [0.05, 0.075, 0.085] as const,
   rimA: [0.38, 0.86, 0.94] as const,
-  rimB: [0.73, 0.33, 0.94] as const,
-  speckA: [0.88, 0.275, 0.985] as const,
+  rimB: [0.64, 0.996, 0.267] as const,
+  speckA: [0.64, 0.996, 0.267] as const,
   speckB: [0.4, 0.91, 1] as const,
-  eye: "rgba(255, 140, 245, 0.85)",
-  eyeGlow: "rgba(225, 90, 230, 0.70)",
+  eye: "rgba(163, 254, 68, 0.90)",
+  eyeGlow: "rgba(163, 254, 68, 0.70)",
 }
 
 export function CuriousAiOrb() {
