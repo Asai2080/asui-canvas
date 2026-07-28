@@ -4,6 +4,7 @@ import type { AgentTask } from "@/lib/canvas-agent/task-schema"
 
 import {
   getAgentTaskResultText,
+  isAgentCapabilityIntroduction,
   isAgentTaskTerminal,
   selectForegroundTask,
   tasksToConversationHistory,
@@ -132,6 +133,7 @@ describe("agent view model", () => {
     expect(getAgentTaskResultText(conversation)).toBe(
       conversation.interpretation.message
     )
+    expect(isAgentCapabilityIntroduction(conversation)).toBe(true)
     expect(tasksToThreadMessages([conversation])[1]).toMatchObject({
       content: [{ type: "text", text: conversation.interpretation.message }],
     })

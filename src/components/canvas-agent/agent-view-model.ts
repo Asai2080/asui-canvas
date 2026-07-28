@@ -57,6 +57,12 @@ export function getAgentTaskResultText(task: AgentTask) {
   return "正在处理当前任务。"
 }
 
+export function isAgentCapabilityIntroduction(task: AgentTask) {
+  if (task.interpretation?.intent !== "conversation") return false
+  const message = task.interpretation.message
+  return message.includes("生成图片") && message.includes("生成视频")
+}
+
 export function tasksToConversationHistory(
   tasks: readonly AgentTask[],
   activeTaskId?: string

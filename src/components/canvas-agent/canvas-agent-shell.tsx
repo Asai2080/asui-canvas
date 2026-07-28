@@ -22,6 +22,7 @@ import {
   Settings01Icon,
   SidebarRight01Icon,
   StopIcon,
+  Video01Icon,
 } from "@hugeicons/core-free-icons"
 import { BorderBeam } from "border-beam"
 
@@ -31,6 +32,7 @@ import type { AgentTask } from "@/lib/canvas-agent/task-schema"
 import { CuriousAiOrb } from "./curious-ai-orb"
 import {
   getAgentTaskResultText,
+  isAgentCapabilityIntroduction,
   isAgentTaskTerminal,
   tasksToThreadMessages,
 } from "./agent-view-model"
@@ -88,10 +90,42 @@ function formatTaskTime(task: AgentTask) {
 function AgentTaskBubble({ task }: { task: AgentTask }) {
   const context = useContext(AgentMessageContext)
   if (!isAgentTaskTerminal(task)) return null
+  const resultText = getAgentTaskResultText(task)
+  const showCapabilityIntroduction = isAgentCapabilityIntroduction(task)
 
   return (
     <div className={`agent-bubble agent-bubble--assistant agent-bubble--result status-${task.status}`}>
-      <p className="agent-result-copy">{getAgentTaskResultText(task)}</p>
+      {showCapabilityIntroduction ? (
+        <div className="agent-capability-intro">
+          <div className="agent-capability-intro__heading">
+            <strong>有什么我可以帮你的？</strong>
+            <span>从图片或视频创作开始</span>
+          </div>
+          <div className="agent-capability-intro__list">
+            <div className="agent-capability-intro__item">
+              <span className="agent-capability-intro__icon">
+                <HugeiconsIcon icon={Image01Icon} size={15} strokeWidth={1.7} />
+              </span>
+              <span>
+                <strong>生成图片</strong>
+                <small>海报、主视觉、插画与图片编辑</small>
+              </span>
+            </div>
+            <div className="agent-capability-intro__item">
+              <span className="agent-capability-intro__icon">
+                <HugeiconsIcon icon={Video01Icon} size={15} strokeWidth={1.7} />
+              </span>
+              <span>
+                <strong>生成视频</strong>
+                <small>图生视频、广告短片与动态版本</small>
+              </span>
+            </div>
+          </div>
+          <p className="agent-capability-intro__footer">告诉我你的需求，我会继续帮你完成。</p>
+        </div>
+      ) : (
+        <p className="agent-result-copy">{resultText}</p>
+      )}
       <div className="agent-result-meta">
         <time dateTime={task.completedAt ?? task.updatedAt}>
           {formatTaskTime(task)}
