@@ -469,6 +469,7 @@ export function CanvasAgentShell({
               </div>
             </ThreadPrimitive.Empty>
             <ThreadPrimitive.Messages components={{ Message: ThreadMessage }} />
+            <div className="canvas-agent-scroll-clearance" aria-hidden="true" />
             <ThreadPrimitive.ViewportFooter className="canvas-agent-composer-wrap">
               <EdgeBlur
                 position="bottom"

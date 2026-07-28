@@ -403,6 +403,11 @@
     scrollbar-color: rgb(255 255 255 / 18%) transparent;
   }
 
+  .canvas-agent-scroll-clearance {
+    height: 84px;
+    flex: 0 0 84px;
+  }
+
   .edge-blur {
     @apply pointer-events-none absolute left-0 right-0 overflow-hidden;
   }
