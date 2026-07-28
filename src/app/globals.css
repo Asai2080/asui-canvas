@@ -525,83 +525,49 @@
   .agent-capability-intro {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
   }
 
   .agent-capability-intro__heading {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .agent-capability-intro__heading strong {
+    margin: 0;
     color: #f1f1f3;
-    font-size: 14px;
+    font-size: 18px;
     font-weight: 600;
-    line-height: 22px;
-  }
-
-  .agent-capability-intro__heading span {
-    color: #777780;
-    font-size: 11px;
-    line-height: 18px;
+    line-height: 28px;
   }
 
   .agent-capability-intro__list {
-    display: grid;
-    gap: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .agent-capability-intro__item {
-    display: grid;
-    min-height: 50px;
-    grid-template-columns: 32px minmax(0, 1fr);
+    display: flex;
     align-items: center;
-    gap: 10px;
-    border: 1px solid rgb(255 255 255 / 6%);
-    border-radius: 8px;
-    background: rgb(255 255 255 / 2.5%);
-    padding: 7px 10px;
+    gap: 8px;
+    color: #dedee2;
+    font-size: 13px;
+    line-height: 22px;
   }
 
-  .agent-capability-intro__icon {
-    display: flex;
-    width: 30px;
-    height: 30px;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid rgb(163 254 68 / 20%);
-    border-radius: 8px;
-    background: rgb(163 254 68 / 8%);
-    color: #a3fe44;
-  }
-
-  .agent-capability-intro__item > span:last-child {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
+  .agent-capability-intro__emoji {
+    width: 20px;
+    flex: 0 0 20px;
+    font-size: 16px;
+    line-height: 20px;
+    text-align: center;
   }
 
   .agent-capability-intro__item strong {
-    color: #e2e2e5;
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 19px;
-  }
-
-  .agent-capability-intro__item small {
-    overflow: hidden;
-    color: #74747c;
-    font-size: 10px;
-    line-height: 16px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-weight: 600;
   }
 
   .agent-capability-intro__footer {
-    color: #96969e;
-    font-size: 11px;
-    line-height: 18px;
+    margin: 0;
+    color: #c4c4c9;
+    font-size: 13px;
+    line-height: 22px;
   }
 
   .agent-result-meta {

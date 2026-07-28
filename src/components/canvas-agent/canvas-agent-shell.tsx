@@ -22,7 +22,6 @@ import {
   Settings01Icon,
   SidebarRight01Icon,
   StopIcon,
-  Video01Icon,
 } from "@hugeicons/core-free-icons"
 import { BorderBeam } from "border-beam"
 
@@ -97,31 +96,20 @@ function AgentTaskBubble({ task }: { task: AgentTask }) {
     <div className={`agent-bubble agent-bubble--assistant agent-bubble--result status-${task.status}`}>
       {showCapabilityIntroduction ? (
         <div className="agent-capability-intro">
-          <div className="agent-capability-intro__heading">
-            <strong>有什么我可以帮你的？</strong>
-            <span>从图片或视频创作开始</span>
-          </div>
+          <h3 className="agent-capability-intro__heading">
+            有什么可以帮助你的？🤔
+          </h3>
           <div className="agent-capability-intro__list">
             <div className="agent-capability-intro__item">
-              <span className="agent-capability-intro__icon">
-                <HugeiconsIcon icon={Image01Icon} size={15} strokeWidth={1.7} />
-              </span>
-              <span>
-                <strong>生成图片</strong>
-                <small>海报、主视觉、插画与图片编辑</small>
-              </span>
+              <span className="agent-capability-intro__emoji" aria-hidden="true">🎨</span>
+              <strong>生成图片</strong>
             </div>
             <div className="agent-capability-intro__item">
-              <span className="agent-capability-intro__icon">
-                <HugeiconsIcon icon={Video01Icon} size={15} strokeWidth={1.7} />
-              </span>
-              <span>
-                <strong>生成视频</strong>
-                <small>图生视频、广告短片与动态版本</small>
-              </span>
+              <span className="agent-capability-intro__emoji" aria-hidden="true">🎬</span>
+              <span>生成视频</span>
             </div>
           </div>
-          <p className="agent-capability-intro__footer">告诉我你的需求，我会继续帮你完成。</p>
+          <p className="agent-capability-intro__footer">告诉我你的需求哟～</p>
         </div>
       ) : (
         <p className="agent-result-copy">{resultText}</p>
