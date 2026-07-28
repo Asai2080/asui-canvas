@@ -773,24 +773,60 @@
   }
 
   .canvas-agent-active-thinking {
-    @apply mx-1 mb-2.5 flex h-9 items-center gap-2 rounded-full border border-white/[0.08] bg-[#1B1B1E]/95 px-3 text-[11px] text-[#92929A];
+    position: relative;
+    z-index: 2;
+    display: flex;
+    height: 36px;
+    margin: 0 4px 10px;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+    border: 1px solid rgb(255 255 255 / 8%);
+    border-radius: 9999px;
+    background: rgb(27 27 30 / 95%);
+    padding: 0 12px;
+    color: #92929a;
+    font-size: 11px;
+    line-height: 1;
     box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
   }
 
   .canvas-agent-active-thinking__title {
-    @apply flex shrink-0 items-center gap-1.5 text-[#DCDCE0];
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 6px;
+    color: #dcdce0;
   }
 
   .canvas-agent-active-thinking__title strong {
-    @apply font-medium;
+    font-weight: 500;
   }
 
   .canvas-agent-active-thinking__stage {
-    @apply min-w-0 flex-1 truncate text-[#74747C];
+    min-width: 0;
+    flex: 1 1 0%;
+    overflow: hidden;
+    color: #74747c;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .canvas-agent-active-thinking button {
-    @apply flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-[#8D8D95] transition-colors hover:bg-white/[0.06] hover:text-[#E8E8EB];
+    display: flex;
+    height: 24px;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 4px;
+    border-radius: 9999px;
+    padding: 0 8px;
+    color: #8d8d95;
+    transition: color 150ms ease, background-color 150ms ease;
+  }
+
+  .canvas-agent-active-thinking button:hover {
+    background: rgb(255 255 255 / 6%);
+    color: #e8e8eb;
   }
 
   .canvas-agent-scroll-edge-blur {
