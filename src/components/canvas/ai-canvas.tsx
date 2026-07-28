@@ -378,6 +378,28 @@ function getHolderAtPagePoint(editor: Editor, point: { x: number; y: number }) {
   )
 }
 
+function getCanvasNodeFrameIdForDirectHit(editor: Editor, shape?: TLShape) {
+  if (!shape) return null
+  if (
+    shape.type === "frame" &&
+    (isImageHolderShape(shape) || isVideoNodeShape(shape))
+  ) {
+    return shape.id as TLShapeId
+  }
+  if (shape.type !== "image" && shape.type !== "video") return null
+  if (!String(shape.parentId).startsWith("shape:")) return null
+
+  const parent = editor.getShape(shape.parentId as TLShapeId)
+  if (
+    parent?.type === "frame" &&
+    (isImageHolderShape(parent) || isVideoNodeShape(parent))
+  ) {
+    return parent.id as TLShapeId
+  }
+
+  return null
+}
+
 function connectorAnchor(bounds: Bounds, side: ConnectorSide) {
   return {
     x: side === "left" ? bounds.x : bounds.x + bounds.w,
@@ -1680,7 +1702,6 @@ export function AiCanvas() {
   const unlistenRef = useRef<(() => void) | null>(null)
   const viewportSyncFrameRef = useRef<number | null>(null)
   const lastSelectionKeyRef = useRef("")
-  const pendingHolderSelectionRef = useRef<TLShapeId | null>(null)
   const [selection, setSelection] = useState<CanvasSelection | null>(null)
   const [annotationAction, setAnnotationAction] = useState<{
     annotationId: TLShapeId
@@ -1830,22 +1851,8 @@ export function AiCanvas() {
   }, [])
 
   const syncSelection = useCallback((editor: Editor) => {
-    const rawSelection = getSelection(editor)
-    const pendingHolderId = pendingHolderSelectionRef.current
-    const pendingHolderShape = pendingHolderId ? editor.getShape(pendingHolderId) : null
-    const pendingHolderMeta = shapeMeta(pendingHolderShape)
-    const pendingHolderSelection =
-      pendingHolderId &&
-      pendingHolderShape &&
-      (pendingHolderMeta.kind === "image-holder" || pendingHolderMeta.asuiNode === "image-holder")
-        ? ({ shapeId: pendingHolderId, kind: "holder" } satisfies CanvasSelection)
-        : null
-    const nextSelection = rawSelection ?? pendingHolderSelection
+    const nextSelection = getSelection(editor)
     const nextSelectedShapeIds = editor.getSelectedShapeIds()
-
-    if (rawSelection) {
-      pendingHolderSelectionRef.current = null
-    }
 
     setVideoNodeLinks(getVideoNodeLinks(editor))
     setVersionNodeLinks(getVersionNodeLinks(editor))
@@ -2457,39 +2464,17 @@ export function AiCanvas() {
 
       const viewportPoint = { x: event.clientX, y: event.clientY }
       const pagePoint = getPagePointFromViewportPoint(editor, viewportPoint)
-      const holderId = getHolderAtPagePoint(editor, pagePoint)
-      if (!holderId) {
-        pendingHolderSelectionRef.current = null
-        return
-      }
+      const hitShape = editor.getShapeAtPoint(pagePoint, {
+        hitInside: true,
+        hitFrameInside: true,
+        margin: 0,
+        renderingOnly: true,
+      })
+      const canvasNodeId = getCanvasNodeFrameIdForDirectHit(editor, hitShape)
+      if (!canvasNodeId || editor.getOnlySelectedShapeId() === canvasNodeId) return
 
-      const currentSelection = getSelection(editor)
-      if (currentSelection && currentSelection.kind !== "holder") return
-      if (currentSelection?.shapeId === holderId) return
-
-      pendingHolderSelectionRef.current = holderId
-      editor.select(holderId)
+      editor.select(canvasNodeId)
       syncSelection(editor)
-      event.preventDefault()
-      event.stopPropagation()
-
-      window.setTimeout(() => {
-        const holderId = pendingHolderSelectionRef.current
-        if (!holderId) return
-
-        const currentSelection = getSelection(editor)
-        if (currentSelection && currentSelection.kind !== "holder") {
-          pendingHolderSelectionRef.current = null
-          return
-        }
-        if (currentSelection?.shapeId === holderId) {
-          pendingHolderSelectionRef.current = null
-          return
-        }
-
-        editor.select(holderId)
-        pendingHolderSelectionRef.current = null
-      }, 0)
     },
     [syncSelection]
   )
