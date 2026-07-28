@@ -13,10 +13,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Add01Icon,
-  AlertCircleIcon,
-  ArrowDown01Icon,
   ArrowUp01Icon,
-  CheckmarkCircle02Icon,
   Clock01Icon,
   Image01Icon,
   Loading03Icon,
@@ -32,7 +29,11 @@ import { EdgeBlur } from "@/components/ui/edge-blur"
 import type { AgentTask } from "@/lib/canvas-agent/task-schema"
 
 import { CuriousAiOrb } from "./curious-ai-orb"
-import { isAgentTaskTerminal, tasksToThreadMessages } from "./agent-view-model"
+import {
+  getAgentTaskResultText,
+  isAgentTaskTerminal,
+  tasksToThreadMessages,
+} from "./agent-view-model"
 import { SkillPicker } from "./skill-picker"
 import { ThinkingAnimationIcon } from "./thinking-animation-icon"
 import {
@@ -66,232 +67,35 @@ const STATUS_LABELS: Partial<Record<AgentTask["status"], string>> = {
   cancelled: "取消",
 }
 
-const STEP_STATUS_LABELS: Record<
-  NonNullable<AgentTask["executionPlan"]>["steps"][number]["status"],
-  string
-> = {
-  pending: "待执行",
-  running: "执行中",
-  completed: "已完成",
-  failed: "失败",
-  cancelled: "已取消",
-}
-
 type AgentMessageContextValue = {
   tasksByMessageId: ReadonlyMap<string, AgentTask>
-  cancelTask: (taskId: string) => Promise<void>
   retryTask: (taskId: string) => Promise<void>
 }
 
 const AgentMessageContext = createContext<AgentMessageContextValue | null>(null)
 
-function TaskStatusIcon({ status }: { status: AgentTask["status"] }) {
-  if (status === "completed") {
-    return <HugeiconsIcon icon={CheckmarkCircle02Icon} size={14} strokeWidth={1.8} />
-  }
-
-  if (status === "failed" || status === "partially-completed") {
-    return <HugeiconsIcon icon={AlertCircleIcon} size={14} strokeWidth={1.8} />
-  }
-
-  if (status === "cancelled") {
-    return <HugeiconsIcon icon={MultiplicationSignIcon} size={14} strokeWidth={1.8} />
-  }
-
-  if (status === "executing" || status === "writing-canvas") {
-    return (
-      <HugeiconsIcon
-        icon={Loading03Icon}
-        size={14}
-        strokeWidth={1.8}
-        className="animate-spin"
-      />
-    )
-  }
-
-  return <HugeiconsIcon icon={Clock01Icon} size={14} strokeWidth={1.8} />
-}
-
-function AgentThinkingDisclosure({ task }: { task: AgentTask }) {
-  const isTerminal = isAgentTaskTerminal(task)
-  const [open, setOpen] = useState(!isTerminal)
-  const steps = task.executionPlan?.steps ?? []
-  const completedSteps = steps.filter((step) => step.status === "completed").length
-  const thinkingLabel =
-    task.status === "completed" || task.status === "partially-completed"
-      ? "已完成思考"
-      : task.status === "failed"
-        ? "思考已停止"
-        : task.status === "cancelled"
-          ? "已取消思考"
-          : "思考中"
-  const stageSummary =
-    task.status === "queued"
-      ? "任务正在等待执行，我会自动读取目标和画布上下文。"
-      : task.status === "understanding"
-        ? "正在识别创作目标、媒体类型、数量和尺寸要求。"
-        : task.status === "reading-skill"
-          ? "正在读取所选 Skill，并整理可执行约束。"
-          : task.status === "reading-canvas"
-            ? "正在读取当前画布、选区和引用节点。"
-            : task.status === "compiling-prompt"
-              ? "正在把目标整理为可执行的生成提示词。"
-              : task.status === "planning"
-                ? "正在拆分生成、写回画布和版本关系步骤。"
-                : task.status === "executing"
-                  ? "执行计划已就绪，正在生成图片或视频。"
-                  : task.status === "writing-canvas"
-                    ? "生成已完成，正在把结果写回对应画布节点。"
-                    : task.status === "completed"
-                      ? "目标已经执行完成，结果已写回画布。"
-                      : task.status === "partially-completed"
-                        ? "部分结果已经完成，其余步骤未能全部执行。"
-                        : task.status === "failed"
-                          ? "执行遇到问题，已保留当前计划和可恢复状态。"
-                          : "任务已经取消，当前执行状态已保留。"
-
-  return (
-    <details
-      className="agent-thinking"
-      open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-    >
-      <summary>
-        <span className="agent-thinking-title">
-          <ThinkingAnimationIcon active={!isTerminal} />
-          <strong>{thinkingLabel}</strong>
-        </span>
-        <HugeiconsIcon
-          icon={ArrowDown01Icon}
-          size={14}
-          strokeWidth={1.8}
-          className="agent-thinking-chevron"
-        />
-      </summary>
-      <div className="agent-thinking-content">
-        <p>{stageSummary}</p>
-        {task.interpretation?.summary && (
-          <p>
-            <span>目标理解</span>
-            {task.interpretation.summary}
-          </p>
-        )}
-        {task.compiledPrompt && (
-          <p>
-            <span>生成输出</span>
-            已整理 {task.compiledPrompt.outputs.length} 个提示词
-          </p>
-        )}
-        {steps.length > 0 && (
-          <p>
-            <span>执行进度</span>
-            {completedSteps} / {steps.length} 个步骤已完成
-          </p>
-        )}
-        <small>仅展示可审计的任务摘要</small>
-      </div>
-    </details>
-  )
+function formatTaskTime(task: AgentTask) {
+  const value = task.completedAt ?? task.updatedAt
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value))
 }
 
 function AgentTaskBubble({ task }: { task: AgentTask }) {
   const context = useContext(AgentMessageContext)
-  const isTerminal = isAgentTaskTerminal(task)
-  const statusLabel = STATUS_LABELS[task.status] ?? task.status
-  const reply =
-    task.interpretation?.message ??
-    (task.status === "queued"
-      ? "任务已加入队列，我会在前一个任务结束后自动开始。"
-      : "我正在理解你的目标，并准备接下来的执行步骤。")
+  if (!isAgentTaskTerminal(task)) return null
 
   return (
-    <div className={`agent-bubble agent-bubble--assistant status-${task.status}`}>
-      <div className="agent-bubble-header">
-        <span className="agent-bubble-author">Agent</span>
-        <span className="agent-bubble-status">
-          <TaskStatusIcon status={task.status} />
-          {statusLabel}
-        </span>
-      </div>
-
-      <AgentThinkingDisclosure
-        key={`${task.id}-${isTerminal ? "terminal" : "active"}`}
-        task={task}
-      />
-
-      <p className="agent-bubble-reply">{reply}</p>
-
-      {task.interpretation?.summary && (
-        <section className="agent-bubble-section">
-          <span className="agent-bubble-section-label">任务摘要</span>
-          <p>{task.interpretation.summary}</p>
-        </section>
-      )}
-
-      {task.compiledPrompt && (
-        <section className="agent-bubble-section">
-          <span className="agent-bubble-section-label">生成提示词</span>
-          <p>{task.compiledPrompt.summary}</p>
-          <details className="agent-bubble-details">
-            <summary>
-              查看 {task.compiledPrompt.outputs.length} 个输出提示词
-            </summary>
-            <ol>
-              {task.compiledPrompt.outputs.map((output) => (
-                <li key={output.id}>{output.prompt}</li>
-              ))}
-            </ol>
-          </details>
-        </section>
-      )}
-
-      {task.executionPlan && (
-        <section className="agent-bubble-section">
-          <span className="agent-bubble-section-label">执行步骤</span>
-          <ol className="agent-step-list">
-            {task.executionPlan.steps.map((step) => (
-              <li key={step.id} className={`status-${step.status}`}>
-                <span className="agent-step-indicator" aria-hidden="true" />
-                <span className="agent-step-title">{step.title}</span>
-                <span className="agent-step-status">
-                  {STEP_STATUS_LABELS[step.status]}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-
-      {task.error && (
-        <div className="agent-bubble-error" role="alert">
-          <strong>执行失败</strong>
-          <span>{task.error.message}</span>
-        </div>
-      )}
-
-      {task.resultNodeIds.length > 0 && (
-        <p className="agent-bubble-result">
-          已写回画布 · {task.resultNodeIds.length} 个节点
-        </p>
-      )}
-
-      <div className="agent-bubble-footer">
-        <span>
-          {task.interpretation?.source === "text-model"
-            ? "文字模型理解"
-            : task.interpretation
-              ? "本地规则理解"
-              : "正在准备"}
-        </span>
-        {!isTerminal && task.status !== "writing-canvas" && (
-          <button
-            type="button"
-            onClick={() => void context?.cancelTask(task.id)}
-          >
-            <HugeiconsIcon icon={StopIcon} size={13} strokeWidth={1.8} />
-            取消
-          </button>
-        )}
+    <div className={`agent-bubble agent-bubble--assistant agent-bubble--result status-${task.status}`}>
+      <p className="agent-result-copy">{getAgentTaskResultText(task)}</p>
+      <div className="agent-result-meta">
+        <time dateTime={task.completedAt ?? task.updatedAt}>
+          {formatTaskTime(task)}
+        </time>
         {task.status === "failed" && task.error?.retryable && (
           <button
             type="button"
@@ -302,6 +106,40 @@ function AgentTaskBubble({ task }: { task: AgentTask }) {
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+function AgentActiveThinkingStatus({
+  task,
+  queuedBehind,
+  onCancel,
+}: {
+  task: AgentTask
+  queuedBehind: number
+  onCancel: (taskId: string) => Promise<void>
+}) {
+  return (
+    <div className="canvas-agent-active-thinking" role="status" aria-live="polite">
+      <span className="canvas-agent-active-thinking__title">
+        <ThinkingAnimationIcon active />
+        <strong>思考中</strong>
+      </span>
+      <span className="canvas-agent-active-thinking__stage">
+        {STATUS_LABELS[task.status] ?? "处理中"}
+        {queuedBehind > 0 ? ` · ${queuedBehind} 个排队` : ""}
+      </span>
+      {task.status !== "writing-canvas" && (
+        <button
+          type="button"
+          onClick={() => void onCancel(task.id)}
+          aria-label="停止当前任务"
+          title="停止"
+        >
+          <HugeiconsIcon icon={StopIcon} size={13} strokeWidth={1.8} />
+          停止
+        </button>
+      )}
     </div>
   )
 }
@@ -381,8 +219,8 @@ export function CanvasAgentShell({
     [visibleTasks]
   )
   const messageContextValue = useMemo<AgentMessageContextValue>(
-    () => ({ tasksByMessageId, cancelTask, retryTask }),
-    [cancelTask, retryTask, tasksByMessageId]
+    () => ({ tasksByMessageId, retryTask }),
+    [retryTask, tasksByMessageId]
   )
   const runtime = useExternalStoreRuntime({
     messages,
@@ -429,12 +267,6 @@ export function CanvasAgentShell({
         <header className="canvas-agent-header">
           <div className="canvas-agent-heading">
             <h2>{showHistory ? "历史对话" : "新对话"}</h2>
-            {foregroundTask && (
-              <span>
-                {STATUS_LABELS[foregroundTask.status]}
-                {queuedBehind > 0 ? ` · ${queuedBehind} 个排队` : ""}
-              </span>
-            )}
           </div>
           <div className="canvas-agent-header-actions">
             <button type="button" className="canvas-agent-icon-button" onClick={startNewConversation} aria-label="新建对话" title="新建对话">
@@ -476,6 +308,13 @@ export function CanvasAgentShell({
                 height={68}
                 className="canvas-agent-scroll-edge-blur"
               />
+              {foregroundTask && (
+                <AgentActiveThinkingStatus
+                  task={foregroundTask}
+                  queuedBehind={queuedBehind}
+                  onCancel={cancelTask}
+                />
+              )}
               {error && <p className="canvas-agent-error" role="alert">{error}</p>}
               <BorderBeam
                 size="md"

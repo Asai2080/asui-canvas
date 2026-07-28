@@ -9,21 +9,6 @@ const TERMINAL_STATUSES = new Set<AgentTask["status"]>([
   "cancelled",
 ])
 
-const STATUS_LABELS: Record<AgentTask["status"], string> = {
-  queued: "排队中",
-  understanding: "理解目标",
-  "reading-skill": "读取 Skill",
-  "reading-canvas": "读取画布",
-  "compiling-prompt": "整理提示词",
-  planning: "制定步骤",
-  executing: "执行生成",
-  "writing-canvas": "写回画布",
-  completed: "已完成",
-  "partially-completed": "部分完成",
-  failed: "执行失败",
-  cancelled: "已取消",
-}
-
 export function isAgentTaskTerminal(task: AgentTask) {
   return TERMINAL_STATUSES.has(task.status)
 }
@@ -34,43 +19,34 @@ export function selectForegroundTask(tasks: readonly AgentTask[]) {
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))[0]
 }
 
-function assistantSummary(task: AgentTask) {
-  const sections = task.interpretation
-    ? [
-        task.interpretation.message,
-        `任务摘要：${task.interpretation.summary}`,
-        `理解方式：${
-          task.interpretation.source === "text-model"
-            ? "文字模型"
-            : "本地规则"
-        }`,
-        `状态：${STATUS_LABELS[task.status]}`,
-      ]
-    : [`状态：${STATUS_LABELS[task.status]}`]
+export function getAgentTaskResultText(task: AgentTask) {
+  const summary = task.interpretation?.summary
+  const target = summary ? `“${summary}”` : "当前任务"
+  const resultCount = task.resultNodeIds.length
+  const resultText =
+    resultCount > 0
+      ? `${resultCount} 个结果已写入画布`
+      : "任务已处理完成"
 
-  if (task.compiledPrompt) {
-    sections.push(`提示词摘要：${task.compiledPrompt.summary}`)
-    sections.push(
-      `输出提示词：\n${task.compiledPrompt.outputs
-        .map((output, index) => `${index + 1}. ${output.prompt}`)
-        .join("\n")}`
-    )
+  if (task.status === "completed") {
+    return `已完成${target}，${resultText}。`
   }
 
-  if (task.executionPlan) {
-    sections.push(
-      `执行步骤：\n${task.executionPlan.steps
-        .map((step) => `- ${step.title} · ${step.status}`)
-        .join("\n")}`
-    )
+  if (task.status === "partially-completed") {
+    return `已部分完成${target}${
+      resultCount > 0 ? `，${resultText}` : ""
+    }。`
   }
 
-  if (task.error) sections.push(`错误：${task.error.message}`)
-  if (task.resultNodeIds.length > 0) {
-    sections.push(`画布结果：${task.resultNodeIds.length} 个节点`)
+  if (task.status === "failed") {
+    return `未能完成${target}：${task.error?.message ?? "执行遇到问题，请稍后重试。"}`
   }
 
-  return sections.join("\n\n")
+  if (task.status === "cancelled") {
+    return `已取消${target}。`
+  }
+
+  return "正在处理当前任务。"
 }
 
 export function tasksToThreadMessages(
@@ -80,7 +56,7 @@ export function tasksToThreadMessages(
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
     .flatMap((task) => {
       const createdAt = new Date(task.createdAt)
-      return [
+      const messages: ThreadMessage[] = [
         {
           id: `${task.id}-user`,
           role: "user" as const,
@@ -89,20 +65,25 @@ export function tasksToThreadMessages(
           createdAt,
           metadata: { custom: { taskId: task.id } },
         },
-        {
-          id: `${task.id}-assistant`,
-          role: "assistant" as const,
-          content: [{ type: "text" as const, text: assistantSummary(task) }],
-          status: { type: "complete" as const, reason: "stop" as const },
-          createdAt: new Date(task.updatedAt),
-          metadata: {
-            unstable_state: null,
-            unstable_annotations: [],
-            unstable_data: [],
-            steps: [],
-            custom: { taskId: task.id, taskStatus: task.status },
-          },
+      ]
+
+      if (!isAgentTaskTerminal(task)) return messages
+
+      messages.push({
+        id: `${task.id}-assistant`,
+        role: "assistant" as const,
+        content: [{ type: "text" as const, text: getAgentTaskResultText(task) }],
+        status: { type: "complete" as const, reason: "stop" as const },
+        createdAt: new Date(task.completedAt ?? task.updatedAt),
+        metadata: {
+          unstable_state: null,
+          unstable_annotations: [],
+          unstable_data: [],
+          steps: [],
+          custom: { taskId: task.id, taskStatus: task.status },
         },
-      ] satisfies ThreadMessage[]
+      })
+
+      return messages
     })
 }

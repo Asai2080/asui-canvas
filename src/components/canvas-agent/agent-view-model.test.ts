@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import type { AgentTask } from "@/lib/canvas-agent/task-schema"
 
 import {
+  getAgentTaskResultText,
   isAgentTaskTerminal,
   selectForegroundTask,
   tasksToThreadMessages,
@@ -53,7 +54,7 @@ describe("agent view model", () => {
     expect(selectForegroundTask([completed, queued])?.id).toBe("queued")
   })
 
-  it("maps tasks to auditable user and assistant messages", () => {
+  it("keeps active tasks in the thinking state without an assistant result", () => {
     const planned = {
       ...task("planned", "planning", "2026-07-26T08:00:00.000Z"),
       interpretation: {
@@ -77,15 +78,38 @@ describe("agent view model", () => {
     } satisfies AgentTask
 
     const messages = tasksToThreadMessages([planned])
+
+    expect(messages).toHaveLength(1)
+    expect(messages[0]).toMatchObject({ role: "user" })
+  })
+
+  it("adds only the final result after a task finishes", () => {
+    const completed = {
+      ...task("completed", "completed", "2026-07-26T08:00:00.000Z"),
+      completedAt: "2026-07-26T08:02:00.000Z",
+      resultNodeIds: ["node-one"],
+      interpretation: {
+        message: "我会先整理目标和步骤。",
+        summary: "生成春日海报",
+        normalizedInstruction: "生成春日海报",
+        intent: "image" as const,
+        source: "text-model" as const,
+      },
+    } satisfies AgentTask
+
+    const messages = tasksToThreadMessages([completed])
     const serialized = JSON.stringify(messages)
 
     expect(messages).toHaveLength(2)
-    expect(messages[0]).toMatchObject({ role: "user" })
-    expect(messages[1]).toMatchObject({ role: "assistant" })
-    expect(serialized).toContain("生成两张克制的茶饮海报")
-    expect(serialized).toContain("青绿色茶饮海报，留白排版")
-    expect(serialized).toContain("我已理解这个海报任务")
-    expect(serialized).toContain("理解方式：文字模型")
+    expect(messages[1]).toMatchObject({
+      role: "assistant",
+      content: [{ type: "text", text: "已完成“生成春日海报”，1 个结果已写入画布。" }],
+      createdAt: new Date("2026-07-26T08:02:00.000Z"),
+    })
+    expect(getAgentTaskResultText(completed)).toBe(
+      "已完成“生成春日海报”，1 个结果已写入画布。"
+    )
+    expect(serialized).not.toContain("我会先整理目标和步骤")
     expect(serialized).not.toContain("内部状态记录不应原样展示")
   })
 })
