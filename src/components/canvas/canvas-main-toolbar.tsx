@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState } from "react"
+import { createContext, useCallback, useContext, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   AiChat01Icon,
@@ -9,13 +9,23 @@ import {
   CursorPointer01Icon,
   HandIcon,
   ImageAdd01Icon,
+  ImageCropIcon,
+  ImageDownloadIcon,
   Loading03Icon,
   PencilEdit01Icon,
   Settings01Icon,
   TextFontIcon,
   Video01Icon,
 } from "@hugeicons/core-free-icons"
-import { DefaultStylePanel, useEditor, useValue } from "tldraw"
+import {
+  DefaultStylePanel,
+  type Editor,
+  type TLImageShape,
+  type TLShapeId,
+  useActions,
+  useEditor,
+  useValue,
+} from "tldraw"
 
 type CanvasMainToolbarContextValue = {
   assistantMode: "codex" | "agent"
@@ -51,13 +61,89 @@ function ToolButton({ active, label, onClick, icon }: ToolButtonProps) {
   )
 }
 
+function getSelectedImageShape(editor: Editor) {
+  const selectedShape = editor.getOnlySelectedShape()
+  if (!selectedShape) return null
+  if (selectedShape.type === "image") return selectedShape as TLImageShape
+  if (selectedShape.type !== "frame") return null
+
+  const meta = (selectedShape.meta ?? {}) as Record<string, unknown>
+  const isImageCanvas =
+    meta.kind === "image-holder" || meta.asuiNode === "image-holder"
+  if (!isImageCanvas) return null
+
+  const latestImageShapeId =
+    typeof meta.latestImageShapeId === "string"
+      ? (meta.latestImageShapeId as TLShapeId)
+      : null
+  const latestImageShape = latestImageShapeId
+    ? editor.getShape<TLImageShape>(latestImageShapeId)
+    : null
+  if (latestImageShape?.type === "image") return latestImageShape
+
+  const imageShapeIds = editor
+    .getSortedChildIdsForParent(selectedShape.id)
+    .filter((shapeId) => editor.getShape(shapeId)?.type === "image")
+  const fallbackImageShapeId = imageShapeIds[imageShapeIds.length - 1]
+  return fallbackImageShapeId
+    ? editor.getShape<TLImageShape>(fallbackImageShapeId) ?? null
+    : null
+}
+
 export function CanvasMainToolbar() {
   const editor = useEditor()
-  const actions = useContext(CanvasMainToolbarContext)
+  const canvasActions = useContext(CanvasMainToolbarContext)
+  const tldrawActions = useActions()
   const [styleOpen, setStyleOpen] = useState(false)
   const currentToolId = useValue("current canvas tool", () => editor.getCurrentToolId(), [editor])
+  const selectedImageShape = useValue(
+    "selected image for main toolbar",
+    () => getSelectedImageShape(editor),
+    [editor]
+  )
+  const isCroppingImage = useValue(
+    "is cropping selected image",
+    () => editor.isIn("select.crop."),
+    [editor]
+  )
 
-  if (!actions) return null
+  const toggleImageCrop = useCallback(() => {
+    setStyleOpen(false)
+    if (isCroppingImage) {
+      editor.setCroppingShape(null)
+      editor.setCurrentTool("select.idle")
+      return
+    }
+    if (!selectedImageShape) return
+    editor.select(selectedImageShape.id)
+    editor.setCurrentTool("select.crop.idle")
+  }, [editor, isCroppingImage, selectedImageShape])
+
+  const downloadSelectedImage = useCallback(async () => {
+    if (!selectedImageShape) return
+    setStyleOpen(false)
+
+    const previousSelection = editor.getSelectedShapeIds()
+    const needsTemporarySelection = !previousSelection.includes(selectedImageShape.id)
+    if (needsTemporarySelection) {
+      editor.setSelectedShapes([selectedImageShape.id])
+    }
+
+    try {
+      await tldrawActions["download-original"].onSelect("toolbar")
+    } finally {
+      const currentSelection = editor.getSelectedShapeIds()
+      if (
+        needsTemporarySelection &&
+        currentSelection.length === 1 &&
+        currentSelection[0] === selectedImageShape.id
+      ) {
+        editor.setSelectedShapes(previousSelection)
+      }
+    }
+  }, [editor, selectedImageShape, tldrawActions])
+
+  if (!canvasActions) return null
 
   const selectTool = (toolId: string) => {
     setStyleOpen(false)
@@ -68,7 +154,7 @@ export function CanvasMainToolbar() {
     setStyleOpen(false)
     action()
   }
-  const assistantName = actions.assistantMode === "agent" ? "画布 Agent" : "Codex"
+  const assistantName = canvasActions.assistantMode === "agent" ? "画布 Agent" : "Codex"
 
   return (
     <div
@@ -93,12 +179,12 @@ export function CanvasMainToolbar() {
         <ToolButton
           icon={ImageAdd01Icon}
           label="新建图片节点"
-          onClick={() => runAction(actions.onCreateImageNode)}
+          onClick={() => runAction(canvasActions.onCreateImageNode)}
         />
         <ToolButton
           icon={Video01Icon}
           label="新建视频节点"
-          onClick={() => runAction(actions.onCreateVideoNode)}
+          onClick={() => runAction(canvasActions.onCreateVideoNode)}
         />
         <span className="canvas-main-toolbar__separator" aria-hidden="true" />
         <ToolButton
@@ -125,27 +211,43 @@ export function CanvasMainToolbar() {
           active={styleOpen}
           onClick={() => setStyleOpen((open) => !open)}
         />
+        {selectedImageShape && (
+          <>
+            <span className="canvas-main-toolbar__separator" aria-hidden="true" />
+            <ToolButton
+              icon={ImageCropIcon}
+              label={isCroppingImage ? "完成裁剪" : "裁剪图片"}
+              active={isCroppingImage}
+              onClick={toggleImageCrop}
+            />
+            <ToolButton
+              icon={ImageDownloadIcon}
+              label="下载原图"
+              onClick={() => void downloadSelectedImage()}
+            />
+          </>
+        )}
         <span className="canvas-main-toolbar__separator" aria-hidden="true" />
-        {actions.assistantMode === "codex" && (
+        {canvasActions.assistantMode === "codex" && (
           <ToolButton
             icon={Settings01Icon}
             label="API 设置"
-            onClick={() => runAction(actions.onOpenApiConfig)}
+            onClick={() => runAction(canvasActions.onOpenApiConfig)}
           />
         )}
         <button
           type="button"
-          className={`canvas-main-toolbar__button${actions.assistantOpen ? " is-active" : ""}`}
-          aria-label={actions.assistantOpen ? `收起${assistantName}` : `打开${assistantName}`}
-          aria-pressed={actions.assistantOpen}
-          title={actions.assistantOpen ? `收起${assistantName}` : `打开${assistantName}`}
-          onClick={() => runAction(actions.onToggleAssistant)}
+          className={`canvas-main-toolbar__button${canvasActions.assistantOpen ? " is-active" : ""}`}
+          aria-label={canvasActions.assistantOpen ? `收起${assistantName}` : `打开${assistantName}`}
+          aria-pressed={canvasActions.assistantOpen}
+          title={canvasActions.assistantOpen ? `收起${assistantName}` : `打开${assistantName}`}
+          onClick={() => runAction(canvasActions.onToggleAssistant)}
         >
           <HugeiconsIcon
-            icon={actions.assistantBusy ? Loading03Icon : AiChat01Icon}
+            icon={canvasActions.assistantBusy ? Loading03Icon : AiChat01Icon}
             size={16}
             strokeWidth={1.7}
-            className={actions.assistantBusy ? "animate-spin" : undefined}
+            className={canvasActions.assistantBusy ? "animate-spin" : undefined}
             aria-hidden="true"
           />
         </button>

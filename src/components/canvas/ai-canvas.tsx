@@ -178,6 +178,7 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
 }
 
 const TLDRAW_COMPONENTS = {
+  ImageToolbar: null,
   StylePanel: null,
   Toolbar: CanvasMainToolbar,
 }
