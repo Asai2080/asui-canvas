@@ -194,6 +194,7 @@ export function CanvasAgentShell({
     getCanvasContext,
     selectedSkillId,
     selectedTextModel,
+    conversationStartedAt,
     onBusyChange,
     onForegroundTaskChange,
   })

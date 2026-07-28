@@ -48,6 +48,7 @@ export function SkillPicker({
   const [popoverPosition, setPopoverPosition] = useState({ left: 12, bottom: 12 })
   const [activeTab, setActiveTab] = useState<PickerTab>("model")
   const [configuredModel, setConfiguredModel] = useState("")
+  const [isModelReady, setIsModelReady] = useState(false)
   const [skillQuery, setSkillQuery] = useState("")
   const [sourcePath, setSourcePath] = useState("")
   const [error, setError] = useState("")
@@ -92,7 +93,15 @@ export function SkillPicker({
 
   useEffect(() => {
     const readConfiguredModel = () => {
-      setConfiguredModel(readApiConfigFromSession().textModel.trim())
+      const config = readApiConfigFromSession()
+      setConfiguredModel(config.textModel.trim())
+      setIsModelReady(
+        Boolean(
+          config.textBaseUrl.trim() &&
+            config.textApiKey.trim() &&
+            config.textModel.trim()
+        )
+      )
     }
     readConfiguredModel()
     window.addEventListener(API_CONFIG_CHANGED_EVENT, readConfiguredModel)
@@ -101,10 +110,13 @@ export function SkillPicker({
   }, [])
 
   useEffect(() => {
-    if (modelValue && configuredModel && modelValue !== configuredModel) {
+    if (
+      modelValue &&
+      (!isModelReady || !configuredModel || modelValue !== configuredModel)
+    ) {
       onModelChange("")
     }
-  }, [configuredModel, modelValue, onModelChange])
+  }, [configuredModel, isModelReady, modelValue, onModelChange])
 
   useEffect(() => {
     if (!isOpen) return
@@ -260,9 +272,9 @@ export function SkillPicker({
               </div>
               <button
                 type="button"
-                className={`agent-resource-option${configuredModel && (!modelValue.trim() || modelValue === configuredModel) ? " is-selected" : ""}`}
+                className={`agent-resource-option${isModelReady && (!modelValue.trim() || modelValue === configuredModel) ? " is-selected" : ""}`}
                 onClick={() => {
-                  if (!configuredModel) {
+                  if (!isModelReady) {
                     openModelSettings()
                     return
                   }
@@ -274,10 +286,14 @@ export function SkillPicker({
                   <HugeiconsIcon icon={AiBrain03Icon} size={15} strokeWidth={1.7} />
                 </span>
                 <span className="agent-resource-option-copy">
-                  <strong>{configuredModel || "未配置思考模型"}</strong>
-                  <small>{configuredModel ? "Agent 思考模型" : "请先在设置中填写模型 ID"}</small>
+                  <strong>{isModelReady ? configuredModel : "未配置思考模型"}</strong>
+                  <small>
+                    {isModelReady
+                      ? "Agent 对话与任务理解模型"
+                      : "请先在设置中填写 Base URL、API Key 和模型名"}
+                  </small>
                 </span>
-                {configuredModel && (!modelValue.trim() || modelValue === configuredModel) && (
+                {isModelReady && (!modelValue.trim() || modelValue === configuredModel) && (
                   <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} strokeWidth={1.8} />
                 )}
               </button>

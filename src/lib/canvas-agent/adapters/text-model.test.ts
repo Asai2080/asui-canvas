@@ -4,8 +4,18 @@ import { createTextModelAdapter } from "./text-model"
 
 describe("text model adapter", () => {
   it("parses a structured interpretation from an OpenAI-compatible response", async () => {
-    const fetchImpl = vi.fn(async () =>
-      Response.json({
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const requestBody = JSON.parse(String(init?.body)) as {
+        messages: Array<{ role: string; content: string }>
+      }
+      expect(requestBody.messages.slice(1, 3)).toEqual([
+        { role: "user", content: "你能做什么" },
+        {
+          role: "assistant",
+          content: "我可以帮助你进行图片和视频创作。",
+        },
+      ])
+      return Response.json({
         choices: [
           {
             message: {
@@ -20,11 +30,20 @@ describe("text model adapter", () => {
           },
         ],
       })
-    )
+    })
     const adapter = createTextModelAdapter({ fetchImpl })
 
     const result = await adapter.interpret(
-      { userInstruction: "生成4张国风茶饮海报，比例3:4" },
+      {
+        userInstruction: "生成4张国风茶饮海报，比例3:4",
+        conversationHistory: [
+          { role: "user", content: "你能做什么" },
+          {
+            role: "assistant",
+            content: "我可以帮助你进行图片和视频创作。",
+          },
+        ],
+      },
       {
         baseUrl: "https://text.example.com/v1",
         apiKey: "text-secret",
@@ -37,6 +56,42 @@ describe("text model adapter", () => {
       "https://text.example.com/v1/chat/completions",
       expect.objectContaining({ method: "POST" })
     )
+  })
+
+  it("accepts a natural conversation response", async () => {
+    const adapter = createTextModelAdapter({
+      fetchImpl: vi.fn(async () =>
+        Response.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  message:
+                    "有什么我可以帮你的吗？比如：\n\n• 生成图片\n• 生成视频\n\n请告诉我你的需求！",
+                  summary: "普通对话",
+                  normalizedInstruction: "你是谁",
+                  intent: "conversation",
+                }),
+              },
+            },
+          ],
+        })
+      ),
+    })
+
+    const result = await adapter.interpret(
+      { userInstruction: "你是谁" },
+      {
+        baseUrl: "https://text.example.com/v1",
+        apiKey: "text-secret",
+        model: "text-model",
+      }
+    )
+
+    expect(result).toMatchObject({
+      intent: "conversation",
+      summary: "普通对话",
+    })
   })
 
   it("accepts fenced JSON and omits media URLs from text-model context", async () => {
@@ -116,4 +171,3 @@ describe("text model adapter", () => {
     ).rejects.toThrow("文字模型请求失败（HTTP 401）")
   })
 })
-

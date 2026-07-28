@@ -39,6 +39,9 @@ describe("/api/agent/tasks/[taskId]/run", () => {
     )
     const response = await POST(
       request({
+        conversationHistory: [
+          { role: "user", content: "previous-private-message" },
+        ],
         textCredentials: { apiKey: "text-route-secret" },
         imageCredentials: { apiKey: "route-secret" },
       }),
@@ -54,6 +57,7 @@ describe("/api/agent/tasks/[taskId]/run", () => {
     expect(payload.task.status).toBe("understanding")
     expect(taskFile).not.toContain("route-secret")
     expect(taskFile).not.toContain("text-route-secret")
+    expect(taskFile).not.toContain("previous-private-message")
   })
 
   it("rejects malformed credentials", async () => {

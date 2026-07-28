@@ -9,6 +9,7 @@ import {
 import {
   createTextModelAdapter,
   type TextModelCredentials,
+  type TextModelConversationMessage,
   type TextModelInterpretationInput,
 } from "./adapters/text-model"
 import { getStoredCanvasContextSnapshot } from "./context/store"
@@ -40,6 +41,7 @@ export type RunAgentTaskDependencies = {
   imageAdapter?: ExecuteAgentTaskDependencies["imageAdapter"]
   videoAdapter?: ExecuteAgentTaskDependencies["videoAdapter"]
   textAdapter?: ReturnType<typeof createTextModelAdapter>
+  conversationHistory?: TextModelConversationMessage[]
   now?: () => string
   createId?: (prefix: string) => string
 }
@@ -72,12 +74,17 @@ function localInterpretation(
       )
   )
   if (!creative) {
+    const unsafeOperation =
+      /代码|编程|shell|终端|命令|文件系统|读取文件|写入文件|密钥|API Key|联网搜索|网络请求/i.test(
+        instruction
+      )
     return {
-      message:
-        "我可以和你对话并理解任务，但目前只执行图片和视频创作。你可以告诉我要生成或修改什么画面。",
-      summary: "非图片或视频创作请求，未执行画布操作",
+      message: unsafeOperation
+        ? "我目前专注于图片和视频创作，不能执行代码、文件、密钥或任意网络操作。你可以告诉我希望生成或修改什么画面。"
+        : "有什么我可以帮你的吗？比如：\n\n• 生成图片\n• 生成视频\n\n请告诉我你的需求！",
+      summary: unsafeOperation ? "超出图片和视频创作范围" : "普通对话",
       normalizedInstruction: instruction,
-      intent: "unsupported",
+      intent: unsafeOperation ? "unsupported" : "conversation",
       source: "local-rules",
     }
   }
@@ -110,7 +117,12 @@ async function understandTask(
     loadContext(task, dependencies.root),
     loadSkill(task, dependencies.root, timestamp),
   ])
-  const input = { userInstruction: task.userInstruction, context, skill }
+  const input = {
+    userInstruction: task.userInstruction,
+    context,
+    skill,
+    conversationHistory: dependencies.conversationHistory,
+  }
   const useTextModel = Boolean(
     dependencies.textAdapter || hasTextModelCredentials(dependencies.textCredentials)
   )
@@ -124,7 +136,8 @@ async function understandTask(
       ...interpreted,
       source: "text-model",
       target:
-        interpreted.intent === "unsupported"
+        interpreted.intent === "unsupported" ||
+        interpreted.intent === "conversation"
           ? undefined
           : {
               ...interpreted.target,
@@ -243,7 +256,10 @@ export async function runAgentTaskTick(
 
     if (task.status === "understanding") {
       const interpretation = await understandTask(task, dependencies)
-      if (interpretation.intent === "unsupported") {
+      if (
+        interpretation.intent === "unsupported" ||
+        interpretation.intent === "conversation"
+      ) {
         return persistTransition(task, "completed", dependencies, (next) => ({
           ...next,
           interpretation,

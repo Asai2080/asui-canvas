@@ -9,7 +9,10 @@ import type { CanvasContextSnapshot } from "@/lib/canvas-agent/context/schema"
 import type { AgentTask } from "@/lib/canvas-agent/task-schema"
 import { readApiConfigFromSession } from "@/lib/canvas/api-config"
 
-import { selectForegroundTask } from "./agent-view-model"
+import {
+  selectForegroundTask,
+  tasksToConversationHistory,
+} from "./agent-view-model"
 
 export type AgentCanvasContext = {
   snapshot: CanvasContextSnapshot
@@ -30,6 +33,7 @@ type UseAgentTasksOptions = {
   getCanvasContext: () => AgentCanvasContext
   selectedSkillId?: string
   selectedTextModel?: string
+  conversationStartedAt?: string
   onBusyChange?: (busy: boolean) => void
   onForegroundTaskChange?: (task?: AgentTask) => void
 }
@@ -56,6 +60,7 @@ export function useAgentTasks({
   getCanvasContext,
   selectedSkillId,
   selectedTextModel,
+  conversationStartedAt,
   onBusyChange,
   onForegroundTaskChange,
 }: UseAgentTasksOptions) {
@@ -135,6 +140,14 @@ export function useAgentTasks({
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
+              conversationHistory: tasksToConversationHistory(
+                conversationStartedAt
+                  ? tasks.filter(
+                      (task) => task.createdAt >= conversationStartedAt
+                    )
+                  : tasks,
+                foregroundTask.id
+              ),
               textCredentials: {
                 baseUrl: config.textBaseUrl,
                 apiKey: config.textApiKey,
@@ -170,7 +183,13 @@ export function useAgentTasks({
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [foregroundTask, getCanvasContext, upsertTask])
+  }, [
+    conversationStartedAt,
+    foregroundTask,
+    getCanvasContext,
+    tasks,
+    upsertTask,
+  ])
 
   const submitMessage = useCallback(
     async (message: AppendMessage) => {

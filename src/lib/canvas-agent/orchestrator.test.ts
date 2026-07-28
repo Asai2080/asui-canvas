@@ -116,6 +116,62 @@ describe("runAgentTaskTick", () => {
     expect(answered.compiledPrompt).toBeUndefined()
   })
 
+  it("answers ordinary conversation without creating canvas output", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      { userInstruction: "你是谁" },
+      { id: "task-conversation", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      textAdapter: {
+        interpret: vi.fn(async () => ({
+          message:
+            "有什么我可以帮你的吗？比如：\n\n• 生成图片\n• 生成视频\n\n请告诉我你的需求！",
+          summary: "普通对话",
+          normalizedInstruction: "你是谁",
+          intent: "conversation" as const,
+        })),
+      },
+      conversationHistory: [
+        { role: "user" as const, content: "你好" },
+        { role: "assistant" as const, content: "你好，我是阿水画布 Agent。" },
+      ],
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const answered = await runAgentTaskTick(task.id, deps)
+
+    expect(answered.status).toBe("completed")
+    expect(answered.interpretation).toMatchObject({
+      intent: "conversation",
+      source: "text-model",
+    })
+    expect(answered.interpretation?.message).toContain("生成图片")
+    expect(answered.compiledPrompt).toBeUndefined()
+  })
+
+  it("provides a natural local conversation fallback when no text model is configured", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      { userInstruction: "你是谁" },
+      { id: "task-local-conversation", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = dependencies(root)
+
+    await runAgentTaskTick(task.id, deps)
+    const answered = await runAgentTaskTick(task.id, deps)
+
+    expect(answered.status).toBe("completed")
+    expect(answered.interpretation).toMatchObject({
+      intent: "conversation",
+      source: "local-rules",
+    })
+    expect(answered.interpretation?.message).toContain("生成视频")
+  })
+
   it("falls back to local planning when the text model is unavailable", async () => {
     const root = await createRoot()
     const task = createAgentTask(

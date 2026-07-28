@@ -20,6 +20,14 @@ export function selectForegroundTask(tasks: readonly AgentTask[]) {
 }
 
 export function getAgentTaskResultText(task: AgentTask) {
+  if (
+    task.status === "completed" &&
+    (task.interpretation?.intent === "conversation" ||
+      task.interpretation?.intent === "unsupported")
+  ) {
+    return task.interpretation.message
+  }
+
   const summary = task.interpretation?.summary
   const target = summary ? `“${summary}”` : "当前任务"
   const resultCount = task.resultNodeIds.length
@@ -47,6 +55,29 @@ export function getAgentTaskResultText(task: AgentTask) {
   }
 
   return "正在处理当前任务。"
+}
+
+export function tasksToConversationHistory(
+  tasks: readonly AgentTask[],
+  activeTaskId?: string
+) {
+  return [...tasks]
+    .filter(
+      (task) =>
+        task.id !== activeTaskId &&
+        isAgentTaskTerminal(task) &&
+        task.status !== "cancelled"
+    )
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    .slice(-6)
+    .flatMap((task) => [
+      { role: "user" as const, content: task.userInstruction.slice(0, 4_000) },
+      {
+        role: "assistant" as const,
+        content: getAgentTaskResultText(task).slice(0, 4_000),
+      },
+    ])
+    .slice(-12)
 }
 
 export function tasksToThreadMessages(

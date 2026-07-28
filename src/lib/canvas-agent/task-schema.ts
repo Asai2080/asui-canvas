@@ -110,7 +110,7 @@ export const agentInterpretationSchema = z.object({
   message: z.string().trim().min(1).max(2_000),
   summary: z.string().trim().min(1).max(1_000),
   normalizedInstruction: z.string().trim().min(1).max(4_000),
-  intent: z.enum(["image", "video", "unsupported"]),
+  intent: z.enum(["image", "video", "conversation", "unsupported"]),
   source: z.enum(["text-model", "local-rules"]),
   target: z
     .object({

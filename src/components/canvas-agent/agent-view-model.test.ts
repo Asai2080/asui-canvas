@@ -6,6 +6,7 @@ import {
   getAgentTaskResultText,
   isAgentTaskTerminal,
   selectForegroundTask,
+  tasksToConversationHistory,
   tasksToThreadMessages,
 } from "./agent-view-model"
 
@@ -111,5 +112,50 @@ describe("agent view model", () => {
     )
     expect(serialized).not.toContain("我会先整理目标和步骤")
     expect(serialized).not.toContain("内部状态记录不应原样展示")
+  })
+
+  it("shows the text-model reply for conversation tasks", () => {
+    const conversation = {
+      ...task("conversation", "completed", "2026-07-26T08:00:00.000Z"),
+      completedAt: "2026-07-26T08:00:10.000Z",
+      userInstruction: "你是谁",
+      interpretation: {
+        message:
+          "有什么我可以帮你的吗？比如：\n\n• 生成图片\n• 生成视频\n\n请告诉我你的需求！",
+        summary: "普通对话",
+        normalizedInstruction: "你是谁",
+        intent: "conversation" as const,
+        source: "text-model" as const,
+      },
+    } satisfies AgentTask
+
+    expect(getAgentTaskResultText(conversation)).toBe(
+      conversation.interpretation.message
+    )
+    expect(tasksToThreadMessages([conversation])[1]).toMatchObject({
+      content: [{ type: "text", text: conversation.interpretation.message }],
+    })
+  })
+
+  it("builds bounded model conversation history without the active task", () => {
+    const completed = {
+      ...task("completed", "completed", "2026-07-26T08:00:00.000Z"),
+      interpretation: {
+        message: "你好，我可以帮助你进行图片和视频创作。",
+        summary: "普通对话",
+        normalizedInstruction: "你好",
+        intent: "conversation" as const,
+        source: "text-model" as const,
+      },
+    } satisfies AgentTask
+    const active = task("active", "understanding", "2026-07-26T08:01:00.000Z")
+
+    expect(tasksToConversationHistory([completed, active], active.id)).toEqual([
+      { role: "user", content: "目标 completed" },
+      {
+        role: "assistant",
+        content: "你好，我可以帮助你进行图片和视频创作。",
+      },
+    ])
   })
 })
