@@ -2287,7 +2287,7 @@ export function AiCanvas() {
             bounds,
             label: presentation.label,
             state: presentation.state,
-            effect: "orb",
+            effect: "border-beam",
             owner: "agent",
           }
     )
