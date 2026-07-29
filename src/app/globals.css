@@ -1347,14 +1347,15 @@
   .canvas-generation-status-overlay.is-border-beam {
     overflow: hidden;
     background: transparent;
-    box-shadow:
-      inset 0 0 0 2px rgb(255 255 255 / 62%),
-      inset 0 0 18px rgb(255 255 255 / 18%);
+    box-shadow: none;
     backdrop-filter: none;
   }
 
   .canvas-generation-status-border-beam {
-    filter: brightness(1.2);
+    --beam-stroke-opacity: 2.4;
+    --beam-inner-opacity: 0;
+    --beam-bloom-opacity: 1.8;
+    filter: brightness(1.65) contrast(1.12);
   }
 
   .canvas-generation-status-border-beam,

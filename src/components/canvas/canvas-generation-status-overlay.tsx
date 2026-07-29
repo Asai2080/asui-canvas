@@ -46,13 +46,13 @@ export function CanvasGenerationStatusOverlay({
     >
       {effect === "border-beam" && (
         <BorderBeam
-          size="pulse-inner"
+          size="md"
           colorVariant="mono"
           staticColors
           strength={1}
-          brightness={2}
+          brightness={3}
           saturation={0}
-          duration={2.2}
+          duration={1.8}
           borderRadius={30}
           className="canvas-generation-status-border-beam"
         >
