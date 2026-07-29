@@ -139,7 +139,11 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
   }
 
   override hideSelectionBoundsFg(shape: TLFrameShape) {
-    return isImageHolderShape(shape) || isVideoNodeShape(shape)
+    return (
+      isImageHolderShape(shape) ||
+      isVideoNodeShape(shape) ||
+      isAgentPromptShape(shape)
+    )
   }
 
   override getGeometry(shape: TLFrameShape) {

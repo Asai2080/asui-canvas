@@ -1339,6 +1339,9 @@
   .canvas-generation-status-overlay {
     @apply pointer-events-none absolute z-[600] flex items-center justify-center overflow-hidden;
     border-radius: 30px;
+  }
+
+  .canvas-generation-status-overlay.is-orb {
     background: rgb(8 6 10 / 68%);
     box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%);
     backdrop-filter: blur(2px);
@@ -1346,9 +1349,11 @@
 
   .canvas-generation-status-overlay.is-scan-light {
     overflow: hidden;
-    background: transparent;
+    background: transparent !important;
     box-shadow: none;
-    backdrop-filter: none;
+    filter: none;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
     isolation: isolate;
   }
 

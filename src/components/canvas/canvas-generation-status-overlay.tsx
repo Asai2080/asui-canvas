@@ -32,7 +32,7 @@ export function CanvasGenerationStatusOverlay({
   return (
     <div
       className={`canvas-generation-status-overlay ${
-        effect === "scan-light" ? "is-scan-light" : ""
+        effect === "scan-light" ? "is-scan-light" : "is-orb"
       }`}
       style={{
         left: bounds.x,
