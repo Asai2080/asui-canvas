@@ -120,6 +120,18 @@ const isVideoNodeShape = (shape?: TLShape | null) => {
 }
 
 class AsuiFrameShapeUtil extends FrameShapeUtil {
+  override hideResizeHandles(shape: TLFrameShape) {
+    return isImageHolderShape(shape) || isVideoNodeShape(shape)
+  }
+
+  override hideRotateHandle(shape: TLFrameShape) {
+    return isImageHolderShape(shape) || isVideoNodeShape(shape)
+  }
+
+  override hideSelectionBoundsFg(shape: TLFrameShape) {
+    return isImageHolderShape(shape) || isVideoNodeShape(shape)
+  }
+
   override getGeometry(shape: TLFrameShape) {
     if (!isImageHolderShape(shape) && !isVideoNodeShape(shape)) {
       return super.getGeometry(shape)
@@ -432,7 +444,7 @@ function getHolderAtPagePoint(editor: Editor, point: { x: number; y: number }) {
   )
 }
 
-function getCanvasNodeFrameIdForDirectHit(editor: Editor, shape?: TLShape) {
+function getCanvasNodeFrameIdForDirectHit(editor: Editor, shape?: TLShape | null) {
   if (!shape) return null
   if (
     shape.type === "frame" &&
@@ -441,17 +453,23 @@ function getCanvasNodeFrameIdForDirectHit(editor: Editor, shape?: TLShape) {
     return shape.id as TLShapeId
   }
   if (shape.type !== "image" && shape.type !== "video") return null
-  if (!String(shape.parentId).startsWith("shape:")) return null
 
-  const parent = editor.getShape(shape.parentId as TLShapeId)
-  if (
-    parent?.type === "frame" &&
-    (isImageHolderShape(parent) || isVideoNodeShape(parent))
-  ) {
-    return parent.id as TLShapeId
+  let parentId = shape.parentId
+  let outermostCanvasNodeId: TLShapeId | null = null
+
+  while (String(parentId).startsWith("shape:")) {
+    const parent = editor.getShape(parentId as TLShapeId)
+    if (!parent) break
+    if (
+      parent.type === "frame" &&
+      (isImageHolderShape(parent) || isVideoNodeShape(parent))
+    ) {
+      outermostCanvasNodeId = parent.id as TLShapeId
+    }
+    parentId = parent.parentId
   }
 
-  return null
+  return outermostCanvasNodeId
 }
 
 function connectorAnchor(bounds: Bounds, side: ConnectorSide) {
@@ -2498,6 +2516,32 @@ export function AiCanvas() {
         if (selectionKey !== lastSelectionKeyRef.current) {
           lastSelectionKeyRef.current = selectionKey
           syncSelection(editor)
+
+          const selectedShape = editor.getOnlySelectedShape()
+          const outermostCanvasNodeId = getCanvasNodeFrameIdForDirectHit(
+            editor,
+            selectedShape
+          )
+          if (
+            selectedShape &&
+            outermostCanvasNodeId &&
+            selectedShape.id !== outermostCanvasNodeId &&
+            !editor.isIn("select.crop") &&
+            !editor.getCroppingShapeId()
+          ) {
+            queueMicrotask(() => {
+              const currentSelectedShape = editor.getOnlySelectedShape()
+              if (
+                currentSelectedShape?.id !== selectedShape.id ||
+                editor.isIn("select.crop") ||
+                editor.getCroppingShapeId()
+              ) {
+                return
+              }
+
+              editor.select(outermostCanvasNodeId)
+            })
+          }
         }
         scheduleViewportSync(editor)
       }, {
