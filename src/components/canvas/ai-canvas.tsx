@@ -529,7 +529,11 @@ function getCanvasNodeFrameIdForDirectHit(editor: Editor, shape?: TLShape | null
   if (!shape) return null
   if (
     shape.type === "frame" &&
-    (isImageHolderShape(shape) || isVideoNodeShape(shape))
+    (
+      isImageHolderShape(shape) ||
+      isVideoNodeShape(shape) ||
+      isAgentPromptShape(shape)
+    )
   ) {
     return shape.id as TLShapeId
   }
@@ -543,7 +547,11 @@ function getCanvasNodeFrameIdForDirectHit(editor: Editor, shape?: TLShape | null
     if (!parent) break
     if (
       parent.type === "frame" &&
-      (isImageHolderShape(parent) || isVideoNodeShape(parent))
+      (
+        isImageHolderShape(parent) ||
+        isVideoNodeShape(parent) ||
+        isAgentPromptShape(parent)
+      )
     ) {
       outermostCanvasNodeId = parent.id as TLShapeId
     }
