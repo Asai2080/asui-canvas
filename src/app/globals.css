@@ -1345,21 +1345,16 @@
   }
 
   .canvas-generation-status-overlay.is-border-beam {
-    overflow: visible;
+    overflow: hidden;
     background: transparent;
     box-shadow:
-      inset 0 0 0 2px rgb(163 254 68 / 72%),
-      0 0 12px rgb(163 254 68 / 38%);
+      inset 0 0 0 2px rgb(255 255 255 / 62%),
+      inset 0 0 18px rgb(255 255 255 / 18%);
     backdrop-filter: none;
   }
 
   .canvas-generation-status-border-beam {
-    filter:
-      hue-rotate(72deg)
-      brightness(1.2)
-      saturate(1.35)
-      drop-shadow(0 0 8px rgb(163 254 68 / 92%))
-      drop-shadow(0 0 18px rgb(163 254 68 / 58%));
+    filter: brightness(1.2);
   }
 
   .canvas-generation-status-border-beam,
