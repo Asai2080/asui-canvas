@@ -1344,28 +1344,84 @@
     backdrop-filter: blur(2px);
   }
 
-  .canvas-generation-status-overlay.is-border-beam {
+  .canvas-generation-status-overlay.is-scan-light {
     overflow: hidden;
     background: transparent;
     box-shadow: none;
     backdrop-filter: none;
+    isolation: isolate;
   }
 
-  .canvas-generation-status-border-beam {
-    --beam-stroke-opacity: 2.4;
-    --beam-inner-opacity: 0;
-    --beam-bloom-opacity: 1.8;
-    filter: brightness(1.65) contrast(1.12);
+  .canvas-generation-status-scan-light {
+    @apply absolute inset-0 overflow-hidden;
+    border-radius: inherit;
   }
 
-  .canvas-generation-status-border-beam,
-  .canvas-generation-status-border-beam__surface {
-    @apply size-full;
+  .canvas-generation-status-scan-light::before,
+  .canvas-generation-status-scan-light::after {
+    position: absolute;
+    top: -42%;
+    bottom: -42%;
+    left: -62%;
+    width: 38%;
+    content: "";
+    transform: skewX(-18deg);
+    transform-origin: center;
+    mix-blend-mode: screen;
+    will-change: transform;
   }
 
-  .canvas-generation-status-border-beam__surface {
-    border-radius: 30px;
-    background: transparent;
+  .canvas-generation-status-scan-light::before {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(255 255 255 / 4%) 14%,
+      rgb(255 255 255 / 38%) 42%,
+      rgb(255 255 255 / 92%) 50%,
+      rgb(255 255 255 / 38%) 58%,
+      rgb(255 255 255 / 4%) 86%,
+      transparent 100%
+    );
+    filter: blur(3px);
+    animation: canvas-processing-scan 1.65s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+  }
+
+  .canvas-generation-status-scan-light::after {
+    width: 48%;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(255 255 255 / 3%) 12%,
+      rgb(255 255 255 / 22%) 50%,
+      rgb(255 255 255 / 3%) 88%,
+      transparent 100%
+    );
+    filter: blur(18px);
+    animation: canvas-processing-scan 1.65s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+  }
+
+  .canvas-generation-status-scan-light.is-paused::before,
+  .canvas-generation-status-scan-light.is-paused::after {
+    animation: none;
+    opacity: 0.35;
+    transform: translateX(320%) skewX(-18deg);
+  }
+
+  @keyframes canvas-processing-scan {
+    0% {
+      transform: translateX(0) skewX(-18deg);
+      opacity: 0;
+    }
+    12% {
+      opacity: 1;
+    }
+    72% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateX(520%) skewX(-18deg);
+      opacity: 0;
+    }
   }
 
   .canvas-generation-status-overlay__content {

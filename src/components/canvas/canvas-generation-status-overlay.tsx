@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { BorderBeam } from "border-beam"
 import { ThinkingOrb, type OrbState } from "thinking-orbs"
 
 import type { Bounds } from "@/lib/canvas/types"
@@ -10,7 +9,7 @@ type CanvasGenerationStatusOverlayProps = {
   bounds: Bounds
   label: string
   state?: OrbState
-  effect?: "orb" | "border-beam"
+  effect?: "orb" | "scan-light"
 }
 
 export function CanvasGenerationStatusOverlay({
@@ -33,7 +32,7 @@ export function CanvasGenerationStatusOverlay({
   return (
     <div
       className={`canvas-generation-status-overlay ${
-        effect === "border-beam" ? "is-border-beam" : ""
+        effect === "scan-light" ? "is-scan-light" : ""
       }`}
       style={{
         left: bounds.x,
@@ -44,20 +43,11 @@ export function CanvasGenerationStatusOverlay({
       aria-live="polite"
       aria-label={label}
     >
-      {effect === "border-beam" && (
-        <BorderBeam
-          size="md"
-          colorVariant="mono"
-          staticColors
-          strength={1}
-          brightness={3}
-          saturation={0}
-          duration={1.8}
-          borderRadius={30}
-          className="canvas-generation-status-border-beam"
-        >
-          <div className="canvas-generation-status-border-beam__surface" />
-        </BorderBeam>
+      {effect === "scan-light" && (
+        <div
+          className={`canvas-generation-status-scan-light ${paused ? "is-paused" : ""}`}
+          aria-hidden="true"
+        />
       )}
       {effect === "orb" && (
         <div

@@ -1917,7 +1917,7 @@ export function AiCanvas() {
     bounds: Bounds
     label: string
     state: OrbState
-    effect: "orb" | "border-beam"
+    effect: "orb" | "scan-light"
     owner: "direct" | "agent"
   } | null>(null)
   const codexPollingTaskRef = useRef("")
@@ -2235,7 +2235,7 @@ export function AiCanvas() {
     shapeId: TLShapeId,
     label: string,
     state: OrbState = "working",
-    effect: "orb" | "border-beam" = "orb"
+    effect: "orb" | "scan-light" = "orb"
   ) => {
     const editor = editorRef.current
     if (!editor) return
@@ -2295,7 +2295,7 @@ export function AiCanvas() {
             bounds,
             label: presentation.label,
             state: presentation.state,
-            effect: "border-beam",
+            effect: "scan-light",
             owner: "agent",
           }
     )
@@ -3137,7 +3137,7 @@ export function AiCanvas() {
     if (!sourceBounds) return
     const source = versions.find((version) => version.versionId === annotationAction.versionId)
 
-    showGenerationOverlay(annotationAction.imageId, "正在生成新版本", "composing", "border-beam")
+    showGenerationOverlay(annotationAction.imageId, "正在生成新版本", "composing", "scan-light")
     setStatus("editing")
     setStatusDetail("")
     try {
@@ -3209,7 +3209,7 @@ export function AiCanvas() {
     const regionBounds = getCutoutRegionBounds(editor, annotationAction.imageId, annotationAction.annotationId)
     if (!sourceImageSrc || !regionBounds) return
 
-    showGenerationOverlay(annotationAction.imageId, "正在启动抠图服务", "searching", "border-beam")
+    showGenerationOverlay(annotationAction.imageId, "正在启动抠图服务", "searching", "scan-light")
     setStatus("editing")
     setStatusDetail("正在抠取圈选区域主体")
     try {
@@ -3222,7 +3222,7 @@ export function AiCanvas() {
             annotationAction.imageId,
             label,
             phase === "processing" ? "working" : "searching",
-            "border-beam"
+            "scan-light"
           )
         },
         run: async () =>
@@ -3292,7 +3292,7 @@ export function AiCanvas() {
         : Math.max(1, Math.round(holderBounds.h))
     const sourceVersionId = getCanvasImageVersionId(sourceImageShape)
 
-    showGenerationOverlay(holderId, "正在启动抠图服务", "searching", "border-beam")
+    showGenerationOverlay(holderId, "正在启动抠图服务", "searching", "scan-light")
     setStatus("editing")
     setStatusDetail("正在启动抠图服务")
 
@@ -3305,7 +3305,7 @@ export function AiCanvas() {
             holderId,
             label,
             phase === "processing" ? "working" : "searching",
-            "border-beam"
+            "scan-light"
           )
         },
         run: async () => {
@@ -3365,7 +3365,7 @@ export function AiCanvas() {
       multiAnnotationAction.imageId,
       "正在整合多个标注",
       "solving",
-      "border-beam"
+      "scan-light"
     )
     setStatus("editing")
     setStatusDetail("")
