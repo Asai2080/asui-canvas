@@ -172,6 +172,8 @@ function ThreadMessage() {
   const context = useContext(AgentMessageContext)
   const task = context?.tasksByMessageId.get(messageId)
 
+  if (role === "assistant" && !task) return null
+
   return (
     <MessagePrimitive.Root className={`agent-message agent-message--${role}`}>
       {role === "assistant" && task ? (
