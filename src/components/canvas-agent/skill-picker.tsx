@@ -26,6 +26,8 @@ import {
 type SkillPickerProps = {
   value: string
   onChange: (skillId: string) => void
+  selectedSkill?: SkillRecord
+  onSkillSelect?: (skill?: SkillRecord) => void
   modelValue: string
   onModelChange: (model: string) => void
   compact?: boolean
@@ -36,6 +38,8 @@ type PickerTab = "model" | "skill"
 export function SkillPicker({
   value,
   onChange,
+  selectedSkill: externalSelectedSkill,
+  onSkillSelect,
   modelValue,
   onModelChange,
   compact = false,
@@ -170,22 +174,31 @@ export function SkillPicker({
     }
     await loadSkills()
     onChange(payload.skill.id)
+    onSkillSelect?.(payload.skill)
     setSourcePath("")
     setIsOpen(false)
   }
 
-  const selected = skills.find((skill) => skill.id === value)
+  const selected =
+    skills.find((skill) => skill.id === value) ??
+    (externalSelectedSkill?.id === value ? externalSelectedSkill : undefined)
   const normalizedQuery = skillQuery.trim().toLocaleLowerCase()
+  const registeredContentHashes = new Set(
+    skills.map((skill) => skill.contentHash)
+  )
+  const unregisteredDiscovered = discovered.filter(
+    (skill) => !registeredContentHashes.has(skill.contentHash)
+  )
   const filteredSkills = normalizedQuery
     ? skills.filter((skill) =>
         `${skill.name} ${skill.description}`.toLocaleLowerCase().includes(normalizedQuery)
       )
     : skills
   const filteredDiscovered = normalizedQuery
-    ? discovered.filter((skill) =>
+    ? unregisteredDiscovered.filter((skill) =>
         `${skill.name} ${skill.path}`.toLocaleLowerCase().includes(normalizedQuery)
       )
-    : discovered
+    : unregisteredDiscovered
   const triggerLabel = selected?.name ?? (modelValue.trim() || "模型 / Skill")
   const importSkill = () => {
     if (!sourcePath.trim()) return
@@ -324,6 +337,7 @@ export function SkillPicker({
                   className={`agent-resource-option${!value ? " is-selected" : ""}`}
                   onClick={() => {
                     onChange("")
+                    onSkillSelect?.()
                     setIsOpen(false)
                   }}
                 >
@@ -343,6 +357,7 @@ export function SkillPicker({
                     className={`agent-resource-option${skill.id === value ? " is-selected" : ""}`}
                     onClick={() => {
                       onChange(skill.id)
+                      onSkillSelect?.(skill)
                       setIsOpen(false)
                     }}
                   >

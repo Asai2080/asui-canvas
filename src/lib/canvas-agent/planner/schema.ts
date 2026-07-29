@@ -32,7 +32,7 @@ export const structuredAgentPlanSchema = z
     summary: z.string().trim().min(1),
     steps: z.array(structuredAgentPlanStepSchema).min(1),
     maxParallelism: z.number().int().min(1).max(4),
-    maxGeneratedNodes: z.number().int().min(1).max(8),
+    maxGeneratedNodes: z.number().int().min(1).max(12),
   })
   .strict()
 

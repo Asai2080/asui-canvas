@@ -11,7 +11,7 @@ export type TextModelCredentials = {
 
 const textModelTargetSchema = z.object({
   mediaType: z.enum(["image", "video"]).optional(),
-  count: z.number().int().min(1).max(8).optional(),
+  count: z.number().int().min(1).max(12).optional(),
   width: z.number().int().positive().max(8192).optional(),
   height: z.number().int().positive().max(8192).optional(),
   durationSeconds: z.number().int().min(1).max(15).optional(),
@@ -64,7 +64,7 @@ Return one JSON object only with these fields:
 - summary: a short, auditable Chinese task summary. Do not include private chain-of-thought or hidden reasoning.
 - normalizedInstruction: a complete Chinese generation/editing instruction that preserves explicit counts, ratios, durations, references, and constraints.
 - intent: "image", "video", "conversation", or "unsupported".
-- target: optional object with mediaType, count (1-8), width, height, durationSeconds (1-15), and resolution.
+- target: optional object with mediaType, count (1-12), width, height, durationSeconds (1-15), and resolution.
 
 Use "conversation" for greetings, identity questions, capability questions, and follow-up dialogue that does not require a canvas operation. Answer naturally and explain that you can generate images or videos when relevant.
 Use "unsupported" only when the user asks you to execute code, shell commands, file operations, secret access, arbitrary network work, or another action outside image/video creation. Politely state the boundary.

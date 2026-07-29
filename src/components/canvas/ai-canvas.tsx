@@ -1902,6 +1902,7 @@ export function AiCanvas() {
   const [isCodexTaskOpen, setIsCodexTaskOpen] = useState(false)
   const [codexTaskStatus, setCodexTaskStatus] = useState<"idle" | "generating">("idle")
   const [isCanvasAgentOpen, setIsCanvasAgentOpen] = useState(false)
+  const [storyboardRequestKey, setStoryboardRequestKey] = useState(0)
   const [isCanvasAgentBusy, setIsCanvasAgentBusy] = useState(false)
   const [foregroundAgentTask, setForegroundAgentTask] = useState<AgentTask>()
   const [codexTaskId, setCodexTaskId] = useState("")
@@ -3735,6 +3736,10 @@ export function AiCanvas() {
   const canGenerateFromAllAnnotations = Boolean(multiAnnotationAction) && status !== "editing"
   const canCutoutFromAnnotation = Boolean(annotationAction) && status !== "editing"
   const canCutoutSelectedHolder = selection?.kind === "holder" && selectedHolderHasImage
+  const openStoryboardWorkflow = useCallback(() => {
+    setIsCanvasAgentOpen(true)
+    setStoryboardRequestKey((current) => current + 1)
+  }, [])
   const fillVideoNode = useCallback(async () => {
     const editor = editorRef.current
     if (selection?.kind !== "video") return
@@ -4137,6 +4142,8 @@ export function AiCanvas() {
           showCutout={selection.kind === "holder"}
           isCuttingOut={status === "editing"}
           onCutout={canCutoutSelectedHolder ? () => void cutoutSelectedHolder() : undefined}
+          showStoryboard={selection.kind === "holder"}
+          onStoryboard={canCutoutSelectedHolder ? openStoryboardWorkflow : undefined}
         />
       )}
       {multiAnnotationAction && (
@@ -4220,6 +4227,7 @@ export function AiCanvas() {
       {CANVAS_AGENT_ENABLED && (
         <CanvasAgentShell
           open={isCanvasAgentOpen}
+          storyboardRequestKey={storyboardRequestKey}
           selectionKey={selectedShapeIds.join("|")}
           getCanvasContext={getAgentCanvasContext}
           onClearCanvasContext={(selectionId) => {

@@ -118,7 +118,7 @@ export const agentInterpretationSchema = z.object({
   target: z
     .object({
       mediaType: z.enum(["image", "video"]).optional(),
-      count: z.number().int().min(1).max(8).optional(),
+      count: z.number().int().min(1).max(12).optional(),
       width: z.number().int().positive().max(8192).optional(),
       height: z.number().int().positive().max(8192).optional(),
       durationSeconds: z.number().int().min(1).max(15).optional(),
@@ -161,6 +161,7 @@ export const agentTaskSchema = z.object({
   status: agentTaskStatusSchema,
   executionMode: agentExecutionModeSchema.optional(),
   userInstruction: z.string().trim().min(1),
+  requestedOutputCount: z.number().int().min(1).max(12).optional(),
   selectedCanvasId: z.string().trim().min(1).optional(),
   skillId: agentTaskIdSchema.optional(),
   contextSnapshotId: agentTaskIdSchema.optional(),

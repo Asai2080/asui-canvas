@@ -86,12 +86,14 @@ describe("Canvas Agent adversarial boundaries", () => {
       })
     ).toThrow("未注册工具")
 
-    const compiled = compileGenerationPrompt({
-      taskId: "task-too-many",
-      userInstruction: "生成 9 张海报",
-    })
     expect(() =>
-      createAgentPlan({ taskId: "task-too-many", compiledPrompt: compiled })
+      createAgentPlan({
+        taskId: "task-too-many",
+        compiledPrompt: compileGenerationPrompt({
+          taskId: "task-too-many",
+          userInstruction: "生成 13 张海报",
+        }),
+      })
     ).toThrow("最多")
   })
 

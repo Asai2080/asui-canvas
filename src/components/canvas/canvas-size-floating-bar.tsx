@@ -6,6 +6,7 @@ import {
   AiEraserIcon,
   AspectRatioIcon,
   ArrowDown01Icon,
+  KeyframesMultipleAddIcon,
   Loading03Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -32,6 +33,8 @@ type CanvasSizeFloatingBarProps = {
   showCutout?: boolean
   isCuttingOut?: boolean
   onCutout?: () => void
+  showStoryboard?: boolean
+  onStoryboard?: () => void
 }
 
 export function CanvasSizeFloatingBar({
@@ -44,6 +47,8 @@ export function CanvasSizeFloatingBar({
   showCutout = false,
   isCuttingOut = false,
   onCutout,
+  showStoryboard = false,
+  onStoryboard,
 }: CanvasSizeFloatingBarProps) {
   const reduceMotion = useReducedMotion()
   const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -234,25 +239,45 @@ export function CanvasSizeFloatingBar({
                 />
               </label>
             </form>
-            {showCutout && (
+            {(showCutout || showStoryboard) && (
               <div className="canvas-size-floating-bar__action flex h-9 items-center border-l pl-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-8 gap-1.5 rounded-[10px] px-2.5 text-xs text-[#b8b8c0] hover:bg-white/[0.07] hover:text-[#f2f2f4] disabled:text-[#73737c] disabled:opacity-100"
-                  disabled={isCuttingOut || !onCutout}
-                  aria-label={isCuttingOut ? "正在抠图" : onCutout ? "抠图" : "抠图，请先生成或放入图片"}
-                  title={onCutout ? "抠图" : "请先生成或放入图片"}
-                  onClick={onCutout}
-                >
-                  <HugeiconsIcon
-                    icon={isCuttingOut ? Loading03Icon : AiEraserIcon}
-                    size={15}
-                    strokeWidth={1.8}
-                    className={cn(isCuttingOut && "animate-spin")}
-                  />
-                  <span>{isCuttingOut ? "抠图中" : "抠图"}</span>
-                </Button>
+                {showCutout && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-8 gap-1.5 rounded-[10px] px-2.5 text-xs text-[#b8b8c0] hover:bg-white/[0.07] hover:text-[#f2f2f4] disabled:text-[#73737c] disabled:opacity-100"
+                    disabled={isCuttingOut || !onCutout}
+                    aria-label={isCuttingOut ? "正在抠图" : onCutout ? "抠图" : "抠图，请先生成或放入图片"}
+                    title={onCutout ? "抠图" : "请先生成或放入图片"}
+                    onClick={onCutout}
+                  >
+                    <HugeiconsIcon
+                      icon={isCuttingOut ? Loading03Icon : AiEraserIcon}
+                      size={15}
+                      strokeWidth={1.8}
+                      className={cn(isCuttingOut && "animate-spin")}
+                    />
+                    <span>{isCuttingOut ? "抠图中" : "抠图"}</span>
+                  </Button>
+                )}
+                {showStoryboard && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-8 gap-1.5 rounded-[10px] px-2.5 text-xs text-[#b8b8c0] hover:bg-white/[0.07] hover:text-[#f2f2f4] disabled:text-[#73737c] disabled:opacity-100"
+                    disabled={!onStoryboard}
+                    aria-label={onStoryboard ? "创建分镜" : "创建分镜，请先生成或放入图片"}
+                    title={onStoryboard ? "创建分镜" : "请先生成或放入图片"}
+                    onClick={onStoryboard}
+                  >
+                    <HugeiconsIcon
+                      icon={KeyframesMultipleAddIcon}
+                      size={15}
+                      strokeWidth={1.8}
+                    />
+                    <span>分镜</span>
+                  </Button>
+                )}
               </div>
             )}
           </motion.div>

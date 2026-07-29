@@ -695,6 +695,14 @@
     @apply text-[12px] font-medium text-[#D7D7DC];
   }
 
+  .agent-prompt-review__meta {
+    @apply flex flex-wrap items-center gap-1.5;
+  }
+
+  .agent-prompt-review__meta span {
+    @apply rounded-full border border-white/[0.08] bg-white/[0.035] px-2 py-1 text-[10px] tabular-nums text-[#9D9DA5];
+  }
+
   .agent-prompt-review__content {
     @apply max-h-[260px] space-y-3 overflow-y-auto rounded-xl border border-white/[0.06] bg-black/20 p-3;
     scrollbar-width: thin;
@@ -1008,6 +1016,58 @@
 
   .canvas-agent-input {
     @apply block h-[76px] min-h-[76px] w-full resize-none bg-transparent px-[10px] pb-0 pt-2 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground;
+  }
+
+  .canvas-agent-storyboard-config {
+    display: flex;
+    min-height: 36px;
+    margin-inline: 4px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-top: 1px solid rgb(255 255 255 / 7%);
+    padding-top: 8px;
+    color: #afafb6;
+    font-size: 11px;
+  }
+
+  .canvas-agent-storyboard-config > span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .canvas-agent-storyboard-config > div {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px;
+    border: 1px solid rgb(255 255 255 / 6%);
+    border-radius: 9999px;
+    background: rgb(0 0 0 / 20%);
+  }
+
+  .canvas-agent-storyboard-config button {
+    display: flex;
+    width: 30px;
+    height: 26px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    color: #8e8e96;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    transition: color 160ms ease, background-color 160ms ease;
+  }
+
+  .canvas-agent-storyboard-config button:hover {
+    color: #e8e8eb;
+  }
+
+  .canvas-agent-storyboard-config button.is-active {
+    background: #a3fe44;
+    color: #08060a;
   }
 
   .canvas-agent-composer-footer {

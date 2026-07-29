@@ -9,6 +9,7 @@ import {
 type CreateAgentTaskInput = {
   userInstruction: string
   executionMode?: AgentExecutionMode
+  requestedOutputCount?: number
   selectedCanvasId?: string
   skillId?: string
   contextSnapshotId?: string
@@ -106,8 +107,9 @@ export function createAgentTask(
     revision: 0,
     source: "asui-canvas-agent",
     status: "queued",
-    executionMode: input.executionMode ?? "auto",
+    executionMode: input.executionMode ?? "confirm",
     userInstruction: input.userInstruction,
+    requestedOutputCount: input.requestedOutputCount,
     selectedCanvasId: input.selectedCanvasId,
     skillId: input.skillId,
     contextSnapshotId: input.contextSnapshotId,

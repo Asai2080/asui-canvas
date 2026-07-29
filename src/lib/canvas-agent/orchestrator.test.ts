@@ -208,7 +208,10 @@ describe("runAgentTaskTick", () => {
   it("advances preparation one recoverable status at a time", async () => {
     const root = await createRoot()
     const task = createAgentTask(
-      { userInstruction: "生成一张绿色环保海报" },
+      {
+        userInstruction: "生成一张绿色环保海报",
+        executionMode: "auto",
+      },
       { id: "task-prepare", eventId: "event-created", now }
     )
     await createStoredAgentTask(task, root)
@@ -290,6 +293,7 @@ describe("runAgentTaskTick", () => {
     const task = createAgentTask(
       {
         userInstruction: "按照画布标注修改",
+        executionMode: "auto",
         contextSnapshotId: "context-1",
       },
       { id: "task-context", eventId: "event-created", now }
@@ -316,7 +320,7 @@ describe("runAgentTaskTick", () => {
   it("delegates execution without persisting ephemeral credentials", async () => {
     const root = await createRoot()
     const task = createAgentTask(
-      { userInstruction: "生成一张海报" },
+      { userInstruction: "生成一张海报", executionMode: "auto" },
       { id: "task-execute", eventId: "event-created", now }
     )
     await createStoredAgentTask(task, root)
@@ -340,7 +344,7 @@ describe("runAgentTaskTick", () => {
   it("moves provider failures to a safe failed state", async () => {
     const root = await createRoot()
     const task = createAgentTask(
-      { userInstruction: "生成一张海报" },
+      { userInstruction: "生成一张海报", executionMode: "auto" },
       { id: "task-failure", eventId: "event-created", now }
     )
     await createStoredAgentTask(task, root)

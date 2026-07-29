@@ -64,7 +64,7 @@ function skillSnapshotId(taskId: string) {
 function localInterpretation(
   input: TextModelInterpretationInput,
   modelFallback = false,
-  executionMode: AgentTask["executionMode"] = "auto"
+  executionMode: AgentTask["executionMode"] = "confirm"
 ): AgentInterpretation {
   const instruction = input.userInstruction.trim()
   const video = /视频|动画|镜头|动起来|图生视频/.test(instruction)
@@ -320,7 +320,12 @@ export async function runAgentTaskTick(
           task.interpretation?.normalizedInstruction ?? task.userInstruction,
         context,
         skill,
-        target: task.interpretation?.target,
+        target: {
+          ...task.interpretation?.target,
+          count:
+            task.requestedOutputCount ??
+            task.interpretation?.target?.count,
+        },
       })
       return persistTransition(
         task,

@@ -254,6 +254,7 @@ export async function listRegisteredSkills(root?: string): Promise<SkillRecord[]
 export async function discoverLocalSkills(
   searchRoots: string[] = [
     join(homedir(), ".codex", "skills"),
+    join(homedir(), ".gemini", "config", "skills"),
     join(process.cwd(), ".codex", "skills"),
   ]
 ): Promise<DiscoveredSkill[]> {

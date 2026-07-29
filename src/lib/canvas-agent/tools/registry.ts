@@ -94,7 +94,7 @@ export const registeredAgentTools = {
     .strict(),
   create_canvas_nodes: z
     .object({
-      generationStepIds: z.array(safeId).min(1).max(8),
+      generationStepIds: z.array(safeId).min(1).max(12),
       placement: z.literal("right-of-source"),
       retainOriginal: z.literal(true),
     })
@@ -102,14 +102,14 @@ export const registeredAgentTools = {
   connect_canvas_nodes: z
     .object({
       createStepId: safeId,
-      generationStepIds: z.array(safeId).min(1).max(8),
+      generationStepIds: z.array(safeId).min(1).max(12),
       contextSnapshotId: safeId.optional(),
     })
     .strict(),
   mark_recommended_node: z
     .object({
       createStepId: safeId,
-      outputIndex: z.number().int().nonnegative().max(7),
+      outputIndex: z.number().int().nonnegative().max(11),
     })
     .strict(),
 } satisfies Record<AgentToolName, z.ZodType>

@@ -15,7 +15,8 @@ export const runtime = "nodejs"
 const requestSchema = z
   .object({
     userInstruction: z.string().trim().min(1).max(20_000),
-    executionMode: z.enum(["auto", "confirm"]).default("auto"),
+    executionMode: z.enum(["auto", "confirm"]).default("confirm"),
+    requestedOutputCount: z.number().int().min(1).max(12).optional(),
     selectedCanvasId: z.string().trim().min(1).optional(),
     skillId: z.string().trim().min(1).optional(),
     contextSnapshotId: z.string().trim().min(1).optional(),

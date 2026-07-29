@@ -10,7 +10,7 @@ import {
   type StructuredAgentPlanStep,
 } from "./schema"
 
-const MAX_IMAGE_OUTPUTS = 8
+const MAX_IMAGE_OUTPUTS = 12
 const MAX_VIDEO_DURATION_SECONDS = 15
 
 export type CreateAgentPlanInput = {

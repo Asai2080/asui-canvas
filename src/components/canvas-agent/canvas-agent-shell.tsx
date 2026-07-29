@@ -3,6 +3,7 @@
 import {
   createContext,
   useContext,
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -21,6 +22,7 @@ import {
   Add01Icon,
   ArrowUp01Icon,
   Clock01Icon,
+  ClapperboardIcon,
   Image01Icon,
   Loading03Icon,
   MultiplicationSignIcon,
@@ -38,6 +40,10 @@ import type {
   AgentExecutionMode,
   AgentTask,
 } from "@/lib/canvas-agent/task-schema"
+import type {
+  DiscoveredSkill,
+  SkillRecord,
+} from "@/lib/canvas-agent/skills/schema"
 
 import { CuriousAiOrb } from "./curious-ai-orb"
 import {
@@ -60,6 +66,7 @@ type CanvasAgentShellProps = {
   getCanvasContext: () => AgentCanvasContext
   onClearCanvasContext: (selectionId: string) => void
   onClose: () => void
+  storyboardRequestKey?: number
   onBusyChange?: (busy: boolean) => void
   onForegroundTaskChange?: (task?: AgentTask) => void
 }
@@ -89,6 +96,7 @@ type AgentMessageContextValue = {
 
 const AgentMessageContext = createContext<AgentMessageContextValue | null>(null)
 const EXECUTION_MODE_STORAGE_KEY = "asui-canvas:agent-execution-mode"
+const STORYBOARD_COUNTS = [4, 6, 8, 12] as const
 
 function formatTaskTime(task: AgentTask) {
   const value = task.completedAt ?? task.updatedAt
@@ -99,6 +107,18 @@ function formatTaskTime(task: AgentTask) {
     minute: "2-digit",
     hour12: false,
   }).format(new Date(value))
+}
+
+function greatestCommonDivisor(left: number, right: number): number {
+  return right === 0
+    ? Math.abs(left)
+    : greatestCommonDivisor(right, left % right)
+}
+
+function outputSizeLabel(output: NonNullable<AgentTask["compiledPrompt"]>["outputs"][number]) {
+  if (!output.width || !output.height) return undefined
+  const divisor = greatestCommonDivisor(output.width, output.height)
+  return `${output.width} × ${output.height} · ${output.width / divisor}:${output.height / divisor}`
 }
 
 function AgentTaskBubble({ task }: { task: AgentTask }) {
@@ -116,12 +136,25 @@ function AgentTaskBubble({ task }: { task: AgentTask }) {
         <p className="agent-prompt-review__summary">
           {compiledPrompt.summary}
         </p>
+        <div className="agent-prompt-review__meta">
+          <span>{compiledPrompt.outputs.length} 个生成结果</span>
+          {outputSizeLabel(compiledPrompt.outputs[0]) && (
+            <span>{outputSizeLabel(compiledPrompt.outputs[0])}</span>
+          )}
+        </div>
         <div className="agent-prompt-review__content">
           {compiledPrompt.outputs.map((output, index) => (
             <section key={output.id}>
-              {compiledPrompt.outputs.length > 1 && (
-                <strong>版本 {index + 1}</strong>
-              )}
+              <strong>
+                {compiledPrompt.summary.includes("分镜")
+                  ? `KF#${String(index + 1).padStart(2, "0")}`
+                  : compiledPrompt.outputs.length > 1
+                    ? `版本 ${index + 1}`
+                    : "最终提示词"}
+                {outputSizeLabel(output)
+                  ? ` · ${outputSizeLabel(output)}`
+                  : ""}
+              </strong>
               <p>{output.prompt}</p>
             </section>
           ))}
@@ -261,15 +294,21 @@ export function CanvasAgentShell({
   getCanvasContext,
   onClearCanvasContext,
   onClose,
+  storyboardRequestKey = 0,
   onBusyChange,
   onForegroundTaskChange,
 }: CanvasAgentShellProps) {
   const [selectedSkillId, setSelectedSkillId] = useState("")
+  const [selectedSkill, setSelectedSkill] = useState<SkillRecord>()
   const [selectedTextModel, setSelectedTextModel] = useState("")
   const [executionMode, setExecutionMode] =
-    useState<AgentExecutionMode>("auto")
+    useState<AgentExecutionMode>("confirm")
+  const [storyboardCount, setStoryboardCount] = useState(6)
+  const [storyboardSetupError, setStoryboardSetupError] = useState("")
   const [conversationStartedAt, setConversationStartedAt] = useState("")
   const [showHistory, setShowHistory] = useState(false)
+  const storyboardMode =
+    selectedSkill?.name.trim().toLocaleLowerCase() === "nb-fj"
   const {
     tasks,
     foregroundTask,
@@ -283,6 +322,7 @@ export function CanvasAgentShell({
     getCanvasContext,
     selectedSkillId,
     selectedTextModel,
+    requestedOutputCount: storyboardMode ? storyboardCount : undefined,
     executionMode,
     conversationStartedAt,
     onBusyChange,
@@ -326,12 +366,76 @@ export function CanvasAgentShell({
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       const stored = window.localStorage.getItem(EXECUTION_MODE_STORAGE_KEY)
-      if (stored === "confirm") {
-        setExecutionMode("confirm")
+      if (stored === "auto" || stored === "confirm") {
+        setExecutionMode(stored)
       }
     })
     return () => window.cancelAnimationFrame(frame)
   }, [])
+
+  const prepareStoryboardWorkflow = useCallback(async () => {
+    setStoryboardSetupError("")
+    setExecutionMode("confirm")
+    window.localStorage.setItem(EXECUTION_MODE_STORAGE_KEY, "confirm")
+
+    try {
+      const response = await fetch("/api/agent/skills", { cache: "no-store" })
+      const payload = (await response.json()) as {
+        skills?: SkillRecord[]
+        discovered?: DiscoveredSkill[]
+        error?: string
+      }
+      if (!response.ok) {
+        throw new Error(payload.error ?? "无法读取分镜 Skill")
+      }
+
+      let skill = payload.skills?.find(
+        (candidate) =>
+          candidate.available &&
+          candidate.name.trim().toLocaleLowerCase() === "nb-fj"
+      )
+      if (!skill) {
+        const discovered = payload.discovered?.find(
+          (candidate) =>
+            candidate.name.trim().toLocaleLowerCase() === "nb-fj"
+        )
+        if (!discovered) {
+          throw new Error("未找到本地 nb-fj Skill")
+        }
+        const registerResponse = await fetch("/api/agent/skills/import", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "local",
+            sourcePath: discovered.path,
+          }),
+        })
+        const registerPayload = (await registerResponse.json()) as {
+          skill?: SkillRecord
+          error?: string
+        }
+        if (!registerResponse.ok || !registerPayload.skill) {
+          throw new Error(registerPayload.error ?? "分镜 Skill 调用失败")
+        }
+        skill = registerPayload.skill
+      }
+
+      setSelectedSkillId(skill.id)
+      setSelectedSkill(skill)
+    } catch (reason) {
+      setStoryboardSetupError(
+        reason instanceof Error ? reason.message : "分镜 Skill 调用失败"
+      )
+    }
+  }, [])
+
+  useEffect(() => {
+    if (storyboardRequestKey <= 0) return
+    const frame = window.requestAnimationFrame(() => {
+      void prepareStoryboardWorkflow()
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [prepareStoryboardWorkflow, storyboardRequestKey])
 
   const toggleExecutionMode = () => {
     setExecutionMode((current) => {
@@ -354,6 +458,7 @@ export function CanvasAgentShell({
     setConversationStartedAt(new Date().toISOString())
     setShowHistory(false)
     setSelectedSkillId("")
+    setSelectedSkill(undefined)
     setSelectedTextModel("")
   }
 
@@ -425,6 +530,11 @@ export function CanvasAgentShell({
                 />
               )}
               {error && <p className="canvas-agent-error" role="alert">{error}</p>}
+              {storyboardSetupError && (
+                <p className="canvas-agent-error" role="alert">
+                  {storyboardSetupError}
+                </p>
+              )}
               <BorderBeam
                 size="md"
                 colorVariant="colorful"
@@ -469,9 +579,38 @@ export function CanvasAgentShell({
                   )}
                   <ComposerPrimitive.Input
                     className={`canvas-agent-input${selectionPreviews.length > 0 ? " has-selection-reference" : ""}`}
-                    placeholder="输入消息，Enter 发送"
+                    placeholder={
+                      storyboardMode
+                        ? "描述分镜主题，Enter 生成分镜提示词"
+                        : "输入消息，Enter 发送"
+                    }
                     rows={3}
                   />
+                  {storyboardMode && (
+                    <div className="canvas-agent-storyboard-config">
+                      <span>
+                        <HugeiconsIcon
+                          icon={ClapperboardIcon}
+                          size={14}
+                          strokeWidth={1.8}
+                        />
+                        分镜张数
+                      </span>
+                      <div role="group" aria-label="选择分镜张数">
+                        {STORYBOARD_COUNTS.map((count) => (
+                          <button
+                            key={count}
+                            type="button"
+                            className={storyboardCount === count ? "is-active" : undefined}
+                            onClick={() => setStoryboardCount(count)}
+                            aria-pressed={storyboardCount === count}
+                          >
+                            {count}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="canvas-agent-composer-footer">
                     <div className="canvas-agent-composer-tools">
                       <span className="canvas-agent-context-button" title="自动读取当前画布选区" aria-label="自动读取当前画布选区">
@@ -481,6 +620,8 @@ export function CanvasAgentShell({
                         compact
                         value={selectedSkillId}
                         onChange={setSelectedSkillId}
+                        selectedSkill={selectedSkill}
+                        onSkillSelect={setSelectedSkill}
                         modelValue={selectedTextModel}
                         onModelChange={setSelectedTextModel}
                       />

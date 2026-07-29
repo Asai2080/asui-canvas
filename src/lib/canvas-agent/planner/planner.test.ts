@@ -63,9 +63,9 @@ describe("createAgentPlan", () => {
     expect(() =>
       createAgentPlan({
         taskId: "task-too-many",
-        compiledPrompt: imagePrompt(9),
+        compiledPrompt: imagePrompt(13),
       })
-    ).toThrow("图片数量最多为 8 张")
+    ).toThrow("图片数量最多为 12 张")
 
     const video: CompiledPrompt = {
       originalGoal: "生成 16 秒视频",

@@ -37,6 +37,7 @@ type UseAgentTasksOptions = {
   getCanvasContext: () => AgentCanvasContext
   selectedSkillId?: string
   selectedTextModel?: string
+  requestedOutputCount?: number
   executionMode: AgentExecutionMode
   conversationStartedAt?: string
   onBusyChange?: (busy: boolean) => void
@@ -65,6 +66,7 @@ export function useAgentTasks({
   getCanvasContext,
   selectedSkillId,
   selectedTextModel,
+  requestedOutputCount,
   executionMode,
   conversationStartedAt,
   onBusyChange,
@@ -251,6 +253,7 @@ export function useAgentTasks({
         body: JSON.stringify({
           userInstruction,
           executionMode,
+          requestedOutputCount,
           selectedCanvasId: context.snapshot.selectedNodeId,
           skillId: selectedSkillId || undefined,
           contextSnapshot: context.snapshot,
@@ -268,6 +271,7 @@ export function useAgentTasks({
     [
       executionMode,
       getCanvasContext,
+      requestedOutputCount,
       selectedSkillId,
       selectedTextModel,
       upsertTask,

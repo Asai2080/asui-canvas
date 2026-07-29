@@ -25,7 +25,7 @@ describe("canvas agent task machine", () => {
       id: "agent-task-1",
       revision: 0,
       status: "queued",
-      executionMode: "auto",
+      executionMode: "confirm",
       selectedCanvasId: "shape:image",
       history: [{ id: "event-1", status: "queued" }],
     })
