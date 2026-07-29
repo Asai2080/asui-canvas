@@ -183,6 +183,27 @@ const TLDRAW_COMPONENTS = {
   Toolbar: CanvasMainToolbar,
 }
 
+function applyAsuiCanvasTheme(editor: Editor) {
+  const theme = editor.getCurrentTheme()
+  editor.updateTheme({
+    ...theme,
+    colors: {
+      light: {
+        ...theme.colors.light,
+        selectionStroke: "#A3FE44",
+        selectionFill: "rgb(163 254 68 / 18%)",
+        snap: "#A3FE44",
+      },
+      dark: {
+        ...theme.colors.dark,
+        selectionStroke: "#A3FE44",
+        selectionFill: "rgb(163 254 68 / 18%)",
+        snap: "#A3FE44",
+      },
+    },
+  })
+}
+
 class AsuiImageShapeUtil extends ImageShapeUtil {
   override component(shape: TLImageShape) {
     const content = super.component(shape)
@@ -2389,7 +2410,11 @@ export function AiCanvas() {
   const handleMount = useCallback(
     (editor: Editor) => {
       editorRef.current = editor
-      editor.user.updateUserPreferences({ colorScheme: "dark" })
+      applyAsuiCanvasTheme(editor)
+      editor.user.updateUserPreferences({
+        colorScheme: "dark",
+        isSnapMode: true,
+      })
       migrateVersionLinkArrows(editor)
       syncAllGeneratedMediaToCanvasFrames(editor)
       const canvasNameUpdates = editor
