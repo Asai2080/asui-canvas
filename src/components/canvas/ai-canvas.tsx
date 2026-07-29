@@ -179,6 +179,16 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
       </div>
     )
   }
+
+  override getIndicatorPath(shape: TLFrameShape) {
+    if (!isImageHolderShape(shape) && !isVideoNodeShape(shape)) {
+      return super.getIndicatorPath(shape)
+    }
+
+    const path = new Path2D()
+    path.roundRect(0, 0, shape.props.w, shape.props.h, 30)
+    return path
+  }
 }
 
 const TLDRAW_COMPONENTS = {
@@ -1746,6 +1756,7 @@ export function AiCanvas() {
   const unlistenRef = useRef<(() => void) | null>(null)
   const viewportSyncFrameRef = useRef<number | null>(null)
   const lastSelectionKeyRef = useRef("")
+  const directCanvasNodePointerRef = useRef<TLShapeId | null>(null)
   const [selection, setSelection] = useState<CanvasSelection | null>(null)
   const [annotationAction, setAnnotationAction] = useState<{
     annotationId: TLShapeId
@@ -2504,11 +2515,13 @@ export function AiCanvas() {
 
   const handleCanvasPointerDownCapture = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
+      directCanvasNodePointerRef.current = null
       if (event.button !== 0) return
       if ((event.target as HTMLElement).closest(".canvas-main-toolbar-shell")) return
       const editor = editorRef.current
       if (!editor) return
       if (editor.getCurrentToolId() !== "select") return
+      if (editor.isIn("select.crop")) return
 
       const viewportPoint = { x: event.clientX, y: event.clientY }
       const pagePoint = getPagePointFromViewportPoint(editor, viewportPoint)
@@ -2519,13 +2532,33 @@ export function AiCanvas() {
         renderingOnly: true,
       })
       const canvasNodeId = getCanvasNodeFrameIdForDirectHit(editor, hitShape)
-      if (!canvasNodeId || editor.getOnlySelectedShapeId() === canvasNodeId) return
+      if (!canvasNodeId) return
+      directCanvasNodePointerRef.current = canvasNodeId
+      if (editor.getOnlySelectedShapeId() === canvasNodeId) return
 
       editor.select(canvasNodeId)
       syncSelection(editor)
     },
     [syncSelection]
   )
+
+  const handleCanvasPointerUpCapture = useCallback(() => {
+    const canvasNodeId = directCanvasNodePointerRef.current
+    directCanvasNodePointerRef.current = null
+    if (!canvasNodeId) return
+
+    queueMicrotask(() => {
+      const editor = editorRef.current
+      if (!editor || editor.isIn("select.crop") || !editor.getShape(canvasNodeId)) return
+
+      editor.select(canvasNodeId)
+      syncSelection(editor)
+    })
+  }, [syncSelection])
+
+  const handleCanvasPointerCancelCapture = useCallback(() => {
+    directCanvasNodePointerRef.current = null
+  }, [])
 
   const openNodeConnectorMenu = useCallback(
     ({
@@ -3734,7 +3767,12 @@ export function AiCanvas() {
   return (
     <div className="flex h-screen min-h-0 overflow-hidden">
     <main className="canvas-app-shell">
-      <div className="canvas-surface" onPointerDownCapture={handleCanvasPointerDownCapture}>
+      <div
+        className="canvas-surface"
+        onPointerDownCapture={handleCanvasPointerDownCapture}
+        onPointerUpCapture={handleCanvasPointerUpCapture}
+        onPointerCancelCapture={handleCanvasPointerCancelCapture}
+      >
         <CanvasMainToolbarContext.Provider
           value={{
             assistantMode: CANVAS_AGENT_ENABLED ? "agent" : "codex",
