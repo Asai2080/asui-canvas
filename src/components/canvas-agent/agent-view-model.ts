@@ -15,7 +15,11 @@ export function isAgentTaskTerminal(task: AgentTask) {
 
 export function selectForegroundTask(tasks: readonly AgentTask[]) {
   return tasks
-    .filter((task) => !isAgentTaskTerminal(task))
+    .filter(
+      (task) =>
+        !isAgentTaskTerminal(task) &&
+        task.status !== "awaiting-confirmation"
+    )
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))[0]
 }
 
@@ -104,7 +108,12 @@ export function tasksToThreadMessages(
         },
       ]
 
-      if (!isAgentTaskTerminal(task)) return messages
+      if (
+        !isAgentTaskTerminal(task) &&
+        task.status !== "awaiting-confirmation"
+      ) {
+        return messages
+      }
 
       messages.push({
         id: `${task.id}-assistant`,

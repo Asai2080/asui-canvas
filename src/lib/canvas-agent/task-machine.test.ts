@@ -25,9 +25,39 @@ describe("canvas agent task machine", () => {
       id: "agent-task-1",
       revision: 0,
       status: "queued",
+      executionMode: "auto",
       selectedCanvasId: "shape:image",
       history: [{ id: "event-1", status: "queued" }],
     })
+  })
+
+  it("allows a compiled prompt to wait for user confirmation", () => {
+    const queued = createAgentTask(
+      {
+        userInstruction: "生成春天的图片",
+        executionMode: "confirm",
+      },
+      {
+        id: "agent-task-confirm",
+        eventId: "event-1",
+        now: "2026-07-25T01:00:00.000Z",
+      }
+    )
+    const understanding = transitionAgentTask(queued, "understanding")
+    const compiling = transitionAgentTask(
+      understanding,
+      "compiling-prompt"
+    )
+    const waiting = transitionAgentTask(
+      compiling,
+      "awaiting-confirmation"
+    )
+
+    expect(waiting).toMatchObject({
+      executionMode: "confirm",
+      status: "awaiting-confirmation",
+    })
+    expect(transitionAgentTask(waiting, "planning").status).toBe("planning")
   })
 
   it("moves through a legal transition and increments the revision", () => {

@@ -32,6 +32,12 @@ type RetryAgentTaskOptions = {
   createEventId?: () => string
 }
 
+type ConfirmAgentTaskOptions = {
+  root?: string
+  now?: () => string
+  createId?: () => string
+}
+
 type AcknowledgeCanvasWritebackOptions = {
   root?: string
   now?: () => string
@@ -70,6 +76,48 @@ export class InvalidAgentCanvasAcknowledgementError extends Error {
     super(message)
     this.name = "InvalidAgentCanvasAcknowledgementError"
   }
+}
+
+export class InvalidAgentTaskConfirmationError extends Error {
+  constructor(taskId: string, status: AgentTaskStatus) {
+    super(`Canvas Agent task cannot be confirmed from ${status}: ${taskId}`)
+    this.name = "InvalidAgentTaskConfirmationError"
+  }
+}
+
+export async function confirmAgentTask(
+  taskId: string,
+  options: ConfirmAgentTaskOptions = {}
+) {
+  const stored = await getStoredAgentTask(taskId, options.root)
+  if (!stored) {
+    throw new AgentTaskNotFoundError(taskId)
+  }
+  if (stored.task.status !== "awaiting-confirmation") {
+    throw new InvalidAgentTaskConfirmationError(
+      taskId,
+      stored.task.status
+    )
+  }
+
+  const now = options.now?.() ?? nowIso()
+  const nextTask = transitionAgentTask(stored.task, "planning", {
+    now,
+    eventId: options.createId?.() ?? createId("event"),
+    message: "用户已确认提示词，开始执行生成任务",
+  })
+  const confirmed = agentTaskSchema.parse({
+    ...nextTask,
+    promptConfirmedAt: now,
+  })
+
+  return (
+    await saveStoredAgentTask(
+      confirmed,
+      stored.task.revision,
+      options.root
+    )
+  ).task
 }
 
 function finishCanvasStep(
@@ -254,6 +302,7 @@ export async function retryAgentTask(
   const retried = createAgentTask(
     {
       userInstruction: stored.task.userInstruction,
+      executionMode: stored.task.executionMode,
       selectedCanvasId: stored.task.selectedCanvasId,
       skillId: stored.task.skillId,
       contextSnapshotId: stored.task.contextSnapshotId,

@@ -63,7 +63,8 @@ function skillSnapshotId(taskId: string) {
 
 function localInterpretation(
   input: TextModelInterpretationInput,
-  modelFallback = false
+  modelFallback = false,
+  executionMode: AgentTask["executionMode"] = "auto"
 ): AgentInterpretation {
   const instruction = input.userInstruction.trim()
   const video = /视频|动画|镜头|动起来|图生视频/.test(instruction)
@@ -90,9 +91,20 @@ function localInterpretation(
   }
   return {
     message: modelFallback
-      ? "文字模型暂时不可用，我已切换到本地规则规划，会继续生成并写回画布。"
-      : "我会先整理目标和执行步骤，然后自动生成并写回画布。",
-    summary: video ? "理解视频创作目标并自动执行" : "理解图片创作目标并自动执行",
+      ? executionMode === "confirm"
+        ? "文字模型暂时不可用，我已切换到本地规则整理专业提示词，确认后再执行。"
+        : "文字模型暂时不可用，我已切换到本地规则规划，会继续生成并写回画布。"
+      : executionMode === "confirm"
+        ? "我会先整理专业提示词并同步到画布，等你确认后再开始生成。"
+        : "我会先整理专业提示词和执行步骤，然后自动生成并写回画布。",
+    summary:
+      executionMode === "confirm"
+        ? video
+          ? "理解视频创作目标并等待提示词确认"
+          : "理解图片创作目标并等待提示词确认"
+        : video
+          ? "理解视频创作目标并自动执行"
+          : "理解图片创作目标并自动执行",
     normalizedInstruction: instruction,
     intent: video ? "video" : "image",
     source: "local-rules",
@@ -126,7 +138,9 @@ async function understandTask(
   const useTextModel = Boolean(
     dependencies.textAdapter || hasTextModelCredentials(dependencies.textCredentials)
   )
-  if (!useTextModel) return localInterpretation(input)
+  if (!useTextModel) {
+    return localInterpretation(input, false, task.executionMode)
+  }
 
   try {
     const interpreted = await (
@@ -145,7 +159,7 @@ async function understandTask(
             },
     }
   } catch {
-    return localInterpretation(input, true)
+    return localInterpretation(input, true, task.executionMode)
   }
 }
 
@@ -245,7 +259,11 @@ export async function runAgentTaskTick(
   if (!stored) throw new AgentTaskNotFoundError(taskId)
   const task = stored.task
 
-  if (TERMINAL_STATUSES.has(task.status) || task.status === "writing-canvas") {
+  if (
+    TERMINAL_STATUSES.has(task.status) ||
+    task.status === "writing-canvas" ||
+    task.status === "awaiting-confirmation"
+  ) {
     return task
   }
 
@@ -304,10 +322,17 @@ export async function runAgentTaskTick(
         skill,
         target: task.interpretation?.target,
       })
-      return persistTransition(task, "planning", dependencies, (next) => ({
-        ...next,
-        compiledPrompt,
-      }))
+      return persistTransition(
+        task,
+        task.executionMode === "confirm"
+          ? "awaiting-confirmation"
+          : "planning",
+        dependencies,
+        (next) => ({
+          ...next,
+          compiledPrompt,
+        })
+      )
     }
 
     if (task.status === "planning") {

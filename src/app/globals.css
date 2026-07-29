@@ -155,6 +155,91 @@
     display: contents;
   }
 
+  .canvas-surface .asui-agent-prompt-frame {
+    display: contents;
+  }
+
+  .canvas-surface .asui-agent-prompt-frame .tl-frame__body {
+    fill: #18181a !important;
+    stroke: #3b3b42 !important;
+    stroke-width: 2px !important;
+    rx: 18px !important;
+    ry: 18px !important;
+  }
+
+  .canvas-surface .asui-agent-prompt-frame .tl-frame-heading,
+  .canvas-surface .asui-agent-prompt-frame .tl-frame-heading-hit-area {
+    display: none !important;
+  }
+
+  .canvas-surface .asui-agent-prompt-content {
+    pointer-events: none;
+    z-index: 2;
+    overflow: hidden;
+    border-radius: 18px;
+    color: #cacacf;
+  }
+
+  .asui-agent-prompt-document {
+    box-sizing: border-box;
+    min-height: 100%;
+    padding: 28px 30px 34px;
+    font-family: var(--font-geist-sans), sans-serif;
+    font-size: 13px;
+    line-height: 1.75;
+  }
+
+  .asui-agent-prompt-document h2,
+  .asui-agent-prompt-document h3,
+  .asui-agent-prompt-document h4,
+  .asui-agent-prompt-document p {
+    margin: 0;
+  }
+
+  .asui-agent-prompt-document h2 {
+    color: #f3f3f5;
+    font-size: 20px;
+    font-weight: 650;
+    line-height: 1.35;
+  }
+
+  .asui-agent-prompt-document h3 {
+    margin-top: 4px;
+    color: #a3fe44;
+    font-size: 13px;
+    font-weight: 650;
+    line-height: 1.5;
+  }
+
+  .asui-agent-prompt-document h4 {
+    color: #9d9da5;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
+  .asui-agent-prompt-document p {
+    color: #c2c2c8;
+    overflow-wrap: anywhere;
+  }
+
+  .asui-agent-prompt-document .is-list-item {
+    position: relative;
+    padding-left: 14px;
+  }
+
+  .asui-agent-prompt-document .is-list-item::before {
+    position: absolute;
+    left: 1px;
+    color: #a3fe44;
+    content: "•";
+  }
+
+  .asui-agent-prompt-spacer {
+    display: block;
+    height: 12px;
+  }
+
   .canvas-surface .asui-generated-media {
     position: absolute;
     inset: 0;
@@ -590,6 +675,64 @@
     @apply ml-auto flex h-6 items-center gap-1 rounded-full px-2 text-[#92929A] transition-colors hover:bg-white/[0.06] hover:text-[#E8E8EB];
   }
 
+  .agent-prompt-review {
+    @apply flex flex-col gap-3;
+  }
+
+  .agent-prompt-review__header {
+    @apply flex items-center justify-between gap-3 border-b border-white/[0.07] pb-2.5;
+  }
+
+  .agent-prompt-review__header span:first-child {
+    @apply text-[12px] font-semibold text-[#F0F0F2];
+  }
+
+  .agent-prompt-review__header span:last-child {
+    @apply rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary;
+  }
+
+  .agent-prompt-review__summary {
+    @apply text-[12px] font-medium text-[#D7D7DC];
+  }
+
+  .agent-prompt-review__content {
+    @apply max-h-[260px] space-y-3 overflow-y-auto rounded-xl border border-white/[0.06] bg-black/20 p-3;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 16%) transparent;
+  }
+
+  .agent-prompt-review__content section {
+    @apply space-y-1.5;
+  }
+
+  .agent-prompt-review__content strong {
+    @apply text-[10px] font-semibold text-primary;
+  }
+
+  .agent-prompt-review__content p {
+    @apply whitespace-pre-wrap break-words text-[11px] leading-5 text-[#B7B7BE];
+  }
+
+  .agent-prompt-review__hint {
+    @apply text-[10px] leading-4 text-[#777780];
+  }
+
+  .agent-prompt-review__actions {
+    @apply flex items-center justify-end gap-2 border-t border-white/[0.07] pt-3;
+  }
+
+  .agent-prompt-review__actions button {
+    @apply flex h-8 items-center justify-center gap-1.5 rounded-full px-3 text-[11px] font-medium transition-colors;
+  }
+
+  .agent-prompt-review__actions .is-secondary {
+    @apply border border-white/[0.08] bg-white/[0.03] text-[#A6A6AD] hover:bg-white/[0.07] hover:text-[#E8E8EB];
+  }
+
+  .agent-prompt-review__actions .is-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary/85;
+  }
+
   .agent-message-text {
     @apply block whitespace-pre-wrap break-words;
   }
@@ -873,6 +1016,18 @@
 
   .canvas-agent-composer-tools {
     @apply flex min-w-0 items-center gap-1.5 overflow-hidden;
+  }
+
+  .canvas-agent-execution-mode {
+    @apply flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition-colors;
+  }
+
+  .canvas-agent-execution-mode.is-auto {
+    @apply border-primary/25 bg-primary/10 text-primary hover:border-primary/40 hover:bg-primary/15;
+  }
+
+  .canvas-agent-execution-mode.is-confirm {
+    @apply border-white/[0.1] bg-white/[0.04] text-[#C7C7CD] hover:border-primary/30 hover:text-primary;
   }
 
   .canvas-agent-context-button,

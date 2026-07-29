@@ -163,14 +163,36 @@ export function compileGenerationPrompt({
       edit && annotations.length > 0
         ? `\n逐条区域修改：\n${annotations.join("\n")}`
         : ""
-    const prompt = [
-      `用户原始目标：${originalGoal}`,
-      `输出版本 ${index + 1}：${difference}`,
+    const visualDirection =
       mediaType === "video"
-        ? "根据参考画面生成连贯视频，不改变主体身份和核心构图。"
+        ? "镜头运动自然连贯，主体动作与环境反馈符合真实物理逻辑，起承转合清楚。"
+        : "主体明确，视觉层级清楚，画面焦点集中，构图完整且具备可直接交付的成片质量。"
+    const lightingDirection =
+      "使用与主题匹配的自然光影、协调而有层次的色彩关系，保留高光与暗部细节。"
+    const detailDirection =
+      "材质真实，边缘干净，空间关系准确，细节丰富但不过度堆叠，避免廉价滤镜感。"
+    const prompt = [
+      "【创作目标】",
+      originalGoal,
+      "",
+      "【版本方向】",
+      `版本 ${index + 1}：${difference}`,
+      "",
+      "【构图与叙事】",
+      visualDirection,
+      "",
+      "【光线与色彩】",
+      lightingDirection,
+      "",
+      "【材质与细节】",
+      detailDirection,
+      "",
+      "【输出要求】",
+      mediaType === "video"
+        ? `生成 ${target?.durationSeconds ?? Number(originalGoal.match(/(\d{1,2})\s*秒/)?.[1] ?? 4)} 秒连贯视频，不改变主体身份和核心构图。`
         : edit
           ? `源图片尺寸 ${width} × ${height}。保持所有未标注区域不变，只执行下面列出的局部修改。`
-          : "生成完整、可直接使用的图片。",
+          : `生成 ${width} × ${height} 的完整图片，保持画面边缘、文字与主体完整，可直接用于后续设计。`,
       creationAnnotations,
       regionalInstructions,
       skillRule ? `\n必须遵守的 Skill 规则：${skillRule}` : "",

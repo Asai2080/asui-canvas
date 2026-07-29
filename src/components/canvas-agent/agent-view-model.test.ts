@@ -85,6 +85,40 @@ describe("agent view model", () => {
     expect(messages[0]).toMatchObject({ role: "user" })
   })
 
+  it("shows a review message without auto-running a task that awaits confirmation", () => {
+    const waiting = {
+      ...task(
+        "waiting",
+        "awaiting-confirmation",
+        "2026-07-26T08:00:00.000Z"
+      ),
+      executionMode: "confirm" as const,
+      compiledPrompt: {
+        summary: "生成春天图片",
+        sharedConstraints: [],
+        outputs: [
+          {
+            id: "output-spring",
+            mediaType: "image" as const,
+            prompt: "春日花园，明亮自然光。",
+          },
+        ],
+      },
+    } satisfies AgentTask
+
+    expect(selectForegroundTask([waiting])).toBeUndefined()
+    expect(tasksToThreadMessages([waiting])).toHaveLength(2)
+    expect(tasksToThreadMessages([waiting])[1]).toMatchObject({
+      role: "assistant",
+      metadata: {
+        custom: {
+          taskId: "waiting",
+          taskStatus: "awaiting-confirmation",
+        },
+      },
+    })
+  })
+
   it("adds only the final result after a task finishes", () => {
     const completed = {
       ...task("completed", "completed", "2026-07-26T08:00:00.000Z"),

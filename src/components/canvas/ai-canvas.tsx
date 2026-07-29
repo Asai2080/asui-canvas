@@ -118,14 +118,24 @@ const isVideoNodeShape = (shape?: TLShape | null) => {
   const meta = shapeMeta(shape)
   return meta.kind === "video-node" || meta.asuiNode === "video-node"
 }
+const isAgentPromptShape = (shape?: TLShape | null) =>
+  shapeMeta(shape).kind === "agent-prompt"
 
 class AsuiFrameShapeUtil extends FrameShapeUtil {
   override hideResizeHandles(shape: TLFrameShape) {
-    return isImageHolderShape(shape) || isVideoNodeShape(shape)
+    return (
+      isImageHolderShape(shape) ||
+      isVideoNodeShape(shape) ||
+      isAgentPromptShape(shape)
+    )
   }
 
   override hideRotateHandle(shape: TLFrameShape) {
-    return isImageHolderShape(shape) || isVideoNodeShape(shape)
+    return (
+      isImageHolderShape(shape) ||
+      isVideoNodeShape(shape) ||
+      isAgentPromptShape(shape)
+    )
   }
 
   override hideSelectionBoundsFg(shape: TLFrameShape) {
@@ -133,7 +143,11 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
   }
 
   override getGeometry(shape: TLFrameShape) {
-    if (!isImageHolderShape(shape) && !isVideoNodeShape(shape)) {
+    if (
+      !isImageHolderShape(shape) &&
+      !isVideoNodeShape(shape) &&
+      !isAgentPromptShape(shape)
+    ) {
       return super.getGeometry(shape)
     }
 
@@ -154,6 +168,52 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
 
   override component(shape: TLFrameShape) {
     const content = super.component(shape)
+    if (isAgentPromptShape(shape)) {
+      const promptContent = String(
+        shapeMeta(shape).agentPromptContent ?? ""
+      )
+      return (
+        <div className="asui-agent-prompt-frame">
+          {content}
+          <HTMLContainer
+            className="asui-agent-prompt-content"
+            style={{ width: shape.props.w, height: shape.props.h }}
+          >
+            <div className="asui-agent-prompt-document">
+              {promptContent.split("\n").map((line, index) => {
+                const headingLevel = line.match(/^(#{1,3})\s+(.+)$/)
+                if (headingLevel) {
+                  const Tag =
+                    headingLevel[1].length === 1
+                      ? "h2"
+                      : headingLevel[1].length === 2
+                        ? "h3"
+                        : "h4"
+                  return <Tag key={`${index}-${line}`}>{headingLevel[2]}</Tag>
+                }
+                if (line.startsWith("- ")) {
+                  return (
+                    <p className="is-list-item" key={`${index}-${line}`}>
+                      {line.slice(2)}
+                    </p>
+                  )
+                }
+                return line ? (
+                  <p key={`${index}-${line}`}>{line}</p>
+                ) : (
+                  <span
+                    className="asui-agent-prompt-spacer"
+                    key={`spacer-${index}`}
+                    aria-hidden="true"
+                  />
+                )
+              })}
+            </div>
+          </HTMLContainer>
+        </div>
+      )
+    }
+
     const isAsuiNode = isImageHolderShape(shape) || isVideoNodeShape(shape)
     const kind = isVideoNodeShape(shape) ? "video" : "image"
     // Shape util components are invoked as reactive React components by tldraw.
@@ -193,6 +253,11 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
   }
 
   override getIndicatorPath(shape: TLFrameShape) {
+    if (isAgentPromptShape(shape)) {
+      const path = new Path2D()
+      path.roundRect(0, 0, shape.props.w, shape.props.h, 18)
+      return path
+    }
     if (!isImageHolderShape(shape) && !isVideoNodeShape(shape)) {
       return super.getIndicatorPath(shape)
     }
@@ -249,6 +314,14 @@ function applyAsuiCanvasTheme(editor: Editor) {
 }
 
 class AsuiImageShapeUtil extends ImageShapeUtil {
+  override getIndicatorPath(shape: TLImageShape) {
+    const meta = shapeMeta(shape)
+    if (meta.kind === "generated-image" || meta.asuiNode === "generated-image") {
+      return undefined
+    }
+    return super.getIndicatorPath(shape)
+  }
+
   override component(shape: TLImageShape) {
     const content = super.component(shape)
     const meta = shapeMeta(shape)
@@ -268,6 +341,14 @@ class AsuiImageShapeUtil extends ImageShapeUtil {
 }
 
 class AsuiVideoShapeUtil extends VideoShapeUtil {
+  override getIndicatorPath(shape: TLVideoShape) {
+    const meta = shapeMeta(shape)
+    if (meta.kind === "generated-video" || meta.asuiNode === "generated-video") {
+      return new Path2D()
+    }
+    return super.getIndicatorPath(shape)
+  }
+
   override component(shape: TLVideoShape) {
     const content = super.component(shape)
     const meta = shapeMeta(shape)
@@ -2243,6 +2324,60 @@ export function AiCanvas() {
 
       for (const [commandIndex, command] of batch.commands.entries()) {
         try {
+          if (command.type === "create-prompt-node") {
+            const existingPrompt = editor
+              .getCurrentPageShapes()
+              .find(
+                (shape) =>
+                  shape.type === "frame" &&
+                  isAgentPromptShape(shape) &&
+                  shapeMeta(shape).agentTaskId === batch.taskId
+              )
+            const promptNodeId =
+              existingPrompt?.id ?? createShapeId()
+
+            if (existingPrompt) {
+              editor.updateShape({
+                id: existingPrompt.id,
+                type: existingPrompt.type,
+                meta: {
+                  ...existingPrompt.meta,
+                  agentPromptContent: command.content,
+                  agentPromptTitle: command.title,
+                },
+              })
+            } else {
+              editor.createShape({
+                id: promptNodeId,
+                type: "frame",
+                x: command.bounds.x,
+                y: command.bounds.y,
+                props: {
+                  w: command.bounds.w,
+                  h: command.bounds.h,
+                  name: command.title,
+                  color: "grey",
+                },
+                meta: {
+                  kind: "agent-prompt",
+                  asuiNode: "agent-prompt",
+                  asuiMetaVersion: ASUI_META_VERSION,
+                  agentTaskId: batch.taskId,
+                  agentPromptTitle: command.title,
+                  agentPromptContent: command.content,
+                },
+              })
+            }
+
+            createdNodes.set(command.nodeRef, {
+              logicalId: promptNodeId,
+              connectionId: promptNodeId,
+              artifactId: command.nodeRef,
+            })
+            resultNodeIds.push(promptNodeId)
+            continue
+          }
+
           if (command.type === "create-image-node") {
             let version: ImageVersion = {
               versionId: command.artifact.versionId,

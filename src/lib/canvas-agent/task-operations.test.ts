@@ -9,6 +9,7 @@ import { agentTaskSchema, type AgentTask } from "./task-schema"
 import {
   acknowledgeAgentCanvasWriteback,
   cancelAgentTask,
+  confirmAgentTask,
   retryAgentTask,
 } from "./task-operations"
 import {
@@ -194,6 +195,36 @@ describe("retryAgentTask", () => {
     })
     expect((await getStoredAgentTask("task-source", root))?.task).toEqual(failed)
     expect((await getStoredAgentTask("task-retry", root))?.task).toEqual(retried)
+  })
+})
+
+describe("confirmAgentTask", () => {
+  it("moves a waiting task into planning and records the confirmation", async () => {
+    const root = await createRoot()
+    await createStoredAgentTask(
+      sourceTask({
+        status: "awaiting-confirmation",
+        executionMode: "confirm",
+        executionPlan: undefined,
+      }),
+      root
+    )
+
+    const confirmed = await confirmAgentTask("task-source", {
+      root,
+      now: () => "2026-07-25T09:03:00.000Z",
+      createId: () => "event-confirm",
+    })
+
+    expect(confirmed).toMatchObject({
+      status: "planning",
+      executionMode: "confirm",
+      promptConfirmedAt: "2026-07-25T09:03:00.000Z",
+    })
+    expect(confirmed.history.at(-1)).toMatchObject({
+      id: "event-confirm",
+      status: "planning",
+    })
   })
 })
 

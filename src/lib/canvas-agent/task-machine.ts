@@ -1,5 +1,6 @@
 import {
   agentTaskSchema,
+  type AgentExecutionMode,
   type AgentTask,
   type AgentTaskError,
   type AgentTaskStatus,
@@ -7,6 +8,7 @@ import {
 
 type CreateAgentTaskInput = {
   userInstruction: string
+  executionMode?: AgentExecutionMode
   selectedCanvasId?: string
   skillId?: string
   contextSnapshotId?: string
@@ -47,7 +49,13 @@ const ALLOWED_TRANSITIONS: Record<AgentTaskStatus, AgentTaskStatus[]> = {
   ],
   "reading-skill": ["reading-canvas", "compiling-prompt", "failed", "cancelled"],
   "reading-canvas": ["compiling-prompt", "failed", "cancelled"],
-  "compiling-prompt": ["planning", "failed", "cancelled"],
+  "compiling-prompt": [
+    "awaiting-confirmation",
+    "planning",
+    "failed",
+    "cancelled",
+  ],
+  "awaiting-confirmation": ["planning", "failed", "cancelled"],
   planning: ["executing", "failed", "cancelled"],
   executing: ["writing-canvas", "partially-completed", "failed", "cancelled"],
   "writing-canvas": ["completed", "partially-completed", "failed", "cancelled"],
@@ -63,6 +71,7 @@ const DEFAULT_MESSAGES: Record<AgentTaskStatus, string> = {
   "reading-skill": "正在读取 Skill",
   "reading-canvas": "正在读取画布上下文",
   "compiling-prompt": "正在整理生成提示词",
+  "awaiting-confirmation": "提示词已准备好，等待确认",
   planning: "正在规划执行步骤",
   executing: "正在执行生成任务",
   "writing-canvas": "正在将结果写入画布",
@@ -97,6 +106,7 @@ export function createAgentTask(
     revision: 0,
     source: "asui-canvas-agent",
     status: "queued",
+    executionMode: input.executionMode ?? "auto",
     userInstruction: input.userInstruction,
     selectedCanvasId: input.selectedCanvasId,
     skillId: input.skillId,

@@ -3,10 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { AppendMessage } from "@assistant-ui/react"
 
+import { writeAgentPromptToCanvas } from "@/lib/canvas-agent/canvas-commands/prompt-writeback"
 import { writeAgentTaskToCanvas } from "@/lib/canvas-agent/canvas-commands/writeback"
 import type { CanvasCommandBounds } from "@/lib/canvas-agent/canvas-commands/schema"
 import type { CanvasContextSnapshot } from "@/lib/canvas-agent/context/schema"
-import type { AgentTask } from "@/lib/canvas-agent/task-schema"
+import type {
+  AgentExecutionMode,
+  AgentTask,
+} from "@/lib/canvas-agent/task-schema"
 import { readApiConfigFromSession } from "@/lib/canvas/api-config"
 
 import {
@@ -33,6 +37,7 @@ type UseAgentTasksOptions = {
   getCanvasContext: () => AgentCanvasContext
   selectedSkillId?: string
   selectedTextModel?: string
+  executionMode: AgentExecutionMode
   conversationStartedAt?: string
   onBusyChange?: (busy: boolean) => void
   onForegroundTaskChange?: (task?: AgentTask) => void
@@ -60,6 +65,7 @@ export function useAgentTasks({
   getCanvasContext,
   selectedSkillId,
   selectedTextModel,
+  executionMode,
   conversationStartedAt,
   onBusyChange,
   onForegroundTaskChange,
@@ -74,6 +80,7 @@ export function useAgentTasks({
     >()
   )
   const writebackRevisionRef = useRef("")
+  const promptWritebackTaskIdsRef = useRef(new Set<string>())
   const textModelByTaskRef = useRef(new Map<string, string>())
   const foregroundTask = useMemo(() => selectForegroundTask(tasks), [tasks])
 
@@ -111,6 +118,47 @@ export function useAgentTasks({
     onBusyChange?.(Boolean(foregroundTask))
     onForegroundTaskChange?.(foregroundTask)
   }, [foregroundTask, onBusyChange, onForegroundTaskChange])
+
+  useEffect(() => {
+    const promptTask = tasks.find(
+      (task) =>
+        Boolean(task.compiledPrompt) &&
+        [
+          "awaiting-confirmation",
+          "planning",
+          "executing",
+          "writing-canvas",
+        ].includes(task.status) &&
+        !promptWritebackTaskIdsRef.current.has(task.id)
+    )
+    if (!promptTask) return
+
+    let cancelled = false
+    promptWritebackTaskIdsRef.current.add(promptTask.id)
+    const writePrompt = async () => {
+      try {
+        const fallback = getCanvasContext()
+        const bounds = boundsByTaskRef.current.get(promptTask.id)
+        await writeAgentPromptToCanvas({
+          task: promptTask,
+          sourceBounds: bounds?.sourceBounds ?? fallback.sourceBounds,
+          viewportBounds: bounds?.viewportBounds ?? fallback.viewportBounds,
+        })
+      } catch (reason) {
+        promptWritebackTaskIdsRef.current.delete(promptTask.id)
+        if (!cancelled) {
+          setError(
+            reason instanceof Error ? reason.message : "提示词画板写入失败"
+          )
+        }
+      }
+    }
+    void writePrompt()
+
+    return () => {
+      cancelled = true
+    }
+  }, [getCanvasContext, tasks])
 
   useEffect(() => {
     if (!foregroundTask) return
@@ -202,6 +250,7 @@ export function useAgentTasks({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userInstruction,
+          executionMode,
           selectedCanvasId: context.snapshot.selectedNodeId,
           skillId: selectedSkillId || undefined,
           contextSnapshot: context.snapshot,
@@ -216,11 +265,20 @@ export function useAgentTasks({
       if (textModel) textModelByTaskRef.current.set(created.id, textModel)
       upsertTask(created)
     },
-    [getCanvasContext, selectedSkillId, selectedTextModel, upsertTask]
+    [
+      executionMode,
+      getCanvasContext,
+      selectedSkillId,
+      selectedTextModel,
+      upsertTask,
+    ]
   )
 
   const performTaskAction = useCallback(
-    async (taskId: string, action: "cancel" | "retry") => {
+    async (
+      taskId: string,
+      action: "cancel" | "confirm" | "retry"
+    ) => {
       setError("")
       const response = await fetch(
         `/api/agent/tasks/${encodeURIComponent(taskId)}/${action}`,
@@ -239,6 +297,7 @@ export function useAgentTasks({
     clearError: () => setError(""),
     submitMessage,
     cancelTask: (taskId: string) => performTaskAction(taskId, "cancel"),
+    confirmTask: (taskId: string) => performTaskAction(taskId, "confirm"),
     retryTask: (taskId: string) => performTaskAction(taskId, "retry"),
   }
 }

@@ -14,6 +14,7 @@ export const agentTaskStatusSchema = z.enum([
   "reading-skill",
   "reading-canvas",
   "compiling-prompt",
+  "awaiting-confirmation",
   "planning",
   "executing",
   "writing-canvas",
@@ -22,6 +23,8 @@ export const agentTaskStatusSchema = z.enum([
   "failed",
   "cancelled",
 ])
+
+export const agentExecutionModeSchema = z.enum(["auto", "confirm"])
 
 export const agentTaskHistoryEventSchema = z.object({
   id: agentTaskIdSchema,
@@ -156,6 +159,7 @@ export const agentTaskSchema = z.object({
   revision: z.number().int().nonnegative(),
   source: z.literal("asui-canvas-agent"),
   status: agentTaskStatusSchema,
+  executionMode: agentExecutionModeSchema.optional(),
   userInstruction: z.string().trim().min(1),
   selectedCanvasId: z.string().trim().min(1).optional(),
   skillId: agentTaskIdSchema.optional(),
@@ -172,6 +176,7 @@ export const agentTaskSchema = z.object({
   providerJobIds: z.record(z.string(), z.string()).optional(),
   resultNodeIds: z.array(z.string().trim().min(1)),
   error: agentTaskErrorSchema.optional(),
+  promptConfirmedAt: z.iso.datetime().optional(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   completedAt: z.iso.datetime().optional(),
@@ -180,6 +185,7 @@ export const agentTaskSchema = z.object({
 
 export type AgentTaskId = z.infer<typeof agentTaskIdSchema>
 export type AgentTaskStatus = z.infer<typeof agentTaskStatusSchema>
+export type AgentExecutionMode = z.infer<typeof agentExecutionModeSchema>
 export type AgentTaskHistoryEvent = z.infer<typeof agentTaskHistoryEventSchema>
 export type CompiledPrompt = z.infer<typeof compiledPromptSchema>
 export type AgentPlan = z.infer<typeof agentPlanSchema>

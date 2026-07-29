@@ -227,6 +227,32 @@ describe("runAgentTaskTick", () => {
       .toMatchObject({ status: "completed", attempts: 1 })
   })
 
+  it("waits after prompt compilation when confirmation mode is enabled", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: "生成一张春天的图片",
+        executionMode: "confirm",
+      },
+      { id: "task-confirm", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = dependencies(root)
+
+    await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
+    const waiting = await runAgentTaskTick(task.id, deps)
+    const stillWaiting = await runAgentTaskTick(task.id, deps)
+
+    expect(waiting).toMatchObject({
+      status: "awaiting-confirmation",
+      executionMode: "confirm",
+    })
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain("【创作目标】")
+    expect(stillWaiting.revision).toBe(waiting.revision)
+    expect(stillWaiting.status).toBe("awaiting-confirmation")
+  })
+
   it("loads the canvas snapshot and preserves its source dimensions", async () => {
     const root = await createRoot()
     await createStoredCanvasContextSnapshot(

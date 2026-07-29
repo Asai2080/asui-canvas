@@ -1,6 +1,12 @@
 "use client"
 
-import { createContext, useContext, useMemo, useState } from "react"
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
@@ -18,6 +24,8 @@ import {
   Image01Icon,
   Loading03Icon,
   MultiplicationSignIcon,
+  MessageQuestionIcon,
+  PlayIcon,
   Refresh03Icon,
   Settings01Icon,
   SidebarRight01Icon,
@@ -26,7 +34,10 @@ import {
 import { BorderBeam } from "border-beam"
 
 import { EdgeBlur } from "@/components/ui/edge-blur"
-import type { AgentTask } from "@/lib/canvas-agent/task-schema"
+import type {
+  AgentExecutionMode,
+  AgentTask,
+} from "@/lib/canvas-agent/task-schema"
 
 import { CuriousAiOrb } from "./curious-ai-orb"
 import {
@@ -59,6 +70,7 @@ const STATUS_LABELS: Partial<Record<AgentTask["status"], string>> = {
   "reading-skill": "读取 Skill",
   "reading-canvas": "读取画布",
   "compiling-prompt": "整理提示词",
+  "awaiting-confirmation": "等待确认",
   planning: "规划步骤",
   executing: "生成中",
   "writing-canvas": "写回画布",
@@ -70,10 +82,13 @@ const STATUS_LABELS: Partial<Record<AgentTask["status"], string>> = {
 
 type AgentMessageContextValue = {
   tasksByMessageId: ReadonlyMap<string, AgentTask>
+  cancelTask: (taskId: string) => Promise<void>
+  confirmTask: (taskId: string) => Promise<void>
   retryTask: (taskId: string) => Promise<void>
 }
 
 const AgentMessageContext = createContext<AgentMessageContextValue | null>(null)
+const EXECUTION_MODE_STORAGE_KEY = "asui-canvas:agent-execution-mode"
 
 function formatTaskTime(task: AgentTask) {
   const value = task.completedAt ?? task.updatedAt
@@ -88,6 +103,53 @@ function formatTaskTime(task: AgentTask) {
 
 function AgentTaskBubble({ task }: { task: AgentTask }) {
   const context = useContext(AgentMessageContext)
+  if (task.status === "awaiting-confirmation") {
+    const compiledPrompt = task.compiledPrompt
+    if (!compiledPrompt) return null
+
+    return (
+      <div className="agent-bubble agent-bubble--assistant agent-prompt-review">
+        <div className="agent-prompt-review__header">
+          <span>专业提示词已准备好</span>
+          <span>等待确认</span>
+        </div>
+        <p className="agent-prompt-review__summary">
+          {compiledPrompt.summary}
+        </p>
+        <div className="agent-prompt-review__content">
+          {compiledPrompt.outputs.map((output, index) => (
+            <section key={output.id}>
+              {compiledPrompt.outputs.length > 1 && (
+                <strong>版本 {index + 1}</strong>
+              )}
+              <p>{output.prompt}</p>
+            </section>
+          ))}
+        </div>
+        <p className="agent-prompt-review__hint">
+          提示词已同步到画布。确认后我会自动生成并写回结果。
+        </p>
+        <div className="agent-prompt-review__actions">
+          <button
+            type="button"
+            className="is-secondary"
+            onClick={() => void context?.cancelTask(task.id)}
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            className="is-primary"
+            onClick={() => void context?.confirmTask(task.id)}
+          >
+            <HugeiconsIcon icon={PlayIcon} size={14} strokeWidth={1.8} />
+            确认并生成
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (!isAgentTaskTerminal(task)) return null
   const resultText = getAgentTaskResultText(task)
   const showCapabilityIntroduction = isAgentCapabilityIntroduction(task)
@@ -204,6 +266,8 @@ export function CanvasAgentShell({
 }: CanvasAgentShellProps) {
   const [selectedSkillId, setSelectedSkillId] = useState("")
   const [selectedTextModel, setSelectedTextModel] = useState("")
+  const [executionMode, setExecutionMode] =
+    useState<AgentExecutionMode>("auto")
   const [conversationStartedAt, setConversationStartedAt] = useState("")
   const [showHistory, setShowHistory] = useState(false)
   const {
@@ -213,11 +277,13 @@ export function CanvasAgentShell({
     error,
     submitMessage,
     cancelTask,
+    confirmTask,
     retryTask,
   } = useAgentTasks({
     getCanvasContext,
     selectedSkillId,
     selectedTextModel,
+    executionMode,
     conversationStartedAt,
     onBusyChange,
     onForegroundTaskChange,
@@ -244,8 +310,8 @@ export function CanvasAgentShell({
     [visibleTasks]
   )
   const messageContextValue = useMemo<AgentMessageContextValue>(
-    () => ({ tasksByMessageId, retryTask }),
-    [retryTask, tasksByMessageId]
+    () => ({ tasksByMessageId, cancelTask, confirmTask, retryTask }),
+    [cancelTask, confirmTask, retryTask, tasksByMessageId]
   )
   const runtime = useExternalStoreRuntime({
     messages,
@@ -256,6 +322,24 @@ export function CanvasAgentShell({
   const queuedBehind = visibleTasks.filter(
     (task) => task.status === "queued" && task.id !== foregroundTask?.id
   ).length
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const stored = window.localStorage.getItem(EXECUTION_MODE_STORAGE_KEY)
+      if (stored === "confirm") {
+        setExecutionMode("confirm")
+      }
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [])
+
+  const toggleExecutionMode = () => {
+    setExecutionMode((current) => {
+      const next = current === "auto" ? "confirm" : "auto"
+      window.localStorage.setItem(EXECUTION_MODE_STORAGE_KEY, next)
+      return next
+    })
+  }
 
   const selectionPreviews = useMemo<AgentCanvasSelectionPreview[]>(() => {
     if (!open || !selectionKey) return []
@@ -400,6 +484,36 @@ export function CanvasAgentShell({
                         modelValue={selectedTextModel}
                         onModelChange={setSelectedTextModel}
                       />
+                      <button
+                        type="button"
+                        className={`canvas-agent-execution-mode is-${executionMode}`}
+                        onClick={toggleExecutionMode}
+                        aria-label={
+                          executionMode === "auto"
+                            ? "当前为自动执行，点击切换为询问执行"
+                            : "当前为询问执行，点击切换为自动执行"
+                        }
+                        title={
+                          executionMode === "auto"
+                            ? "自动执行：提示词生成后直接执行"
+                            : "询问执行：确认提示词后再执行"
+                        }
+                      >
+                        <HugeiconsIcon
+                          icon={
+                            executionMode === "auto"
+                              ? PlayIcon
+                              : MessageQuestionIcon
+                          }
+                          size={14}
+                          strokeWidth={1.8}
+                        />
+                        <span>
+                          {executionMode === "auto"
+                            ? "自动执行"
+                            : "询问执行"}
+                        </span>
+                      </button>
                       <span className="canvas-agent-canvas-button" title="当前画布" aria-label="当前画布">
                         <HugeiconsIcon icon={Image01Icon} size={17} strokeWidth={1.7} />
                       </span>
