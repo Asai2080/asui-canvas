@@ -273,6 +273,15 @@
     @apply mx-1 h-7 w-px shrink-0 bg-[#39383F];
   }
 
+  .canvas-snap-toggle {
+    @apply relative flex size-8 shrink-0 items-center justify-center rounded-lg text-[#A7A6AE] transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/55;
+  }
+
+  .canvas-snap-toggle.is-active {
+    @apply bg-primary/15 text-primary;
+    box-shadow: inset 0 0 0 1px rgb(163 254 68 / 28%);
+  }
+
   .canvas-main-toolbar__style-panel {
     @apply pointer-events-none absolute bottom-[calc(100%+10px)] right-0 translate-y-3 opacity-0 transition-[transform,opacity] duration-200 ease-out;
   }

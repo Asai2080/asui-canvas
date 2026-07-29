@@ -20,10 +20,12 @@ import {
   HTMLContainer,
   ImageShapeUtil,
   Rectangle2d,
+  SnapIndicatorOverlayUtil,
   Tldraw,
   TLAssetId,
   TLFrameShape,
   TLImageShape,
+  type TLSnapIndicatorOverlay,
   TLShape,
   TLShapeId,
   TLVideoShape,
@@ -38,6 +40,8 @@ import { CanvasIdleDotGrid } from "@/components/canvas/canvas-idle-dot-grid"
 import {
   CanvasMainToolbar,
   CanvasMainToolbarContext,
+  CanvasQuickActions,
+  readCanvasSnapModePreference,
 } from "@/components/canvas/canvas-main-toolbar"
 import { CanvasSizeFloatingBar } from "@/components/canvas/canvas-size-floating-bar"
 import { CanvasApiConfigDialog } from "@/components/canvas/canvas-toolbar"
@@ -179,9 +183,27 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
 
 const TLDRAW_COMPONENTS = {
   ImageToolbar: null,
+  QuickActions: CanvasQuickActions,
   StylePanel: null,
   Toolbar: CanvasMainToolbar,
 }
+
+class AsuiSnapIndicatorOverlayUtil extends SnapIndicatorOverlayUtil {
+  override render(
+    context: CanvasRenderingContext2D,
+    overlays: TLSnapIndicatorOverlay[]
+  ) {
+    const zoom = this.editor.getZoomLevel()
+
+    context.save()
+    context.setLineDash([6 / zoom, 5 / zoom])
+    context.lineCap = "round"
+    super.render(context, overlays)
+    context.restore()
+  }
+}
+
+const TLDRAW_OVERLAY_UTILS = [AsuiSnapIndicatorOverlayUtil]
 
 function applyAsuiCanvasTheme(editor: Editor) {
   const theme = editor.getCurrentTheme()
@@ -2413,7 +2435,7 @@ export function AiCanvas() {
       applyAsuiCanvasTheme(editor)
       editor.user.updateUserPreferences({
         colorScheme: "dark",
-        isSnapMode: true,
+        isSnapMode: readCanvasSnapModePreference(),
       })
       migrateVersionLinkArrows(editor)
       syncAllGeneratedMediaToCanvasFrames(editor)
@@ -3734,6 +3756,7 @@ export function AiCanvas() {
             persistenceKey={CANVAS_PERSISTENCE_KEY}
             assetUrls={TLDRAW_ASSET_URLS}
             components={TLDRAW_COMPONENTS}
+            overlayUtils={TLDRAW_OVERLAY_UTILS}
             shapeUtils={TLDRAW_SHAPE_UTILS}
             onMount={handleMount}
           />

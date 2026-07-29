@@ -12,12 +12,15 @@ import {
   ImageCropIcon,
   ImageDownloadIcon,
   Loading03Icon,
+  Magnet01Icon,
   PencilEdit01Icon,
   Settings01Icon,
   TextFontIcon,
   Video01Icon,
 } from "@hugeicons/core-free-icons"
 import {
+  DefaultQuickActions,
+  DefaultQuickActionsContent,
   DefaultStylePanel,
   type Editor,
   type TLImageShape,
@@ -26,6 +29,26 @@ import {
   useEditor,
   useValue,
 } from "tldraw"
+
+const CANVAS_SNAP_MODE_STORAGE_KEY = "asui-canvas:snap-mode"
+
+export function readCanvasSnapModePreference() {
+  if (typeof window === "undefined") return true
+
+  try {
+    return window.localStorage.getItem(CANVAS_SNAP_MODE_STORAGE_KEY) !== "false"
+  } catch {
+    return true
+  }
+}
+
+function persistCanvasSnapModePreference(enabled: boolean) {
+  try {
+    window.localStorage.setItem(CANVAS_SNAP_MODE_STORAGE_KEY, String(enabled))
+  } catch {
+    // The editor preference still applies for this session when storage is unavailable.
+  }
+}
 
 type CanvasMainToolbarContextValue = {
   assistantMode: "codex" | "agent"
@@ -88,6 +111,37 @@ function getSelectedImageShape(editor: Editor) {
   return fallbackImageShapeId
     ? editor.getShape<TLImageShape>(fallbackImageShapeId) ?? null
     : null
+}
+
+export function CanvasQuickActions() {
+  const editor = useEditor()
+  const snapEnabled = useValue(
+    "canvas snap mode",
+    () => editor.user.getIsSnapMode(),
+    [editor]
+  )
+
+  const toggleSnapMode = () => {
+    const enabled = !snapEnabled
+    editor.user.updateUserPreferences({ isSnapMode: enabled })
+    persistCanvasSnapModePreference(enabled)
+  }
+
+  return (
+    <DefaultQuickActions>
+      <DefaultQuickActionsContent />
+      <button
+        type="button"
+        className={`canvas-snap-toggle${snapEnabled ? " is-active" : ""}`}
+        aria-label={snapEnabled ? "关闭对齐吸附" : "开启对齐吸附"}
+        aria-pressed={snapEnabled}
+        title={snapEnabled ? "对齐吸附：已开启" : "对齐吸附：已关闭"}
+        onClick={toggleSnapMode}
+      >
+        <HugeiconsIcon icon={Magnet01Icon} size={16} strokeWidth={1.7} aria-hidden="true" />
+      </button>
+    </DefaultQuickActions>
+  )
 }
 
 export function CanvasMainToolbar() {
