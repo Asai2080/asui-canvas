@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   AiBrain03Icon,
+  AiImageIcon,
   ArrowDown01Icon,
   CheckmarkCircle02Icon,
   FolderInputIcon,
@@ -18,6 +19,7 @@ import type {
   DiscoveredSkill,
   SkillRecord,
 } from "@/lib/canvas-agent/skills/schema"
+import { skillDisplayName } from "@/lib/canvas-agent/skills/identifiers"
 import {
   API_CONFIG_CHANGED_EVENT,
   readApiConfigFromSession,
@@ -191,15 +193,21 @@ export function SkillPicker({
   )
   const filteredSkills = normalizedQuery
     ? skills.filter((skill) =>
-        `${skill.name} ${skill.description}`.toLocaleLowerCase().includes(normalizedQuery)
+        `${skillDisplayName(skill.name)} ${skill.name} ${skill.description}`
+          .toLocaleLowerCase()
+          .includes(normalizedQuery)
       )
     : skills
   const filteredDiscovered = normalizedQuery
     ? unregisteredDiscovered.filter((skill) =>
-        `${skill.name} ${skill.path}`.toLocaleLowerCase().includes(normalizedQuery)
+        `${skillDisplayName(skill.name)} ${skill.name} ${skill.path}`
+          .toLocaleLowerCase()
+          .includes(normalizedQuery)
       )
     : unregisteredDiscovered
-  const triggerLabel = selected?.name ?? (modelValue.trim() || "模型 / Skill")
+  const triggerLabel = selected
+    ? skillDisplayName(selected.name)
+    : modelValue.trim() || "模型 / Skill"
   const importSkill = () => {
     if (!sourcePath.trim()) return
     void registerSkill("import", sourcePath.trim()).catch((reason) =>
@@ -231,7 +239,7 @@ export function SkillPicker({
           </>
         ) : (
           <>
-            <span>{selected?.name ?? "我的 Skill"}</span>
+            <span>{selected ? skillDisplayName(selected.name) : "我的 Skill"}</span>
             <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.7} />
           </>
         )}
@@ -362,10 +370,14 @@ export function SkillPicker({
                     }}
                   >
                     <span className="agent-resource-option-icon">
-                      <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.7} />
+                      <HugeiconsIcon
+                        icon={skill.source.type === "builtin" ? AiImageIcon : SparklesIcon}
+                        size={15}
+                        strokeWidth={1.7}
+                      />
                     </span>
                     <span className="agent-resource-option-copy">
-                      <strong>{skill.name}</strong>
+                      <strong>{skillDisplayName(skill.name)}</strong>
                       <small>{skill.description}</small>
                     </span>
                     {skill.id === value && <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} strokeWidth={1.8} />}
@@ -386,7 +398,7 @@ export function SkillPicker({
                       <HugeiconsIcon icon={FolderInputIcon} size={15} strokeWidth={1.7} />
                     </span>
                     <span className="agent-resource-option-copy">
-                      <strong>{skill.name}</strong>
+                      <strong>{skillDisplayName(skill.name)}</strong>
                       <small>本地 Skill · 点击调用</small>
                     </span>
                   </button>

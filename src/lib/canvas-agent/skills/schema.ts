@@ -22,6 +22,11 @@ export const parsedSkillDocumentSchema = z.object({
 
 export const skillSourceSchema = z.discriminatedUnion("type", [
   z.object({
+    type: z.literal("builtin"),
+    key: safeIdSchema,
+    homepage: z.string().url(),
+  }),
+  z.object({
     type: z.literal("imported"),
     originalPath: z.string().min(1),
     managedPath: z.string().min(1),

@@ -45,6 +45,7 @@ import type {
   DiscoveredSkill,
   SkillRecord,
 } from "@/lib/canvas-agent/skills/schema"
+import { isStoryboardSkillName } from "@/lib/canvas-agent/skills/identifiers"
 
 import { CuriousAiOrb } from "./curious-ai-orb"
 import {
@@ -512,8 +513,7 @@ export function CanvasAgentShell({
   const [storyboardSetupError, setStoryboardSetupError] = useState("")
   const [conversationStartedAt, setConversationStartedAt] = useState("")
   const [showHistory, setShowHistory] = useState(false)
-  const storyboardMode =
-    selectedSkill?.name.trim().toLocaleLowerCase() === "nb-fj"
+  const storyboardMode = isStoryboardSkillName(selectedSkill?.name)
   const {
     tasks,
     foregroundTask,
@@ -598,15 +598,14 @@ export function CanvasAgentShell({
       let skill = payload.skills?.find(
         (candidate) =>
           candidate.available &&
-          candidate.name.trim().toLocaleLowerCase() === "nb-fj"
+          isStoryboardSkillName(candidate.name)
       )
       if (!skill) {
         const discovered = payload.discovered?.find(
-          (candidate) =>
-            candidate.name.trim().toLocaleLowerCase() === "nb-fj"
+          (candidate) => isStoryboardSkillName(candidate.name)
         )
         if (!discovered) {
-          throw new Error("未找到本地 nb-fj Skill")
+          throw new Error("未找到分镜 Skill")
         }
         const registerResponse = await fetch("/api/agent/skills/import", {
           method: "POST",

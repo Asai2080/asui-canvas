@@ -1,6 +1,10 @@
 import type { CanvasContextSnapshot } from "../context/schema"
 import type { SkillSnapshot } from "../skills/schema"
 import {
+  isCoverSkillName,
+  isStoryboardSkillName,
+} from "../skills/identifiers"
+import {
   compiledPromptSchema,
   type CompiledPrompt,
 } from "../task-schema"
@@ -385,7 +389,7 @@ function annotationLines(context?: CanvasContextSnapshot): string[] {
 }
 
 function isStoryboardSkill(skill?: SkillSnapshot) {
-  return skill?.name.trim().toLocaleLowerCase() === "nb-fj"
+  return isStoryboardSkillName(skill?.name)
 }
 
 function compileStoryboardPrompt({
@@ -523,18 +527,32 @@ export function compileGenerationPrompt({
     })
   }
 
-  const requestedCount = target?.count ?? extractCount(creativeInstruction)
+  const coverMode = isCoverSkillName(skill?.name)
+  const effectiveTarget = coverMode
+    ? {
+        ...target,
+        mediaType: "image" as const,
+        width: 768,
+        height: 1024,
+      }
+    : target
+  const requestedCount =
+    effectiveTarget?.count ?? extractCount(creativeInstruction)
   if (requestedCount > 12) {
     throw new Error("图片数量最多为 12 张")
   }
   const count = Math.max(1, requestedCount)
-  const requestedRatio = extractAspectRatio(creativeInstruction)
+  const requestedRatio = coverMode
+    ? ([3, 4] as [number, number])
+    : extractAspectRatio(creativeInstruction)
   const sourceSize = sourceDimensions(context)
   const defaultSize = dimensionsForRatio(requestedRatio)
-  const width = target?.width ?? sourceSize?.width ?? defaultSize.width
-  const height = target?.height ?? sourceSize?.height ?? defaultSize.height
+  const width =
+    effectiveTarget?.width ?? sourceSize?.width ?? defaultSize.width
+  const height =
+    effectiveTarget?.height ?? sourceSize?.height ?? defaultSize.height
   const mediaType =
-    target?.mediaType ??
+    effectiveTarget?.mediaType ??
     (/视频|动画|动起来|镜头/.test(creativeInstruction) ? "video" : "image")
   const edit = mediaType === "image" && hasEditableImage(context)
   const animate =
@@ -544,10 +562,10 @@ export function compileGenerationPrompt({
   const skillRule = skill?.instructions.trim()
   const imageDirection = imageCreativeDirection(creativeInstruction)
   const durationSeconds =
-    target?.durationSeconds ??
+    effectiveTarget?.durationSeconds ??
     Number(creativeInstruction.match(/(\d{1,2})\s*秒/)?.[1] ?? 4)
   const resolution =
-    target?.resolution ??
+    effectiveTarget?.resolution ??
     creativeInstruction.match(/(480p|720p|1080p|4k)/i)?.[1] ??
     "720p"
   const videoFrameRule = requestedRatio

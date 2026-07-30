@@ -50,9 +50,10 @@ describe("Canvas Agent personal Skill registry", () => {
     const first = await importSkill(source, root)
     const second = await importSkill(source, root)
     const skills = await listRegisteredSkills(root)
+    const imported = skills.filter((skill) => skill.source.type === "imported")
 
     expect(second.id).toBe(first.id)
-    expect(skills).toHaveLength(1)
+    expect(imported).toHaveLength(1)
     expect(first).toMatchObject({
       name: "poster-director",
       available: true,
@@ -71,10 +72,12 @@ describe("Canvas Agent personal Skill registry", () => {
     const registered = await registerLocalSkill(source, root)
 
     await rm(source, { recursive: true, force: true })
-    const [skill] = await listRegisteredSkills(root)
+    const skill = (await listRegisteredSkills(root)).find(
+      (candidate) => candidate.id === registered.id
+    )
 
-    expect(skill.id).toBe(registered.id)
-    expect(skill.available).toBe(false)
+    expect(skill?.id).toBe(registered.id)
+    expect(skill?.available).toBe(false)
   })
 
   it("creates an immutable execution snapshot from the selected Skill", async () => {
@@ -111,5 +114,34 @@ describe("Canvas Agent personal Skill registry", () => {
         available: true,
       }),
     ])
+  })
+
+  it("always exposes the built-in cover Skill and creates its snapshot", async () => {
+    const root = await createRoot("asui-agent-registry-")
+    const skills = await listRegisteredSkills(root)
+    const cover = skills.find((skill) => skill.id === "builtin-cover-design")
+
+    expect(cover).toMatchObject({
+      name: "封面 Skill",
+      available: true,
+      source: {
+        type: "builtin",
+        key: "cover-design",
+      },
+    })
+
+    const snapshot = await createSkillSnapshot(
+      "builtin-cover-design",
+      "snapshot-cover",
+      root,
+      { now: "2026-07-31T02:00:00.000Z" }
+    )
+
+    expect(snapshot).toMatchObject({
+      skillId: "builtin-cover-design",
+      name: "封面 Skill",
+      instructions: expect.stringContaining("10 种构图风格"),
+      createdAt: "2026-07-31T02:00:00.000Z",
+    })
   })
 })

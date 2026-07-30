@@ -1,0 +1,21 @@
+import { describe, expect, it } from "vitest"
+
+import {
+  isCoverSkillName,
+  isStoryboardSkillName,
+  skillDisplayName,
+} from "./identifiers"
+
+describe("Canvas Agent Skill identifiers", () => {
+  it("shows the legacy nb-fj Skill with a product-facing name", () => {
+    expect(isStoryboardSkillName("nb-fj")).toBe(true)
+    expect(skillDisplayName("nb-fj")).toBe("分镜 Skill")
+    expect(skillDisplayName("分镜 Skill")).toBe("分镜 Skill")
+  })
+
+  it("recognizes the built-in and upstream cover Skill names", () => {
+    expect(isCoverSkillName("封面 Skill")).toBe(true)
+    expect(isCoverSkillName("gbro-cover-design")).toBe(true)
+    expect(skillDisplayName("gbro-cover-design")).toBe("封面 Skill")
+  })
+})

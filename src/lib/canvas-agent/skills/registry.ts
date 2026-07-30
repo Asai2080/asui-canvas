@@ -13,6 +13,7 @@ import {
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
+import { BUILTIN_SKILLS, getBuiltinSkill } from "./builtins"
 import { parseSkillDocument } from "./parser"
 import {
   discoveredSkillSchema,
@@ -125,9 +126,31 @@ async function writeRegistry(registry: SkillRegistry, root?: string) {
 }
 
 function skillDocumentPath(skill: SkillRecord) {
+  if (skill.source.type === "builtin") return undefined
   return skill.source.type === "imported"
     ? join(skill.source.managedPath, "SKILL.md")
     : join(skill.source.path, "SKILL.md")
+}
+
+function listBuiltinSkills(): SkillRecord[] {
+  return BUILTIN_SKILLS.map((skill) => {
+    const parsed = parseSkillDocument(skill.document)
+    return skillRecordSchema.parse({
+      id: skill.id,
+      name: parsed.name,
+      description: parsed.description,
+      source: {
+        type: "builtin",
+        key: skill.key,
+        homepage: skill.homepage,
+      },
+      contentHash: contentHash(skill.document),
+      risks: parsed.risks,
+      available: true,
+      createdAt: skill.releasedAt,
+      updatedAt: skill.releasedAt,
+    })
+  })
 }
 
 async function saveRecord(
@@ -233,7 +256,8 @@ export async function listRegisteredSkills(root?: string): Promise<SkillRecord[]
 
   const skills = await Promise.all(
     registry.skills.map(async (skill) => {
-      const available = await pathExists(skillDocumentPath(skill))
+      const documentPath = skillDocumentPath(skill)
+      const available = documentPath ? await pathExists(documentPath) : true
       if (available === skill.available) return skill
       changed = true
       return skillRecordSchema.parse({
@@ -248,7 +272,7 @@ export async function listRegisteredSkills(root?: string): Promise<SkillRecord[]
     await writeRegistry({ ...registry, skills }, root)
   }
 
-  return skills
+  return [...listBuiltinSkills(), ...skills]
 }
 
 export async function discoverLocalSkills(
@@ -303,12 +327,29 @@ export async function createSkillSnapshot(
   root?: string,
   options: { now?: string } = {}
 ): Promise<SkillSnapshot> {
+  const builtin = getBuiltinSkill(skillId)
+  if (builtin) {
+    const parsed = parseSkillDocument(builtin.document)
+    return skillSnapshotSchema.parse({
+      id: snapshotId,
+      skillId: builtin.id,
+      name: parsed.name,
+      description: parsed.description,
+      contentHash: contentHash(builtin.document),
+      instructions: parsed.instructions,
+      risks: parsed.risks,
+      createdAt: options.now ?? new Date().toISOString(),
+    })
+  }
+
   const skills = await listRegisteredSkills(root)
   const skill = skills.find((candidate) => candidate.id === skillId)
   if (!skill) throw new SkillNotFoundError(skillId)
   if (!skill.available) throw new SkillUnavailableError(skillId)
 
-  const content = await readFile(skillDocumentPath(skill), "utf8")
+  const documentPath = skillDocumentPath(skill)
+  if (!documentPath) throw new SkillNotFoundError(skillId)
+  const content = await readFile(documentPath, "utf8")
   const parsed = parseSkillDocument(content)
 
   return skillSnapshotSchema.parse({
