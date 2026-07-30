@@ -775,9 +775,7 @@
   }
 
   .agent-prompt-review__content {
-    @apply max-h-[260px] space-y-3 overflow-y-auto rounded-xl border border-white/[0.06] bg-black/20 p-3;
-    scrollbar-width: thin;
-    scrollbar-color: rgb(255 255 255 / 16%) transparent;
+    @apply space-y-3 rounded-xl border border-white/[0.06] bg-black/20 p-3;
   }
 
   .agent-prompt-review__content section {

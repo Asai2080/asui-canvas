@@ -8,6 +8,12 @@ describe("text model adapter", () => {
       const requestBody = JSON.parse(String(init?.body)) as {
         messages: Array<{ role: string; content: string }>
       }
+      expect(requestBody.messages[0].content).toContain(
+        "subject and action, environment and narrative moment"
+      )
+      expect(requestBody.messages[0].content).toContain(
+        "Do not use generic filler"
+      )
       expect(requestBody.messages.slice(1, 3)).toEqual([
         { role: "user", content: "你能做什么" },
         {

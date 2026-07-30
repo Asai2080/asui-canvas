@@ -27,7 +27,27 @@ describe("compileGenerationPrompt", () => {
       width: 768,
       height: 1024,
     })
+    expect(compiled.outputs[0].prompt).toContain("【主体与场景】")
+    expect(compiled.outputs[0].prompt).toContain("【构图与镜头】")
+    expect(compiled.outputs[0].prompt).toContain("当代东方视觉语言")
     expect(new Set(compiled.outputs.map((output) => output.prompt)).size).toBe(4)
+  })
+
+  it("builds a production-ready 3D animation prompt instead of generic filler", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-animation",
+      userInstruction: "帮我生成一个皮克斯风格的图片",
+    })
+
+    expect(compiled.outputs[0].prompt).toContain("电影级 3D 动画长片")
+    expect(compiled.outputs[0].prompt).toContain("原创动画角色")
+    expect(compiled.outputs[0].prompt).toContain("35mm 标准广角")
+    expect(compiled.outputs[0].prompt).toContain("次表面散射")
+    expect(compiled.outputs[0].prompt).toContain("【质量控制】")
+    expect(compiled.outputs[0].negativePrompt).toContain("现有动画角色")
+    expect(compiled.outputs[0].prompt).not.toContain(
+      "主体明确，视觉层级清楚，画面焦点集中"
+    )
   })
 
   it("compiles every owned annotation into a regional image edit", () => {

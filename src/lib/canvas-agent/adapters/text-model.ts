@@ -62,7 +62,7 @@ The product only creates or edits images and videos on a canvas. It never execut
 Return one JSON object only with these fields:
 - message: a concise, natural Chinese reply to the user. For image/video work, describe what you understood and what will happen next. For conversation, answer the user directly.
 - summary: a short, auditable Chinese task summary. Do not include private chain-of-thought or hidden reasoning.
-- normalizedInstruction: a complete Chinese generation/editing instruction that preserves explicit counts, ratios, durations, references, and constraints.
+- normalizedInstruction: a production-ready Chinese creative brief, not a paraphrase. Preserve explicit counts, ratios, durations, references, and constraints. For image creation, concretely describe the subject and action, environment and narrative moment, composition and camera/lens, art direction, lighting, color palette, materials, fidelity, and exclusions. For video, also describe shot movement, subject motion, timing, continuity, and ending frame. Do not use generic filler such as "主体明确、层次清晰" without saying how it should look.
 - intent: "image", "video", "conversation", or "unsupported".
 - target: optional object with mediaType, count (1-12), width, height, durationSeconds (1-15), and resolution.
 

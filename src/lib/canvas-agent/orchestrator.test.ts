@@ -251,7 +251,8 @@ describe("runAgentTaskTick", () => {
       status: "awaiting-confirmation",
       executionMode: "confirm",
     })
-    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain("【创作目标】")
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain("【创作简报】")
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain("【构图与镜头】")
     expect(stillWaiting.revision).toBe(waiting.revision)
     expect(stillWaiting.status).toBe("awaiting-confirmation")
   })
