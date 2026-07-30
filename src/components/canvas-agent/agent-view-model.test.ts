@@ -149,6 +149,64 @@ describe("agent view model", () => {
     expect(serialized).not.toContain("内部状态记录不应原样展示")
   })
 
+  it("retains the confirmed prompt review before the final result", () => {
+    const completed = {
+      ...task("confirmed", "completed", "2026-07-26T08:00:00.000Z"),
+      completedAt: "2026-07-26T08:03:00.000Z",
+      promptConfirmedAt: "2026-07-26T08:01:00.000Z",
+      resultNodeIds: ["node-one"],
+      compiledPrompt: {
+        summary: "生成皮克斯风格图片",
+        sharedConstraints: ["输出尺寸 1024 × 1024"],
+        outputs: [
+          {
+            id: "output-confirmed",
+            mediaType: "image" as const,
+            operation: "create" as const,
+            prompt: "【创作简报】\n皮克斯风格的春日角色场景。",
+            width: 1024,
+            height: 1024,
+          },
+        ],
+      },
+      history: [
+        ...task("confirmed-history", "queued", "2026-07-26T08:00:00.000Z").history,
+        {
+          id: "event-awaiting-confirmation",
+          status: "awaiting-confirmation" as const,
+          message: "提示词已准备好，等待确认",
+          createdAt: "2026-07-26T08:00:30.000Z",
+        },
+      ],
+    } satisfies AgentTask
+
+    const messages = tasksToThreadMessages([completed])
+
+    expect(messages).toHaveLength(3)
+    expect(messages[1]).toMatchObject({
+      id: "confirmed-assistant-review",
+      role: "assistant",
+      createdAt: new Date("2026-07-26T08:01:00.000Z"),
+      metadata: {
+        custom: {
+          taskId: "confirmed",
+          taskStatus: "completed",
+          messageKind: "prompt-review",
+        },
+      },
+    })
+    expect(messages[2]).toMatchObject({
+      id: "confirmed-assistant",
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "已完成当前任务，1 个结果已写入画布。",
+        },
+      ],
+    })
+  })
+
   it("shows the text-model reply for conversation tasks", () => {
     const conversation = {
       ...task("conversation", "completed", "2026-07-26T08:00:00.000Z"),

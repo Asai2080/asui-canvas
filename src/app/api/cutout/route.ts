@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises"
+import { extname, join } from "node:path"
+
 import type { ImageVersion } from "@/lib/canvas/types"
 
 import { getBirefnetServiceUrl } from "../../../lib/cutout/birefnet-service"
@@ -16,6 +19,38 @@ type CutoutServiceResponse = {
   result?: string
   b64_json?: string
   error?: string
+  detail?: string
+}
+
+function canvasAssetMimeType(fileName: string) {
+  switch (extname(fileName).toLowerCase()) {
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg"
+    case ".webp":
+      return "image/webp"
+    case ".svg":
+      return "image/svg+xml"
+    default:
+      return "image/png"
+  }
+}
+
+async function imageSourceForService(imageSrc: string) {
+  if (/^data:image\//.test(imageSrc) || /^https?:\/\//.test(imageSrc)) {
+    return imageSrc
+  }
+  if (!imageSrc.startsWith("/canvas-assets/")) {
+    throw new Error("仅支持画布图片、Data URL 或远程图片 URL")
+  }
+
+  const fileName = imageSrc.slice("/canvas-assets/".length)
+  if (!fileName || fileName.includes("/") || fileName.includes("..")) {
+    throw new Error("画布图片路径无效")
+  }
+  const filePath = join(process.cwd(), "public", "canvas-assets", fileName)
+  const buffer = await readFile(filePath)
+  return `data:${canvasAssetMimeType(fileName)};base64,${buffer.toString("base64")}`
 }
 
 const asDataUrl = (value?: string | null) => {
@@ -52,6 +87,17 @@ export async function POST(request: Request) {
 
   const width = Math.max(1, Math.round(body.width ?? 512))
   const height = Math.max(1, Math.round(body.height ?? 512))
+  let imageSource: string
+  try {
+    imageSource = await imageSourceForService(body.imageSrc.trim())
+  } catch (error) {
+    return Response.json(
+      {
+        error: `无法读取要抠图的画布图片：${error instanceof Error ? error.message : "未知错误"}`,
+      },
+      { status: 400 }
+    )
+  }
   let response: Response
   try {
     response = await fetch(`${serviceUrl}/cutout`, {
@@ -60,7 +106,7 @@ export async function POST(request: Request) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        image: body.imageSrc,
+        image: imageSource,
         model: "BiRefNet_HR",
         output_format: "png",
       }),
@@ -78,7 +124,10 @@ export async function POST(request: Request) {
   if (!response.ok) {
     return Response.json(
       {
-        error: payload.error ?? `BiRefNet HR 抠图失败：HTTP ${response.status}`,
+        error:
+          payload.error ??
+          payload.detail ??
+          `BiRefNet HR 抠图失败：HTTP ${response.status}`,
       },
       { status: response.status }
     )

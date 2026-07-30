@@ -108,12 +108,52 @@ export function tasksToThreadMessages(
         },
       ]
 
+      const promptReviewEvent = task.history.findLast(
+        (event) => event.status === "awaiting-confirmation"
+      )
+      const hasPromptReview = Boolean(
+        task.compiledPrompt &&
+          (task.status === "awaiting-confirmation" || promptReviewEvent)
+      )
+
       if (
         !isAgentTaskTerminal(task) &&
         task.status !== "awaiting-confirmation"
       ) {
         return messages
       }
+
+      if (hasPromptReview) {
+        messages.push({
+          id: `${task.id}-assistant-review`,
+          role: "assistant" as const,
+          content: [
+            {
+              type: "text" as const,
+              text: task.compiledPrompt?.summary ?? "专业提示词已准备好",
+            },
+          ],
+          status: { type: "complete" as const, reason: "stop" as const },
+          createdAt: new Date(
+            task.promptConfirmedAt ??
+              promptReviewEvent?.createdAt ??
+              task.updatedAt
+          ),
+          metadata: {
+            unstable_state: null,
+            unstable_annotations: [],
+            unstable_data: [],
+            steps: [],
+            custom: {
+              taskId: task.id,
+              taskStatus: task.status,
+              messageKind: "prompt-review",
+            },
+          },
+        })
+      }
+
+      if (!isAgentTaskTerminal(task)) return messages
 
       messages.push({
         id: `${task.id}-assistant`,

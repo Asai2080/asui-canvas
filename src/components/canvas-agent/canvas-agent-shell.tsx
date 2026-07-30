@@ -159,12 +159,18 @@ function promptWithDimensions(
     .join(`${width}x${height}`)
 }
 
-function AgentPromptReview({ task }: { task: AgentTask }) {
+function AgentPromptReview({
+  task,
+  readOnly = false,
+}: {
+  task: AgentTask
+  readOnly?: boolean
+}) {
   const context = useContext(AgentMessageContext)
   const compiledPrompt = task.compiledPrompt
   const firstOutput = compiledPrompt?.outputs[0]
   const canAdjustSize = Boolean(
-    compiledPrompt?.outputs.every(
+    !readOnly && compiledPrompt?.outputs.every(
       (output) =>
         output.mediaType === "image" &&
         (output.operation ?? "create") === "create"
@@ -201,7 +207,13 @@ function AgentPromptReview({ task }: { task: AgentTask }) {
     <div className="agent-bubble agent-bubble--assistant agent-prompt-review">
       <div className="agent-prompt-review__header">
         <span>专业提示词已准备好</span>
-        <span>等待确认</span>
+        <span>
+          {readOnly
+            ? task.status === "cancelled"
+              ? "已取消"
+              : "已确认"
+            : "等待确认"}
+        </span>
       </div>
       <p className="agent-prompt-review__summary">
         {compiledPrompt.summary}
@@ -318,40 +330,55 @@ function AgentPromptReview({ task }: { task: AgentTask }) {
           )
         })}
       </div>
-      <p className="agent-prompt-review__hint">
-        提示词已同步到画布。确认后我会自动生成并写回结果。
-      </p>
-      <div className="agent-prompt-review__actions">
-        <button
-          type="button"
-          className="is-secondary"
-          onClick={() => void context?.cancelTask(task.id)}
-        >
-          取消
-        </button>
-        <button
-          type="button"
-          className="is-primary"
-          disabled={canAdjustSize && !validDimensions}
-          onClick={() =>
-            void context?.confirmTask(
-              task.id,
-              canAdjustSize && validDimensions ? { width, height } : undefined
-            )
-          }
-        >
-          <HugeiconsIcon icon={PlayIcon} size={14} strokeWidth={1.8} />
-          确认并生成
-        </button>
-      </div>
+      {!readOnly && (
+        <>
+          <p className="agent-prompt-review__hint">
+            提示词已同步到画布。确认后我会自动生成并写回结果。
+          </p>
+          <div className="agent-prompt-review__actions">
+            <button
+              type="button"
+              className="is-secondary"
+              onClick={() => void context?.cancelTask(task.id)}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              className="is-primary"
+              disabled={canAdjustSize && !validDimensions}
+              onClick={() =>
+                void context?.confirmTask(
+                  task.id,
+                  canAdjustSize && validDimensions ? { width, height } : undefined
+                )
+              }
+            >
+              <HugeiconsIcon icon={PlayIcon} size={14} strokeWidth={1.8} />
+              确认并生成
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }
 
-function AgentTaskBubble({ task }: { task: AgentTask }) {
+function AgentTaskBubble({
+  task,
+  messageKind,
+}: {
+  task: AgentTask
+  messageKind?: "prompt-review" | "result"
+}) {
   const context = useContext(AgentMessageContext)
-  if (task.status === "awaiting-confirmation") {
-    return <AgentPromptReview task={task} />
+  if (messageKind === "prompt-review") {
+    return (
+      <AgentPromptReview
+        task={task}
+        readOnly={task.status !== "awaiting-confirmation"}
+      />
+    )
   }
 
   if (!isAgentTaskTerminal(task)) return null
@@ -443,7 +470,14 @@ function ThreadMessage() {
   return (
     <MessagePrimitive.Root className={`agent-message agent-message--${role}`}>
       {role === "assistant" && task ? (
-        <AgentTaskBubble task={task} />
+        <AgentTaskBubble
+          task={task}
+          messageKind={
+            messageId.endsWith("-assistant-review")
+              ? "prompt-review"
+              : "result"
+          }
+        />
       ) : (
         <div className={`agent-bubble agent-bubble--${role}`}>
           <MessagePrimitive.Parts
@@ -515,6 +549,7 @@ export function CanvasAgentShell({
       new Map(
         visibleTasks.flatMap((task) => [
           [`${task.id}-user`, task] as const,
+          [`${task.id}-assistant-review`, task] as const,
           [`${task.id}-assistant`, task] as const,
         ])
       ),
