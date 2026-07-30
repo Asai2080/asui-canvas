@@ -14,6 +14,9 @@ describe("text model adapter", () => {
       expect(requestBody.messages[0].content).toContain(
         "Do not use generic filler"
       )
+      expect(requestBody.messages[0].content).toContain(
+        "shot movement, subject motion, timing, continuity, and ending frame"
+      )
       expect(requestBody.messages.slice(1, 3)).toEqual([
         { role: "user", content: "你能做什么" },
         {

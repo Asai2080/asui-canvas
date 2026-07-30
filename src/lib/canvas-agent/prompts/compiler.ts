@@ -38,6 +38,9 @@ type ImageCreativeDirection = {
   negative: string
 }
 
+const STYLE_PRESERVATION_RULE =
+  "严格保留用户目标中出现的全部风格、媒介、年代、流派、地域文化、艺术家式审美和渲染方式；任何未被预设识别的风格词都视为最高优先级视觉约束，不得替换、弱化或混成通用风格。"
+
 function imageCreativeDirection(instruction: string): ImageCreativeDirection {
   if (/皮克斯|3D\s*动画|三维动画|动画电影|卡通渲染/i.test(instruction)) {
     return {
@@ -165,6 +168,66 @@ function imageCreativeDirection(instruction: string): ImageCreativeDirection {
     negative:
       "不要主题偏离、主体不清、结构畸形、重复元素、廉价滤镜、过度锐化、伪文字、水印、边框或拼图。",
   }
+}
+
+function videoCameraMovement(instruction: string) {
+  if (/固定机位|固定镜头|静止镜头|锁定镜头|不运镜/i.test(instruction)) {
+    return "固定机位锁定构图，只允许主体和环境内部发生运动；摄影机无平移、旋转或变焦，依靠表演和景深变化组织注意力。"
+  }
+  if (/环绕|绕拍|轨道/i.test(instruction)) {
+    return "摄影机沿稳定圆弧轨道环绕主体 20–45 度，始终保持主体为视觉中心；运动半径、速度与视线方向连续，禁止突然反向或跳轴。"
+  }
+  if (/拉远|后退|拉镜/i.test(instruction)) {
+    return "使用真实摄影机后移完成缓慢 dolly-out，从主体细节逐步揭示完整环境；焦距保持稳定，视差和空间尺度自然展开。"
+  }
+  if (/推进|推近|推镜|靠近/i.test(instruction)) {
+    return "使用轨道或稳定器进行缓慢 dolly-in，摄影机真实向主体靠近而不是数字变焦；前景产生自然视差，焦点持续落在叙事核心。"
+  }
+  if (/跟随|跟拍|追踪|追拍/i.test(instruction)) {
+    return "使用稳定器进行同速跟拍，摄影机与主体保持可控距离和屏幕运动方向；转弯时沿自然弧线调整机位，保持动作连续和背景视差。"
+  }
+  if (/横移|侧移|平移/i.test(instruction)) {
+    return "摄影机沿水平轨道匀速横移，以前景遮挡和背景视差建立空间层次；主体位置在三分线附近稳定移动，不发生构图漂移。"
+  }
+  if (/升起|下降|升降|摇臂|航拍|俯冲/i.test(instruction)) {
+    return "使用摇臂或航拍式垂直运动平滑改变机位高度，同时轻微调整俯仰角保持主体构图；加速和减速具有真实惯性。"
+  }
+  if (/手持|纪实|纪录片/i.test(instruction)) {
+    return "采用克制的肩扛手持感，仅保留低幅度呼吸和步伐反馈；画面可感知摄影师存在，但主体始终可读，禁止高频随机抖动。"
+  }
+  if (/产品|商品|广告|运动鞋|茶饮|饮料|香水|珠宝/i.test(instruction)) {
+    return "使用微距滑轨进行缓慢推进，并叠加不超过 25 度的克制弧形环绕；先揭示轮廓，再让高光沿材质表面移动，最终停在品牌识别面和核心卖点。"
+  }
+  if (/风景|城市|建筑|自然|山水|旅行/i.test(instruction)) {
+    return "使用缓慢摇臂上升结合轻微前推，从前景逐步揭示环境全貌；速度稳定、地平线不漂移，利用前中后景视差体现空间尺度。"
+  }
+  if (/人物|角色|人像|表情|皮克斯|动画/i.test(instruction)) {
+    return "以稳定中景开场，沿角色视线方向缓慢推近至中近景；摄影机移动服务于表情和动作节拍，在情绪落点前自然减速并稳定停住。"
+  }
+  return "使用稳定器完成一次有明确动机的缓慢推进，并辅以极轻微横移制造自然视差；运镜从静止开始、平滑加速、在叙事落点前减速停稳，全程不跳轴。"
+}
+
+function videoTimeline(
+  durationSeconds: number,
+  animate: boolean
+): string[] {
+  const openingEnd = Math.max(0.2, durationSeconds * 0.2)
+  const closingStart = Math.max(
+    openingEnd + 0.1,
+    durationSeconds * 0.78
+  )
+  const time = (value: number) =>
+    Math.min(durationSeconds, value).toFixed(1)
+
+  return [
+    `0.0–${time(openingEnd)} 秒：${
+      animate
+        ? "首帧与参考图严格对齐，先保持短暂稳定，让主体身份、构图和光向清楚可读；随后由呼吸、视线、布料或环境微动自然启动。"
+        : "用稳定建立帧交代主体、环境和空间关系，动作从静止或准备姿态自然启动，第一秒内明确观看重点。"
+    }`,
+    `${time(openingEnd)}–${time(closingStart)} 秒：完成主要动作与摄影机运动，动作只有一个清晰意图；主体运动、镜头速度、景深变化和环境反馈按照同一节奏推进。`,
+    `${time(closingStart)}–${time(durationSeconds)} 秒：动作进入结果状态，摄影机平滑减速并稳定停住；保留一个清晰、可继续剪辑或衔接下一镜的结尾画面。`,
+  ]
 }
 const STORYBOARD_DIRECTIONS = [
   {
@@ -464,6 +527,18 @@ export function compileGenerationPrompt({
   const annotations = annotationLines(context)
   const skillRule = skill?.instructions.trim()
   const imageDirection = imageCreativeDirection(originalGoal)
+  const durationSeconds =
+    target?.durationSeconds ??
+    Number(originalGoal.match(/(\d{1,2})\s*秒/)?.[1] ?? 4)
+  const resolution =
+    target?.resolution ??
+    originalGoal.match(/(480p|720p|1080p|4k)/i)?.[1] ??
+    "720p"
+  const videoFrameRule = requestedRatio
+    ? `画幅比例 ${requestedRatio[0]}:${requestedRatio[1]}`
+    : animate
+      ? "保持参考图原始画幅和构图边界"
+      : "严格遵循用户或交付平台指定画幅；未指定时选择最适合主题的画幅"
 
   const preserveConstraints = edit
     ? [
@@ -510,6 +585,10 @@ export function compileGenerationPrompt({
       "【主体与场景】",
       imageDirection.subject,
       "",
+      "【风格与媒介】",
+      imageDirection.style,
+      STYLE_PRESERVATION_RULE,
+      "",
       "【构图与镜头】",
       `${difference}。${imageDirection.composition}`,
       IMAGE_CAMERA_DIRECTIONS[index % IMAGE_CAMERA_DIRECTIONS.length],
@@ -535,6 +614,52 @@ export function compileGenerationPrompt({
       "【输出规范】",
       `生成一张 ${width} × ${height} 的完整成片，保持主体、环境和边缘元素完整；画面内不主动生成解释文字、标注线、水印、边框或拼图。`,
     ].join("\n")
+    const videoDirectorPrompt = [
+      "【导演创作简报】",
+      `用户目标：${originalGoal}`,
+      `成片类型：${animate ? "基于当前参考图的单镜头图生视频" : "原创单镜头视频"}`,
+      `版本方向：${difference}`,
+      "",
+      "【风格与美术指导】",
+      imageDirection.style,
+      STYLE_PRESERVATION_RULE,
+      "",
+      "【主体、场景与表演】",
+      animate
+        ? "以参考图为唯一首帧和视觉身份依据，锁定主体外观、服装、材质、道具、环境布局、时间、天气、光向和色彩关系；只让用户要求的动作与合理的次级运动发生。"
+        : imageDirection.subject,
+      "表演和动作必须有明确起点、发展与落点，重心转移、视线、步伐、手势和环境反馈符合真实动力学，不做无意义循环动作。",
+      "",
+      "【时间轴与动作调度】",
+      ...videoTimeline(durationSeconds, animate).map((line) => `- ${line}`),
+      "",
+      "【摄影机、焦段与运镜】",
+      `机位与焦段：${IMAGE_CAMERA_DIRECTIONS[index % IMAGE_CAMERA_DIRECTIONS.length]}`,
+      `运镜路径：${videoCameraMovement(originalGoal)}`,
+      "摄影机运动必须由叙事动机驱动，保持 180 度轴线、屏幕方向、视线匹配和空间方位连续；使用真实位移产生视差，禁止用焦距突变伪装推进。",
+      "",
+      "【构图与空间连续性】",
+      imageDirection.composition,
+      "主体在运动中保持稳定比例和清晰轮廓，画面边缘不切断关键肢体或产品卖点；前景、主体和背景的遮挡关系随摄影机移动自然变化。",
+      "",
+      "【光线与色彩连续性】",
+      imageDirection.lighting,
+      imageDirection.color,
+      "光源方向、阴影长度、曝光、白平衡和调色在整段视频中连续稳定，不随帧闪烁或漂移。",
+      "",
+      "【材质、动态与物理】",
+      imageDirection.material,
+      "头发、布料、植物、烟雾、液体和反射只产生与主体动作和环境力相匹配的次级运动；接触、惯性、重力和碰撞关系可信。",
+      "",
+      "【结尾帧】",
+      "在动作完成和情绪落点后保留稳定结尾帧，主体身份、构图、光线和材质完整可读；结尾不能突然冻结、变形、黑场或与首帧无关。",
+      "",
+      ...(skillRule
+        ? ["【Skill 约束】", skillRule, ""]
+        : []),
+      "【技术与交付规范】",
+      `时长 ${durationSeconds} 秒，分辨率 ${resolution}，${videoFrameRule}，单镜头连续生成；除非用户明确要求剪辑，不主动切镜、转场或改变画幅。不要生成字幕、标注线、水印、边框或拼图。`,
+    ].join("\n")
     const generalPrompt = [
       "【创作目标】",
       originalGoal,
@@ -553,7 +678,7 @@ export function compileGenerationPrompt({
       "",
       "【输出要求】",
       mediaType === "video"
-        ? `生成 ${target?.durationSeconds ?? Number(originalGoal.match(/(\d{1,2})\s*秒/)?.[1] ?? 4)} 秒连贯视频，不改变主体身份和核心构图。`
+        ? `生成 ${durationSeconds} 秒连贯视频，不改变主体身份和核心构图。`
         : edit
           ? `源图片尺寸 ${width} × ${height}。保持所有未标注区域不变，只执行下面列出的局部修改。`
           : `生成 ${width} × ${height} 的完整图片，保持画面边缘、文字与主体完整，可直接用于后续设计。`,
@@ -566,7 +691,9 @@ export function compileGenerationPrompt({
     const prompt =
       mediaType === "image" && !edit
         ? imageCreationPrompt
-        : generalPrompt
+        : mediaType === "video"
+          ? videoDirectorPrompt
+          : generalPrompt
 
     return {
       id: `${taskId}-output-${index + 1}`,
@@ -576,7 +703,9 @@ export function compileGenerationPrompt({
       negativePrompt:
         mediaType === "image" && !edit
           ? imageDirection.negative
-          : "不要忽略用户指令，不要改变未要求修改的内容，不要输出标注线和解释文字。",
+          : mediaType === "video"
+            ? `${animate ? "不要改变参考图中的主体身份、外观、服装、道具、环境布局、光向或核心构图；" : ""}不要镜头瞬移、无动机抖动、焦距突变、跳轴、主体漂移、身份变化、肢体畸形、材质闪烁、纹理游走、背景融化、物体穿透、违背重力和惯性的动作、首尾帧突变、字幕、水印、边框或拼图。`
+            : "不要忽略用户指令，不要改变未要求修改的内容，不要输出标注线和解释文字。",
       variantKey: `variant-${index + 1}`,
       variantDifference: difference,
       sourceContextSnapshotId:
@@ -593,14 +722,11 @@ export function compileGenerationPrompt({
       height: mediaType === "image" ? height : undefined,
       durationSeconds:
         mediaType === "video"
-          ? (target?.durationSeconds ??
-            Number(originalGoal.match(/(\d{1,2})\s*秒/)?.[1] ?? 4))
+          ? durationSeconds
           : undefined,
       resolution:
         mediaType === "video"
-          ? (target?.resolution ??
-            originalGoal.match(/(480p|720p|1080p|4k)/i)?.[1] ??
-            "720p")
+          ? resolution
           : undefined,
     } as const
   })

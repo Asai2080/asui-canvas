@@ -50,6 +50,89 @@ describe("compileGenerationPrompt", () => {
     )
   })
 
+  it("preserves unclassified visual styles as first-class constraints", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-unknown-style",
+      userInstruction: "生成一张赛博巴洛克美学的未来歌剧院概念图",
+    })
+
+    expect(compiled.outputs[0].prompt).toContain("赛博巴洛克美学")
+    expect(compiled.outputs[0].prompt).toContain(
+      "任何未被预设识别的风格词都视为最高优先级视觉约束"
+    )
+    expect(compiled.outputs[0].prompt).toContain("【风格与媒介】")
+    expect(compiled.outputs[0].prompt).toContain("【质量控制】")
+  })
+
+  it("compiles a director-level video timeline and camera plan", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-video-ad",
+      userInstruction:
+        "生成一个 8 秒运动鞋广告视频，镜头环绕产品，未来运动美学，16:9，1080p",
+      target: {
+        mediaType: "video",
+        durationSeconds: 8,
+        resolution: "1080p",
+      },
+    })
+
+    expect(compiled.outputs[0]).toMatchObject({
+      mediaType: "video",
+      operation: "create",
+      durationSeconds: 8,
+      resolution: "1080p",
+    })
+    expect(compiled.outputs[0].prompt).toContain("【导演创作简报】")
+    expect(compiled.outputs[0].prompt).toContain("【时间轴与动作调度】")
+    expect(compiled.outputs[0].prompt).toContain("0.0–1.6 秒")
+    expect(compiled.outputs[0].prompt).toContain("沿稳定圆弧轨道环绕主体")
+    expect(compiled.outputs[0].prompt).toContain("保持 180 度轴线")
+    expect(compiled.outputs[0].prompt).toContain("【结尾帧】")
+    expect(compiled.outputs[0].prompt).toContain("画幅比例 16:9")
+    expect(compiled.outputs[0].negativePrompt).toContain("镜头瞬移")
+    expect(compiled.outputs[0].negativePrompt).toContain("材质闪烁")
+  })
+
+  it("locks source identity and first-frame continuity for image-to-video", () => {
+    const context: CanvasContextSnapshot = {
+      id: "context-video-source",
+      createdAt,
+      scope: "selection",
+      selectedNodeId: "image-source",
+      sourceNode: {
+        id: "image-source",
+        kind: "image",
+        bounds: { x: 0, y: 0, w: 1024, h: 576 },
+        referenceIds: [],
+        media: {
+          referenceType: "url",
+          mediaType: "image",
+          src: "https://example.com/source.png",
+          width: 1024,
+          height: 576,
+        },
+      },
+      annotations: [],
+      connectedNodes: [],
+      references: [],
+    }
+
+    const compiled = compileGenerationPrompt({
+      taskId: "task-image-video",
+      userInstruction: "让画面中的角色缓慢转头看向镜头，镜头轻轻推进，6 秒",
+      context,
+      target: { mediaType: "video", durationSeconds: 6 },
+    })
+
+    expect(compiled.outputs[0].operation).toBe("animate")
+    expect(compiled.outputs[0].prompt).toContain("参考图为唯一首帧")
+    expect(compiled.outputs[0].prompt).toContain("首帧与参考图严格对齐")
+    expect(compiled.outputs[0].prompt).toContain("缓慢 dolly-in")
+    expect(compiled.outputs[0].negativePrompt).toContain(
+      "不要改变参考图中的主体身份"
+    )
+  })
+
   it("compiles every owned annotation into a regional image edit", () => {
     const context: CanvasContextSnapshot = {
       id: "context-poster",
