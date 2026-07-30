@@ -162,7 +162,7 @@ function imageCreativeDirection(instruction: string): ImageCreativeDirection {
     composition:
       "建立清晰的视觉焦点和前中后景层次，控制主体比例、负空间与边缘安全距离，使画面在缩略图和大图下都保持可读。",
     lighting:
-      "使用方向明确的主光、自然环境补光和克制轮廓光塑造体积，保留高光、半影和暗部细节。",
+      "使用方向明确的电影主光塑造主体体积，以自然环境补光控制反差，并用克制轮廓光完成主体与背景分离；保留高光、半影和暗部细节。",
     color:
       "采用一个主色、一个辅助色和少量强调色，控制饱和度与明度层级，让主体从背景中清晰分离。",
     material:
@@ -172,6 +172,92 @@ function imageCreativeDirection(instruction: string): ImageCreativeDirection {
     negative:
       "不要主题偏离、主体不清、结构畸形、重复元素、廉价滤镜、过度锐化、伪文字、水印、边框或拼图。",
   }
+}
+
+function sceneSpecificDirection(instruction: string) {
+  if (/做饭|烹饪|炒菜|厨房|备菜|下厨/i.test(instruction)) {
+    return {
+      subject:
+        "同一位人物在真实可用的厨房操作台前完成备菜、切配、下锅烹饪到装盘的连续动作；双手与厨具接触关系准确，视线始终跟随正在处理的食材。",
+      environment:
+        "生活化厨房具有木质操作台、砧板、主厨刀、当季蔬菜、炒锅和少量整洁餐具；背景保留橱柜、窗面与暖色实用灯，不堆放无关物品。",
+      moment:
+        "捕捉食材刚被切开、锅中蒸汽升起和成品完成装盘的真实过程，让动作具有清楚的起点、变化和结果。",
+    }
+  }
+  if (/春天|春日|春季|樱花|花园|踏青/i.test(instruction)) {
+    return {
+      subject:
+        "以春日自然景观或身处其中的人物为视觉主体，使用新生嫩叶、盛放花枝、微风和柔和水面反光建立季节识别，不混入其他季节的植被状态。",
+      environment:
+        "清晨或午后花园具有前景花丛、中景步道与远景树冠，空气通透，花瓣和枝叶只产生符合微风方向的轻微运动。",
+      moment:
+        "选择阳光穿过花枝、人物短暂停步或花瓣掠过画面的瞬间，强调春日刚刚苏醒的生命感。",
+    }
+  }
+  if (/产品|商品|广告|电商|包装|运动鞋|茶饮|饮料|香水|珠宝/i.test(instruction)) {
+    return {
+      subject:
+        "把用户指定产品作为唯一主角，品牌识别面、结构轮廓、材质转折和核心卖点完整可见，辅助道具只解释尺度与使用场景。",
+      environment:
+        "使用受控摄影棚或与产品定位一致的真实场景，通过台面、背景结构和少量道具建立前中后景，不遮挡产品标签与关键细节。",
+      moment:
+        "选择高光沿产品表面移动并停在品牌识别面的决定性瞬间，让材质、功能与品牌气质同时可读。",
+    }
+  }
+  if (/人物|人像|角色|肖像|女孩|男孩|女性|男性/i.test(instruction)) {
+    return {
+      subject:
+        "以用户指定人物为唯一叙事主体，明确面部朝向、视线落点、手部动作、身体重心和服装轮廓，用一个自然动作表达情绪而不是僵硬摆拍。",
+      environment:
+        "环境提供人物身份与事件语境，前景用于建立距离感，背景保持可辨识但不抢夺面部和动作焦点。",
+      moment:
+        "捕捉动作即将完成或情绪刚发生变化的决定性瞬间，让表情、姿态与环境反馈互相解释。",
+    }
+  }
+  return {
+    subject: `围绕“${instruction}”确定一个可被立即识别的核心主体，明确其外观、姿态、动作方向、视线或朝向，以及与关键道具的接触关系。`,
+    environment:
+      "建立与主题一致且可实际存在的环境，明确前景引导、中景主体和背景语境，所有物体比例、透视、遮挡与接触关系保持可信。",
+    moment:
+      "选择事件正在发生而不是静态陈列的决定性瞬间，用一个清楚动作和一个可见环境反馈讲完整画面故事。",
+  }
+}
+
+export function buildProfessionalCreativeBrief(
+  instruction: string,
+  intent: "image" | "video" = "image"
+) {
+  const scene = sceneSpecificDirection(instruction)
+  const direction = imageCreativeDirection(instruction)
+  return [
+    "【专业创作目标】",
+    `在完整保留用户原始要求“${instruction}”的前提下，将其发展为可直接交付的${intent === "video" ? "导演级动态镜头" : "高完成度视觉成片"}。`,
+    "",
+    "【主体与动作】",
+    scene.subject,
+    scene.moment,
+    "",
+    "【场景与叙事】",
+    scene.environment,
+    "",
+    "【构图与摄影】",
+    direction.composition,
+    intent === "video"
+      ? "使用具有明确叙事动机的稳定摄影机运动，动作按建立、发展、落点三个阶段推进，结尾保留可读稳定帧。"
+      : "使用明确焦段与机位组织视觉焦点，主体、关键动作和边缘元素完整，不使用空泛的居中陈列。",
+    "",
+    "【光线与色彩】",
+    direction.lighting,
+    direction.color,
+    "",
+    "【材质与质量】",
+    direction.material,
+    direction.quality,
+    "",
+    "【避免内容】",
+    direction.negative,
+  ].join("\n")
 }
 
 function videoCameraMovement(instruction: string) {
@@ -392,6 +478,62 @@ function isStoryboardSkill(skill?: SkillSnapshot) {
   return isStoryboardSkillName(skill?.name)
 }
 
+function storyboardSceneDesign(instruction: string, hasReference: boolean) {
+  const scene = sceneSpecificDirection(instruction)
+  const cooking = /做饭|烹饪|炒菜|厨房|备菜|下厨/i.test(instruction)
+  const spring = /春天|春日|春季|樱花|花园|踏青/i.test(instruction)
+  const subjectRule = hasReference
+    ? "锁定参考图中主体的身份、五官、发型、服装、体型和道具，只改变动作、表情、景别与机位。"
+    : scene.subject
+
+  if (cooking) {
+    return {
+      subjectRule,
+      environment: scene.environment,
+      lighting:
+        "窗侧柔和日光作为主光，暖色厨房实用灯补充环境层次；蒸汽被逆光勾出细薄轮廓，肤色、木材和食材颜色自然可信。",
+      beats: [
+        "人物站在厨房操作台前完成备菜：砧板、主厨刀和分类摆放的蔬菜形成清楚工作区，双手尚未切下，先交代完整空间和动作起点。",
+        "人物侧身进入切配动作，非持刀手以安全姿势固定蔬菜，刀刃刚切过食材，切片在砧板上保持自然排列，动作方向承接上一镜。",
+        "人物把切好的食材送入预热锅中，锅中油光、食材翻动和上升蒸汽构成画面高潮；手腕、锅铲和锅体接触准确，不改变操作台空间方位。",
+        "人物将完成的菜品装盘并做最后点缀，成品位于前景清晰可读，人物在中景检查结果，厨房背景与前几镜保持完全一致。",
+        "人物端起成品靠近餐桌，动作重心从操作台转向成品，蒸汽和暖光继续保持连续。",
+        "使用食物与人物满意表情的近景作为情绪落点，保持同一道菜、同一餐具与同一光向。",
+      ],
+    }
+  }
+
+  if (spring) {
+    return {
+      subjectRule,
+      environment: scene.environment,
+      lighting:
+        "柔和侧逆光穿过花枝形成轻薄轮廓光，空气透亮，高光不过曝；嫩绿、花粉色与天空蓝形成自然低对比春日色彩。",
+      beats: [
+        "从花园全景建立步道、花树和远景空间，微风方向通过同向摆动的枝叶和少量花瓣表现。",
+        "主体沿步道进入画面，脚步、视线与花枝运动方向一致，保持上一镜空间轴线。",
+        "镜头靠近主体与花枝的互动，手部停在花朵前而不破坏花瓣，景深自然收浅。",
+        "花瓣掠过前景，主体在暖光中短暂停步，形成清楚的春日情绪落点。",
+      ],
+    }
+  }
+
+  return {
+    subjectRule,
+    environment: scene.environment,
+    lighting:
+      "主光方向在全部镜头中保持一致，宽景使用更深景深交代环境，近景自然收浅；综合色彩、曝光和材质响应连续稳定。",
+    beats: [
+      `在完整环境中建立“${instruction}”发生前的状态，交代主体、关键道具和空间关系。`,
+      `让主体开始执行与“${instruction}”直接相关的第一个可见动作，动作方向和视线落点清楚。`,
+      "用更近景别呈现动作造成的环境或道具变化，确保变化能够从上一镜自然推导。",
+      "让核心动作完成并呈现可见结果，主体姿态与环境反馈共同形成叙事落点。",
+      "从侧向或关系镜头补充主体与关键物体的空间联系，不引入新角色或新道具。",
+      "使用近景呈现最重要的动作细节或情绪反馈，焦点落在真实存在的叙事核心。",
+    ],
+  }
+}
+
 function compileStoryboardPrompt({
   taskId,
   originalGoal,
@@ -431,6 +573,10 @@ function compileStoryboardPrompt({
     "保持视线匹配、动作连续、屏幕方向与运动轴线一致",
     "单张独立画面，不生成拼图、网格、边框、标签、字幕、水印或解释文字",
   ]
+  const sceneDesign = storyboardSceneDesign(
+    professionalBrief || originalGoal,
+    Boolean(context?.sourceNode)
+  )
 
   const outputs = Array.from({ length: count }, (_, index) => {
     const direction = STORYBOARD_DIRECTIONS[index]
@@ -444,11 +590,17 @@ function compileStoryboardPrompt({
         ? ["", "【文字模型创作简报】", professionalBrief]
         : []),
       "",
+      "【主体连续性】",
+      sceneDesign.subjectRule,
+      "",
+      "【场景设计】",
+      sceneDesign.environment,
+      "",
       "【镜头类型】",
       direction.shot,
       "",
       "【画面与动作】",
-      direction.beat,
+      sceneDesign.beats[index % sceneDesign.beats.length],
       "",
       "【摄影设计】",
       direction.camera,
@@ -457,7 +609,7 @@ function compileStoryboardPrompt({
       ...continuityRules.map((rule) => `- ${rule}`),
       "",
       "【光线与质感】",
-      "延续参考画面的主光方向、环境氛围、材质特征和色彩关系；宽景使用更深景深，近景使用自然浅景深。",
+      sceneDesign.lighting,
       "",
       "【输出要求】",
       `只生成一张 ${width} × ${height} 的 16:9 横版高清电影分镜，不要拼图，不要多画面。`,

@@ -18,7 +18,10 @@ import {
   type ExecuteAgentTaskDependencies,
 } from "./executor"
 import { createAgentPlan } from "./planner/planner"
-import { compileGenerationPrompt } from "./prompts/compiler"
+import {
+  buildProfessionalCreativeBrief,
+  compileGenerationPrompt,
+} from "./prompts/compiler"
 import { createSkillSnapshot } from "./skills/registry"
 import {
   agentTaskSchema,
@@ -70,7 +73,7 @@ function localInterpretation(
   const video = /视频|动画|镜头|动起来|图生视频/.test(instruction)
   const creative = Boolean(
     input.context?.sourceNode ||
-      /图|海报|主视觉|封面|插画|照片|广告|设计|logo|素材|画面|标注|修改|替换|抠图|动画|镜头|视频/i.test(
+      /图|海报|主视觉|封面|插画|照片|广告|设计|logo|素材|画面|场景|分镜|做饭|烹饪|标注|修改|替换|抠图|动画|镜头|视频/i.test(
         instruction
       )
   )
@@ -105,11 +108,26 @@ function localInterpretation(
         : video
           ? "理解视频创作目标并自动执行"
           : "理解图片创作目标并自动执行",
-    normalizedInstruction: instruction,
+    normalizedInstruction: buildProfessionalCreativeBrief(
+      instruction,
+      video ? "video" : "image"
+    ),
     intent: video ? "video" : "image",
     source: "local-rules",
     target: { mediaType: video ? "video" : "image" },
   }
+}
+
+function needsProfessionalExpansion(
+  sourceInstruction: string,
+  normalizedInstruction: string
+) {
+  const source = sourceInstruction.replace(/\s+/g, "").trim()
+  const normalized = normalizedInstruction.replace(/\s+/g, "").trim()
+  return (
+    normalized.length < 180 ||
+    normalized.length < Math.max(180, source.length * 2)
+  )
 }
 
 function hasTextModelCredentials(credentials?: TextModelCredentials) {
@@ -146,8 +164,30 @@ async function understandTask(
     const interpreted = await (
       dependencies.textAdapter ?? createTextModelAdapter()
     ).interpret(input, dependencies.textCredentials ?? {})
+    const creativeIntent =
+      interpreted.intent === "image" || interpreted.intent === "video"
+        ? interpreted.intent
+        : undefined
+    const normalizedInstruction =
+      creativeIntent &&
+      needsProfessionalExpansion(
+        task.userInstruction,
+        interpreted.normalizedInstruction
+      )
+        ? [
+            interpreted.normalizedInstruction.trim(),
+            buildProfessionalCreativeBrief(
+              task.userInstruction,
+              creativeIntent
+            ),
+          ]
+            .filter(Boolean)
+            .join("\n\n")
+        : interpreted.normalizedInstruction
+
     return {
       ...interpreted,
+      normalizedInstruction,
       source: "text-model",
       target:
         interpreted.intent === "unsupported" ||

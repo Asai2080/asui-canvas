@@ -49,19 +49,48 @@ function promptContent(compiledPrompt: CompiledPrompt) {
     .join("\n\n")
 }
 
-function promptBounds(
-  content: string,
-  sourceBounds: CanvasCommandBounds | undefined,
-  viewportBounds: CanvasCommandBounds
-): CanvasCommandBounds {
-  const width = 440
+function storyboardPromptContent(
+  compiledPrompt: CompiledPrompt,
+  outputIndex: number
+) {
+  const output = compiledPrompt.outputs[outputIndex]
+  const frameNumber = String(outputIndex + 1).padStart(2, "0")
+  return [
+    `# 分镜提示词 KF#${frameNumber}`,
+    compiledPrompt.originalGoal
+      ? `## 用户目标\n${compiledPrompt.originalGoal}`
+      : "",
+    `## 生成提示词\n${output.prompt}`,
+    output.negativePrompt
+      ? `## 避免内容\n${output.negativePrompt}`
+      : "",
+    compiledPrompt.sharedConstraints.length > 0
+      ? `## 统一约束\n${compiledPrompt.sharedConstraints
+          .map((constraint) => `- ${constraint}`)
+          .join("\n")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+}
+
+function estimatedPromptHeight(content: string) {
   const estimatedLines = content
     .split("\n")
     .reduce(
       (total, line) => total + Math.max(1, Math.ceil(line.length / 28)),
       0
     )
-  const height = Math.min(920, Math.max(460, 116 + estimatedLines * 24))
+  return Math.max(460, 168 + estimatedLines * 28)
+}
+
+function promptBounds(
+  content: string,
+  sourceBounds: CanvasCommandBounds | undefined,
+  viewportBounds: CanvasCommandBounds
+): CanvasCommandBounds {
+  const width = 440
+  const height = estimatedPromptHeight(content)
 
   return {
     x: sourceBounds
@@ -71,6 +100,55 @@ function promptBounds(
     w: width,
     h: height,
   }
+}
+
+function storyboardPromptCommands(
+  compiledPrompt: CompiledPrompt,
+  sourceBounds: CanvasCommandBounds | undefined,
+  viewportBounds: CanvasCommandBounds
+) {
+  const width = 440
+  const columnGap = 64
+  const rowGap = 64
+  const baseX = sourceBounds
+    ? sourceBounds.x + sourceBounds.w + 96
+    : viewportBounds.x + 64
+  const baseY = sourceBounds ? sourceBounds.y : viewportBounds.y + 64
+  const contents = compiledPrompt.outputs.map((_, index) =>
+    storyboardPromptContent(compiledPrompt, index)
+  )
+  const heights = contents.map(estimatedPromptHeight)
+  const rowHeights = Array.from(
+    { length: Math.ceil(contents.length / 2) },
+    (_, rowIndex) =>
+      Math.max(
+        heights[rowIndex * 2] ?? 0,
+        heights[rowIndex * 2 + 1] ?? 0
+      )
+  )
+
+  return contents.map((content, index) => {
+    const row = Math.floor(index / 2)
+    const column = index % 2
+    const y =
+      baseY +
+      rowHeights
+        .slice(0, row)
+        .reduce((offset, height) => offset + height + rowGap, 0)
+    const frameNumber = String(index + 1).padStart(2, "0")
+    return {
+      type: "create-prompt-node" as const,
+      nodeRef: `professional-prompt-${index + 1}`,
+      title: `分镜提示词 KF#${frameNumber}`,
+      content,
+      bounds: {
+        x: baseX + column * (width + columnGap),
+        y,
+        w: width,
+        h: heights[index],
+      },
+    }
+  })
 }
 
 export async function writeAgentPromptToCanvas(
@@ -85,20 +163,30 @@ export async function writeAgentPromptToCanvas(
     throw new Error(`Canvas Agent task has no compiled prompt: ${task.id}`)
   }
 
-  const content = promptContent(task.compiledPrompt)
+  const isStoryboard =
+    task.compiledPrompt.outputs.length > 1 &&
+    task.compiledPrompt.summary.includes("分镜")
+  const content = isStoryboard ? "" : promptContent(task.compiledPrompt)
+  const commands = isStoryboard
+    ? storyboardPromptCommands(
+        task.compiledPrompt,
+        sourceBounds,
+        viewportBounds
+      )
+    : [
+        {
+          type: "create-prompt-node" as const,
+          nodeRef: "professional-prompt",
+          title: "专业提示词",
+          content,
+          bounds: promptBounds(content, sourceBounds, viewportBounds),
+        },
+      ]
   const batch = agentCanvasCommandBatchSchema.parse({
     id: `agent-prompt-${task.id}`,
     taskId: task.id,
     createdAt: dependencies.now?.() ?? new Date().toISOString(),
-    commands: [
-      {
-        type: "create-prompt-node",
-        nodeRef: "professional-prompt",
-        title: "专业提示词",
-        content,
-        bounds: promptBounds(content, sourceBounds, viewportBounds),
-      },
-    ],
+    commands,
   })
   const acknowledgement = await (
     dependencies.publish ?? canvasCommandBridge.publish

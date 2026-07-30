@@ -308,6 +308,37 @@ describe("compileGenerationPrompt", () => {
     )
   })
 
+  it("turns a one-line cooking idea into concrete, progressive storyboard shots", () => {
+    const skill: SkillSnapshot = {
+      id: "skill-snapshot-storyboard-cooking",
+      skillId: "nb-fj-local",
+      name: "nb-fj",
+      description: "电影级分镜生成与视频制作技能",
+      contentHash: "d".repeat(64),
+      instructions: "生成连续电影分镜。",
+      risks: [],
+      createdAt,
+    }
+
+    const compiled = compileGenerationPrompt({
+      taskId: "task-cooking-storyboard",
+      userInstruction: "就是人物在做饭的场景",
+      skill,
+      target: { mediaType: "image", count: 4 },
+    })
+
+    expect(compiled.outputs).toHaveLength(4)
+    expect(compiled.outputs[0].prompt).toContain("厨房操作台")
+    expect(compiled.outputs[0].prompt).toContain("备菜")
+    expect(compiled.outputs[1].prompt).toContain("切配")
+    expect(compiled.outputs[2].prompt).toContain("锅中")
+    expect(compiled.outputs[3].prompt).toContain("装盘")
+    expect(new Set(compiled.outputs.map((output) => output.prompt)).size).toBe(4)
+    expect(compiled.outputs[0].prompt).not.toContain(
+      "主体开始执行一个清晰、可连续衔接的简单动作"
+    )
+  })
+
   it("keeps the built-in cover Skill on a fixed 3:4 image canvas", () => {
     const skill: SkillSnapshot = {
       id: "skill-snapshot-cover",

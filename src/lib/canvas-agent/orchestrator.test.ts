@@ -275,6 +275,26 @@ describe("runAgentTaskTick", () => {
     expect(JSON.stringify(understood)).not.toContain("text-secret")
   })
 
+  it("professionally expands a short creative sentence in the local fallback", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      { userInstruction: "人物在厨房做饭", executionMode: "confirm" },
+      { id: "task-local-professional-brief", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = dependencies(root)
+
+    await runAgentTaskTick(task.id, deps)
+    const understood = await runAgentTaskTick(task.id, deps)
+
+    expect(understood.interpretation?.normalizedInstruction.length).toBeGreaterThan(180)
+    expect(understood.interpretation?.normalizedInstruction).toContain("厨房操作台")
+    expect(understood.interpretation?.normalizedInstruction).toContain("电影主光")
+    expect(understood.interpretation?.normalizedInstruction).not.toBe(
+      task.userInstruction
+    )
+  })
+
   it("advances preparation one recoverable status at a time", async () => {
     const root = await createRoot()
     const task = createAgentTask(

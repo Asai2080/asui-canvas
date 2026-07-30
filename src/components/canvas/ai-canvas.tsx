@@ -2340,21 +2340,38 @@ export function AiCanvas() {
           if (command.type === "create-prompt-node") {
             const existingPrompt = editor
               .getCurrentPageShapes()
-              .find(
-                (shape) =>
-                  shape.type === "frame" &&
-                  isAgentPromptShape(shape) &&
-                  shapeMeta(shape).agentTaskId === batch.taskId
-              )
+              .find((shape) => {
+                if (
+                  shape.type !== "frame" ||
+                  !isAgentPromptShape(shape)
+                ) {
+                  return false
+                }
+                const meta = shapeMeta(shape)
+                return (
+                  meta.agentTaskId === batch.taskId &&
+                  (meta.agentPromptNodeRef === command.nodeRef ||
+                    (!meta.agentPromptNodeRef &&
+                      command.nodeRef === "professional-prompt"))
+                )
+              })
             const promptNodeId =
               existingPrompt?.id ?? createShapeId()
 
             if (existingPrompt) {
               editor.updateShape({
                 id: existingPrompt.id,
-                type: existingPrompt.type,
+                type: "frame",
+                x: command.bounds.x,
+                y: command.bounds.y,
+                props: {
+                  w: command.bounds.w,
+                  h: command.bounds.h,
+                  name: command.title,
+                },
                 meta: {
                   ...existingPrompt.meta,
+                  agentPromptNodeRef: command.nodeRef,
                   agentPromptContent: command.content,
                   agentPromptTitle: command.title,
                 },
@@ -2376,6 +2393,7 @@ export function AiCanvas() {
                   asuiNode: "agent-prompt",
                   asuiMetaVersion: ASUI_META_VERSION,
                   agentTaskId: batch.taskId,
+                  agentPromptNodeRef: command.nodeRef,
                   agentPromptTitle: command.title,
                   agentPromptContent: command.content,
                 },
