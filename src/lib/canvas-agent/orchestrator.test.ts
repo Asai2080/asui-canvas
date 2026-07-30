@@ -89,6 +89,76 @@ describe("runAgentTaskTick", () => {
     expect(JSON.stringify(compiled)).not.toContain("text-secret")
   })
 
+  it("preserves the exact user style when the text model generalizes it", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: "生成一张液态铬合金主义风格的未来剧院海报，比例 3:4",
+        executionMode: "confirm",
+      },
+      { id: "task-style-fidelity", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      textAdapter: {
+        interpret: vi.fn(async () => ({
+          message: "我会先整理未来剧院海报的专业提示词。",
+          summary: "未来剧院主题海报",
+          normalizedInstruction:
+            "制作一张未来剧院主题商业海报，金属材质，戏剧性灯光，3:4。",
+          intent: "image" as const,
+          target: { mediaType: "image" as const },
+        })),
+      },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
+    const waiting = await runAgentTaskTick(task.id, deps)
+    const prompt = waiting.compiledPrompt?.outputs[0].prompt ?? ""
+
+    expect(waiting.status).toBe("awaiting-confirmation")
+    expect(waiting.compiledPrompt?.originalGoal).toBe(task.userInstruction)
+    expect(prompt).toContain("液态铬合金主义风格")
+    expect(prompt).toContain("制作一张未来剧院主题商业海报")
+  })
+
+  it("sends the compiled director brief to the video adapter", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction:
+          "生成一个 8 秒未来运动鞋广告视频，16:9，镜头环绕产品，1080p",
+        executionMode: "auto",
+      },
+      { id: "task-video-director", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = dependencies(root)
+    deps.videoAdapter.create.mockResolvedValueOnce({
+      taskId: "provider-video-director",
+      status: "queued",
+    })
+
+    for (let index = 0; index < 5; index += 1) {
+      await runAgentTaskTick(task.id, deps)
+    }
+
+    expect(deps.videoAdapter.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        durationSeconds: 8,
+        resolution: "1080p",
+        prompt: expect.stringContaining("【导演创作简报】"),
+      }),
+      {}
+    )
+    const input = deps.videoAdapter.create.mock.calls[0]?.[0]
+    expect(input?.prompt).toContain("沿稳定圆弧轨道环绕主体")
+    expect(input?.prompt).toContain("画幅比例 16:9")
+    expect(input?.prompt).toContain("保持 180 度轴线")
+  })
+
   it("answers unsupported requests without creating canvas output", async () => {
     const root = await createRoot()
     const task = createAgentTask(

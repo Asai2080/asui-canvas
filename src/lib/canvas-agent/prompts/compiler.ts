@@ -295,6 +295,7 @@ const STORYBOARD_DIRECTIONS = [
 export type CompileGenerationPromptInput = {
   taskId: string
   userInstruction: string
+  sourceInstruction?: string
   context?: CanvasContextSnapshot
   skill?: SkillSnapshot
   target?: {
@@ -390,12 +391,14 @@ function isStoryboardSkill(skill?: SkillSnapshot) {
 function compileStoryboardPrompt({
   taskId,
   originalGoal,
+  professionalBrief,
   context,
   skill,
   target,
 }: {
   taskId: string
   originalGoal: string
+  professionalBrief?: string
   context?: CanvasContextSnapshot
   skill: SkillSnapshot
   target?: CompileGenerationPromptInput["target"]
@@ -433,6 +436,9 @@ function compileStoryboardPrompt({
       "",
       "【用户目标】",
       originalGoal,
+      ...(professionalBrief
+        ? ["", "【文字模型创作简报】", professionalBrief]
+        : []),
       "",
       "【镜头类型】",
       direction.shot,
@@ -490,49 +496,59 @@ function compileStoryboardPrompt({
 export function compileGenerationPrompt({
   taskId,
   userInstruction,
+  sourceInstruction,
   context,
   skill,
   target,
 }: CompileGenerationPromptInput): CompiledPrompt {
-  const originalGoal = userInstruction.trim()
+  const normalizedBrief = userInstruction.trim()
+  const originalGoal = sourceInstruction?.trim() || normalizedBrief
   if (!originalGoal) throw new Error("用户目标不能为空")
+  const professionalBrief =
+    normalizedBrief && normalizedBrief !== originalGoal
+      ? normalizedBrief
+      : undefined
+  const creativeInstruction = professionalBrief
+    ? `${originalGoal}\n${professionalBrief}`
+    : originalGoal
 
   if (isStoryboardSkill(skill) && skill) {
     return compileStoryboardPrompt({
       taskId,
       originalGoal,
+      professionalBrief,
       context,
       skill,
       target,
     })
   }
 
-  const requestedCount = target?.count ?? extractCount(originalGoal)
+  const requestedCount = target?.count ?? extractCount(creativeInstruction)
   if (requestedCount > 12) {
     throw new Error("图片数量最多为 12 张")
   }
   const count = Math.max(1, requestedCount)
-  const requestedRatio = extractAspectRatio(originalGoal)
+  const requestedRatio = extractAspectRatio(creativeInstruction)
   const sourceSize = sourceDimensions(context)
   const defaultSize = dimensionsForRatio(requestedRatio)
   const width = target?.width ?? sourceSize?.width ?? defaultSize.width
   const height = target?.height ?? sourceSize?.height ?? defaultSize.height
   const mediaType =
     target?.mediaType ??
-    (/视频|动画|动起来|镜头/.test(originalGoal) ? "video" : "image")
+    (/视频|动画|动起来|镜头/.test(creativeInstruction) ? "video" : "image")
   const edit = mediaType === "image" && hasEditableImage(context)
   const animate =
     mediaType === "video" &&
     context?.sourceNode?.media?.mediaType === "image"
   const annotations = annotationLines(context)
   const skillRule = skill?.instructions.trim()
-  const imageDirection = imageCreativeDirection(originalGoal)
+  const imageDirection = imageCreativeDirection(creativeInstruction)
   const durationSeconds =
     target?.durationSeconds ??
-    Number(originalGoal.match(/(\d{1,2})\s*秒/)?.[1] ?? 4)
+    Number(creativeInstruction.match(/(\d{1,2})\s*秒/)?.[1] ?? 4)
   const resolution =
     target?.resolution ??
-    originalGoal.match(/(480p|720p|1080p|4k)/i)?.[1] ??
+    creativeInstruction.match(/(480p|720p|1080p|4k)/i)?.[1] ??
     "720p"
   const videoFrameRule = requestedRatio
     ? `画幅比例 ${requestedRatio[0]}:${requestedRatio[1]}`
@@ -580,6 +596,9 @@ export function compileGenerationPrompt({
     const imageCreationPrompt = [
       "【创作简报】",
       `用户目标：${originalGoal}`,
+      ...(professionalBrief
+        ? [`文字模型创作简报：${professionalBrief}`]
+        : []),
       `成片定位：${imageDirection.style}`,
       "",
       "【主体与场景】",
@@ -617,6 +636,9 @@ export function compileGenerationPrompt({
     const videoDirectorPrompt = [
       "【导演创作简报】",
       `用户目标：${originalGoal}`,
+      ...(professionalBrief
+        ? [`文字模型创作简报：${professionalBrief}`]
+        : []),
       `成片类型：${animate ? "基于当前参考图的单镜头图生视频" : "原创单镜头视频"}`,
       `版本方向：${difference}`,
       "",
@@ -635,7 +657,7 @@ export function compileGenerationPrompt({
       "",
       "【摄影机、焦段与运镜】",
       `机位与焦段：${IMAGE_CAMERA_DIRECTIONS[index % IMAGE_CAMERA_DIRECTIONS.length]}`,
-      `运镜路径：${videoCameraMovement(originalGoal)}`,
+      `运镜路径：${videoCameraMovement(creativeInstruction)}`,
       "摄影机运动必须由叙事动机驱动，保持 180 度轴线、屏幕方向、视线匹配和空间方位连续；使用真实位移产生视差，禁止用焦距突变伪装推进。",
       "",
       "【构图与空间连续性】",
@@ -663,6 +685,9 @@ export function compileGenerationPrompt({
     const generalPrompt = [
       "【创作目标】",
       originalGoal,
+      ...(professionalBrief
+        ? ["", "【文字模型创作简报】", professionalBrief]
+        : []),
       "",
       "【版本方向】",
       `版本 ${index + 1}：${difference}`,

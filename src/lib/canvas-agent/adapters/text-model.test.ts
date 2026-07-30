@@ -17,6 +17,12 @@ describe("text model adapter", () => {
       expect(requestBody.messages[0].content).toContain(
         "shot movement, subject motion, timing, continuity, and ending frame"
       )
+      expect(requestBody.messages[0].content).toContain(
+        "Preserve every user-supplied style term verbatim"
+      )
+      expect(requestBody.messages[0].content).toContain(
+        "camera support, focal length, movement path"
+      )
       expect(requestBody.messages.slice(1, 3)).toEqual([
         { role: "user", content: "你能做什么" },
         {

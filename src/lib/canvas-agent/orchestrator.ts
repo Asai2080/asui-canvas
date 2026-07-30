@@ -318,6 +318,7 @@ export async function runAgentTaskTick(
         taskId: task.id,
         userInstruction:
           task.interpretation?.normalizedInstruction ?? task.userInstruction,
+        sourceInstruction: task.userInstruction,
         context,
         skill,
         target: {
