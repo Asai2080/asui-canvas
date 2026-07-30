@@ -10,6 +10,7 @@ import {
   acknowledgeAgentCanvasWriteback,
   cancelAgentTask,
   confirmAgentTask,
+  InvalidAgentTaskDimensionsError,
   retryAgentTask,
 } from "./task-operations"
 import {
@@ -175,6 +176,8 @@ describe("retryAgentTask", () => {
     const failed = sourceTask({
       status: "partially-completed",
       completedAt: now,
+      requestedWidth: 768,
+      requestedHeight: 1024,
     })
     await createStoredAgentTask(failed, root)
 
@@ -191,6 +194,8 @@ describe("retryAgentTask", () => {
       retryOfTaskId: "task-source",
       userInstruction: "生成两张图片",
       requestedOutputCount: 6,
+      requestedWidth: 768,
+      requestedHeight: 1024,
       selectedCanvasId: "shape-image",
       skillId: "skill-poster",
       contextSnapshotId: "context-1",
@@ -227,6 +232,94 @@ describe("confirmAgentTask", () => {
       id: "event-confirm",
       status: "planning",
     })
+  })
+
+  it("applies the confirmed image size to the compiled prompt", async () => {
+    const root = await createRoot()
+    await createStoredAgentTask(
+      sourceTask({
+        status: "awaiting-confirmation",
+        executionMode: "confirm",
+        executionPlan: undefined,
+        interpretation: {
+          message: "我会生成一张图片。",
+          summary: "生成图片",
+          normalizedInstruction: "生成图片",
+          intent: "image",
+          source: "local-rules",
+          target: {
+            mediaType: "image",
+            count: 1,
+            width: 1024,
+            height: 1024,
+          },
+        },
+        compiledPrompt: {
+          summary: "生成图片",
+          sharedConstraints: ["输出尺寸 1024 × 1024"],
+          outputs: [
+            {
+              id: "output-1",
+              mediaType: "image",
+              operation: "create",
+              prompt: "生成 1024 × 1024 的完整图片",
+              width: 1024,
+              height: 1024,
+            },
+          ],
+        },
+      }),
+      root
+    )
+
+    const confirmed = await confirmAgentTask("task-source", {
+      root,
+      now: () => "2026-07-25T09:03:00.000Z",
+      createId: () => "event-confirm",
+      width: 768,
+      height: 1024,
+    })
+
+    expect(confirmed).toMatchObject({
+      status: "planning",
+      requestedWidth: 768,
+      requestedHeight: 1024,
+      interpretation: {
+        target: {
+          width: 768,
+          height: 1024,
+        },
+      },
+      compiledPrompt: {
+        sharedConstraints: ["输出尺寸 768 × 1024"],
+        outputs: [
+          {
+            prompt: "生成 768 × 1024 的完整图片",
+            width: 768,
+            height: 1024,
+          },
+        ],
+      },
+    })
+  })
+
+  it("rejects incomplete confirmation dimensions", async () => {
+    const root = await createRoot()
+    await createStoredAgentTask(
+      sourceTask({
+        status: "awaiting-confirmation",
+        executionMode: "confirm",
+        executionPlan: undefined,
+      }),
+      root
+    )
+
+    await expect(
+      confirmAgentTask("task-source", {
+        root,
+        width: 768,
+      })
+    ).rejects.toBeInstanceOf(InvalidAgentTaskDimensionsError)
   })
 })
 

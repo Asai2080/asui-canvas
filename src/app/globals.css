@@ -703,6 +703,77 @@
     @apply rounded-full border border-white/[0.08] bg-white/[0.035] px-2 py-1 text-[10px] tabular-nums text-[#9D9DA5];
   }
 
+  .agent-prompt-review__size-editor {
+    @apply space-y-2.5 rounded-lg border border-white/[0.07] bg-black/20 p-2.5;
+  }
+
+  .agent-prompt-review__size-heading {
+    @apply flex items-center justify-between gap-3;
+  }
+
+  .agent-prompt-review__size-heading > span {
+    @apply flex items-center gap-1.5 text-[11px] font-medium text-[#D7D7DC];
+  }
+
+  .agent-prompt-review__size-heading small {
+    @apply text-right text-[9px] text-[#777780];
+  }
+
+  .agent-prompt-review__size-presets {
+    @apply grid grid-cols-5 gap-1;
+  }
+
+  .agent-prompt-review__size-presets.is-storyboard {
+    @apply grid-cols-2;
+  }
+
+  .agent-prompt-review__size-presets button {
+    @apply flex min-h-10 min-w-0 flex-col items-center justify-center rounded-lg border border-white/[0.06] bg-white/[0.025] px-1 text-[#A6A6AD] transition-colors hover:border-white/[0.12] hover:bg-white/[0.06] hover:text-[#EEEEF0];
+  }
+
+  .agent-prompt-review__size-presets button span {
+    @apply text-[10px] font-medium tabular-nums;
+  }
+
+  .agent-prompt-review__size-presets button small {
+    @apply max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[8px] tabular-nums text-[#696971];
+  }
+
+  .agent-prompt-review__size-presets button.is-active {
+    @apply border-primary/45 bg-primary/10 text-primary;
+  }
+
+  .agent-prompt-review__size-presets button.is-active small {
+    @apply text-primary/70;
+  }
+
+  .agent-prompt-review__size-inputs {
+    @apply flex items-center gap-1.5 text-[10px] text-[#686870];
+  }
+
+  .agent-prompt-review__size-inputs label {
+    @apply flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-white/[0.07] bg-[#111114] px-2;
+  }
+
+  .agent-prompt-review__size-inputs label span {
+    @apply text-[9px] font-medium text-[#6F6F77];
+  }
+
+  .agent-prompt-review__size-inputs input {
+    @apply min-w-0 flex-1 bg-transparent text-right text-[11px] tabular-nums text-[#DADADF] outline-none;
+    appearance: textfield;
+  }
+
+  .agent-prompt-review__size-inputs input::-webkit-inner-spin-button,
+  .agent-prompt-review__size-inputs input::-webkit-outer-spin-button {
+    margin: 0;
+    appearance: none;
+  }
+
+  .agent-prompt-review__size-error {
+    @apply text-[9px] leading-4 text-[#FF7777];
+  }
+
   .agent-prompt-review__content {
     @apply max-h-[260px] space-y-3 overflow-y-auto rounded-xl border border-white/[0.06] bg-black/20 p-3;
     scrollbar-width: thin;
@@ -739,6 +810,10 @@
 
   .agent-prompt-review__actions .is-primary {
     @apply bg-primary text-primary-foreground hover:bg-primary/85;
+  }
+
+  .agent-prompt-review__actions .is-primary:disabled {
+    @apply cursor-not-allowed bg-white/[0.06] text-[#66666E];
   }
 
   .agent-message-text {

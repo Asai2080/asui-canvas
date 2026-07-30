@@ -36,6 +36,8 @@ type ConfirmAgentTaskOptions = {
   root?: string
   now?: () => string
   createId?: () => string
+  width?: number
+  height?: number
 }
 
 type AcknowledgeCanvasWritebackOptions = {
@@ -85,6 +87,125 @@ export class InvalidAgentTaskConfirmationError extends Error {
   }
 }
 
+export class InvalidAgentTaskDimensionsError extends Error {
+  constructor(message = "Canvas Agent confirmation dimensions are invalid") {
+    super(message)
+    this.name = "InvalidAgentTaskDimensionsError"
+  }
+}
+
+function confirmedDimensions(
+  options: ConfirmAgentTaskOptions
+): { width: number; height: number } | undefined {
+  const { width, height } = options
+  if (width === undefined && height === undefined) {
+    return undefined
+  }
+  if (
+    width === undefined ||
+    height === undefined ||
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width < 64 ||
+    width > 8192 ||
+    height < 64 ||
+    height > 8192
+  ) {
+    throw new InvalidAgentTaskDimensionsError(
+      "生成宽高必须同时填写，并且是 64 到 8192 之间的整数"
+    )
+  }
+  return { width, height }
+}
+
+function replaceDimensions(
+  value: string,
+  previousWidth: number | undefined,
+  previousHeight: number | undefined,
+  width: number,
+  height: number
+) {
+  if (!previousWidth || !previousHeight) return value
+  return value
+    .split(`${previousWidth} × ${previousHeight}`)
+    .join(`${width} × ${height}`)
+    .split(`${previousWidth}x${previousHeight}`)
+    .join(`${width}x${height}`)
+}
+
+function applyConfirmedDimensions(
+  task: AgentTask,
+  dimensions: { width: number; height: number } | undefined
+) {
+  if (!dimensions || !task.compiledPrompt) return task
+  const editableOutputs = task.compiledPrompt.outputs.filter(
+    (output) =>
+      output.mediaType === "image" &&
+      (output.operation ?? "create") === "create"
+  )
+  if (editableOutputs.length === 0) {
+    throw new InvalidAgentTaskDimensionsError(
+      "当前任务需要保持源素材尺寸，不能在确认阶段修改"
+    )
+  }
+
+  const resizedOutputs = task.compiledPrompt.outputs.map((output) => {
+    if (
+      output.mediaType !== "image" ||
+      (output.operation ?? "create") !== "create"
+    ) {
+      return output
+    }
+    return {
+      ...output,
+      prompt: replaceDimensions(
+        output.prompt,
+        output.width,
+        output.height,
+        dimensions.width,
+        dimensions.height
+      ),
+      width: dimensions.width,
+      height: dimensions.height,
+    }
+  })
+  const resizedConstraints = task.compiledPrompt.sharedConstraints.map(
+    (constraint) =>
+      editableOutputs.reduce(
+        (current, output) =>
+          replaceDimensions(
+            current,
+            output.width,
+            output.height,
+            dimensions.width,
+            dimensions.height
+          ),
+        constraint
+      )
+  )
+
+  return agentTaskSchema.parse({
+    ...task,
+    requestedWidth: dimensions.width,
+    requestedHeight: dimensions.height,
+    interpretation: task.interpretation
+      ? {
+          ...task.interpretation,
+          target: {
+            ...task.interpretation.target,
+            width: dimensions.width,
+            height: dimensions.height,
+          },
+        }
+      : task.interpretation,
+    compiledPrompt: {
+      ...task.compiledPrompt,
+      sharedConstraints: resizedConstraints,
+      outputs: resizedOutputs,
+    },
+  })
+}
+
 export async function confirmAgentTask(
   taskId: string,
   options: ConfirmAgentTaskOptions = {}
@@ -101,7 +222,11 @@ export async function confirmAgentTask(
   }
 
   const now = options.now?.() ?? nowIso()
-  const nextTask = transitionAgentTask(stored.task, "planning", {
+  const taskWithDimensions = applyConfirmedDimensions(
+    stored.task,
+    confirmedDimensions(options)
+  )
+  const nextTask = transitionAgentTask(taskWithDimensions, "planning", {
     now,
     eventId: options.createId?.() ?? createId("event"),
     message: "用户已确认提示词，开始执行生成任务",
@@ -304,6 +429,8 @@ export async function retryAgentTask(
       userInstruction: stored.task.userInstruction,
       executionMode: stored.task.executionMode,
       requestedOutputCount: stored.task.requestedOutputCount,
+      requestedWidth: stored.task.requestedWidth,
+      requestedHeight: stored.task.requestedHeight,
       selectedCanvasId: stored.task.selectedCanvasId,
       skillId: stored.task.skillId,
       contextSnapshotId: stored.task.contextSnapshotId,

@@ -281,12 +281,17 @@ export function useAgentTasks({
   const performTaskAction = useCallback(
     async (
       taskId: string,
-      action: "cancel" | "confirm" | "retry"
+      action: "cancel" | "confirm" | "retry",
+      input?: { width: number; height: number }
     ) => {
       setError("")
       const response = await fetch(
         `/api/agent/tasks/${encodeURIComponent(taskId)}/${action}`,
-        { method: "POST" }
+        {
+          method: "POST",
+          headers: input ? { "content-type": "application/json" } : undefined,
+          body: input ? JSON.stringify(input) : undefined,
+        }
       )
       upsertTask(await readTaskResponse(response))
     },
@@ -301,7 +306,10 @@ export function useAgentTasks({
     clearError: () => setError(""),
     submitMessage,
     cancelTask: (taskId: string) => performTaskAction(taskId, "cancel"),
-    confirmTask: (taskId: string) => performTaskAction(taskId, "confirm"),
+    confirmTask: (
+      taskId: string,
+      dimensions?: { width: number; height: number }
+    ) => performTaskAction(taskId, "confirm", dimensions),
     retryTask: (taskId: string) => performTaskAction(taskId, "retry"),
   }
 }

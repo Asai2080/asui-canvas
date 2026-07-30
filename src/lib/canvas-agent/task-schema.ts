@@ -162,6 +162,8 @@ export const agentTaskSchema = z.object({
   executionMode: agentExecutionModeSchema.optional(),
   userInstruction: z.string().trim().min(1),
   requestedOutputCount: z.number().int().min(1).max(12).optional(),
+  requestedWidth: z.number().int().min(64).max(8192).optional(),
+  requestedHeight: z.number().int().min(64).max(8192).optional(),
   selectedCanvasId: z.string().trim().min(1).optional(),
   skillId: agentTaskIdSchema.optional(),
   contextSnapshotId: agentTaskIdSchema.optional(),

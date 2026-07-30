@@ -325,6 +325,12 @@ export async function runAgentTaskTick(
           count:
             task.requestedOutputCount ??
             task.interpretation?.target?.count,
+          width:
+            task.requestedWidth ??
+            task.interpretation?.target?.width,
+          height:
+            task.requestedHeight ??
+            task.interpretation?.target?.height,
         },
       })
       return persistTransition(

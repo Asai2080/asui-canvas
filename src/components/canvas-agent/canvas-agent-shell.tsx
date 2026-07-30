@@ -20,6 +20,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Add01Icon,
+  AspectRatioIcon,
   ArrowUp01Icon,
   Clock01Icon,
   ClapperboardIcon,
@@ -90,13 +91,27 @@ const STATUS_LABELS: Partial<Record<AgentTask["status"], string>> = {
 type AgentMessageContextValue = {
   tasksByMessageId: ReadonlyMap<string, AgentTask>
   cancelTask: (taskId: string) => Promise<void>
-  confirmTask: (taskId: string) => Promise<void>
+  confirmTask: (
+    taskId: string,
+    dimensions?: { width: number; height: number }
+  ) => Promise<void>
   retryTask: (taskId: string) => Promise<void>
 }
 
 const AgentMessageContext = createContext<AgentMessageContextValue | null>(null)
 const EXECUTION_MODE_STORAGE_KEY = "asui-canvas:agent-execution-mode"
 const STORYBOARD_COUNTS = [4, 6, 8, 12] as const
+const IMAGE_SIZE_PRESETS = [
+  { label: "1:1", width: 1024, height: 1024 },
+  { label: "3:4", width: 768, height: 1024 },
+  { label: "4:3", width: 1024, height: 768 },
+  { label: "9:16", width: 576, height: 1024 },
+  { label: "16:9", width: 1024, height: 576 },
+] as const
+const STORYBOARD_SIZE_PRESETS = [
+  { label: "HD", width: 1024, height: 576 },
+  { label: "Full HD", width: 1920, height: 1080 },
+] as const
 
 function formatTaskTime(task: AgentTask) {
   const value = task.completedAt ?? task.updatedAt
@@ -115,35 +130,180 @@ function greatestCommonDivisor(left: number, right: number): number {
     : greatestCommonDivisor(right, left % right)
 }
 
-function outputSizeLabel(output: NonNullable<AgentTask["compiledPrompt"]>["outputs"][number]) {
-  if (!output.width || !output.height) return undefined
-  const divisor = greatestCommonDivisor(output.width, output.height)
-  return `${output.width} × ${output.height} · ${output.width / divisor}:${output.height / divisor}`
+function outputSizeLabel(
+  output:
+    | NonNullable<AgentTask["compiledPrompt"]>["outputs"][number]
+    | undefined
+) {
+  if (!output?.width || !output.height) return undefined
+  return dimensionsLabel(output.width, output.height)
 }
 
-function AgentTaskBubble({ task }: { task: AgentTask }) {
-  const context = useContext(AgentMessageContext)
-  if (task.status === "awaiting-confirmation") {
-    const compiledPrompt = task.compiledPrompt
-    if (!compiledPrompt) return null
+function dimensionsLabel(width: number, height: number) {
+  const divisor = greatestCommonDivisor(width, height)
+  return `${width} × ${height} · ${width / divisor}:${height / divisor}`
+}
 
-    return (
-      <div className="agent-bubble agent-bubble--assistant agent-prompt-review">
-        <div className="agent-prompt-review__header">
-          <span>专业提示词已准备好</span>
-          <span>等待确认</span>
-        </div>
-        <p className="agent-prompt-review__summary">
-          {compiledPrompt.summary}
-        </p>
-        <div className="agent-prompt-review__meta">
-          <span>{compiledPrompt.outputs.length} 个生成结果</span>
-          {outputSizeLabel(compiledPrompt.outputs[0]) && (
-            <span>{outputSizeLabel(compiledPrompt.outputs[0])}</span>
+function promptWithDimensions(
+  prompt: string,
+  previousWidth: number | undefined,
+  previousHeight: number | undefined,
+  width: number,
+  height: number
+) {
+  if (!previousWidth || !previousHeight) return prompt
+  return prompt
+    .split(`${previousWidth} × ${previousHeight}`)
+    .join(`${width} × ${height}`)
+    .split(`${previousWidth}x${previousHeight}`)
+    .join(`${width}x${height}`)
+}
+
+function AgentPromptReview({ task }: { task: AgentTask }) {
+  const context = useContext(AgentMessageContext)
+  const compiledPrompt = task.compiledPrompt
+  const firstOutput = compiledPrompt?.outputs[0]
+  const canAdjustSize = Boolean(
+    compiledPrompt?.outputs.every(
+      (output) =>
+        output.mediaType === "image" &&
+        (output.operation ?? "create") === "create"
+    )
+  )
+  const isStoryboard = compiledPrompt?.summary.includes("分镜") ?? false
+  const [widthInput, setWidthInput] = useState(
+    String(firstOutput?.width ?? 1024)
+  )
+  const [heightInput, setHeightInput] = useState(
+    String(firstOutput?.height ?? 1024)
+  )
+
+  if (!compiledPrompt) return null
+
+  const width = Number(widthInput)
+  const height = Number(heightInput)
+  const validDimensions =
+    Number.isInteger(width) &&
+    Number.isInteger(height) &&
+    width >= 64 &&
+    width <= 8192 &&
+    height >= 64 &&
+    height <= 8192 &&
+    (!isStoryboard || width * 9 === height * 16)
+  const sizePresets = isStoryboard
+    ? STORYBOARD_SIZE_PRESETS
+    : IMAGE_SIZE_PRESETS
+  const currentSizeLabel = canAdjustSize && validDimensions
+    ? dimensionsLabel(width, height)
+    : outputSizeLabel(firstOutput)
+
+  return (
+    <div className="agent-bubble agent-bubble--assistant agent-prompt-review">
+      <div className="agent-prompt-review__header">
+        <span>专业提示词已准备好</span>
+        <span>等待确认</span>
+      </div>
+      <p className="agent-prompt-review__summary">
+        {compiledPrompt.summary}
+      </p>
+      <div className="agent-prompt-review__meta">
+        <span>{compiledPrompt.outputs.length} 个生成结果</span>
+        {currentSizeLabel && <span>{currentSizeLabel}</span>}
+      </div>
+      {canAdjustSize && (
+        <div className="agent-prompt-review__size-editor">
+          <div className="agent-prompt-review__size-heading">
+            <span>
+              <HugeiconsIcon
+                icon={AspectRatioIcon}
+                size={14}
+                strokeWidth={1.8}
+              />
+              生成尺寸
+            </span>
+            <small>{isStoryboard ? "分镜固定 16:9" : "选择比例或输入宽高"}</small>
+          </div>
+          <div
+            className={`agent-prompt-review__size-presets${isStoryboard ? " is-storyboard" : ""}`}
+            role="group"
+            aria-label="选择生成尺寸"
+          >
+            {sizePresets.map((preset) => {
+              const selected =
+                width === preset.width && height === preset.height
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  className={selected ? "is-active" : undefined}
+                  aria-pressed={selected}
+                  onClick={() => {
+                    setWidthInput(String(preset.width))
+                    setHeightInput(String(preset.height))
+                  }}
+                >
+                  <span>{preset.label}</span>
+                  <small>{preset.width}×{preset.height}</small>
+                </button>
+              )
+            })}
+          </div>
+          <div className="agent-prompt-review__size-inputs">
+            <label>
+              <span>W</span>
+              <input
+                type="number"
+                min={64}
+                max={8192}
+                step={1}
+                inputMode="numeric"
+                value={widthInput}
+                onChange={(event) => setWidthInput(event.target.value)}
+                aria-label="生成宽度"
+              />
+            </label>
+            <span aria-hidden="true">×</span>
+            <label>
+              <span>H</span>
+              <input
+                type="number"
+                min={64}
+                max={8192}
+                step={1}
+                inputMode="numeric"
+                value={heightInput}
+                onChange={(event) => setHeightInput(event.target.value)}
+                aria-label="生成高度"
+              />
+            </label>
+          </div>
+          {!validDimensions && (
+            <p className="agent-prompt-review__size-error" role="alert">
+              {isStoryboard
+                ? "分镜宽高需为 16:9，且在 64 到 8192 之间"
+                : "宽高需为 64 到 8192 之间的整数"}
+            </p>
           )}
         </div>
-        <div className="agent-prompt-review__content">
-          {compiledPrompt.outputs.map((output, index) => (
+      )}
+      <div className="agent-prompt-review__content">
+        {compiledPrompt.outputs.map((output, index) => {
+          const outputLabel =
+            canAdjustSize && validDimensions
+              ? currentSizeLabel
+              : outputSizeLabel(output)
+          const outputPrompt =
+            canAdjustSize && validDimensions
+              ? promptWithDimensions(
+                  output.prompt,
+                  output.width,
+                  output.height,
+                  width,
+                  height
+                )
+              : output.prompt
+
+          return (
             <section key={output.id}>
               <strong>
                 {compiledPrompt.summary.includes("分镜")
@@ -151,36 +311,47 @@ function AgentTaskBubble({ task }: { task: AgentTask }) {
                   : compiledPrompt.outputs.length > 1
                     ? `版本 ${index + 1}`
                     : "最终提示词"}
-                {outputSizeLabel(output)
-                  ? ` · ${outputSizeLabel(output)}`
-                  : ""}
+                {outputLabel ? ` · ${outputLabel}` : ""}
               </strong>
-              <p>{output.prompt}</p>
+              <p>{outputPrompt}</p>
             </section>
-          ))}
-        </div>
-        <p className="agent-prompt-review__hint">
-          提示词已同步到画布。确认后我会自动生成并写回结果。
-        </p>
-        <div className="agent-prompt-review__actions">
-          <button
-            type="button"
-            className="is-secondary"
-            onClick={() => void context?.cancelTask(task.id)}
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            className="is-primary"
-            onClick={() => void context?.confirmTask(task.id)}
-          >
-            <HugeiconsIcon icon={PlayIcon} size={14} strokeWidth={1.8} />
-            确认并生成
-          </button>
-        </div>
+          )
+        })}
       </div>
-    )
+      <p className="agent-prompt-review__hint">
+        提示词已同步到画布。确认后我会自动生成并写回结果。
+      </p>
+      <div className="agent-prompt-review__actions">
+        <button
+          type="button"
+          className="is-secondary"
+          onClick={() => void context?.cancelTask(task.id)}
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          className="is-primary"
+          disabled={canAdjustSize && !validDimensions}
+          onClick={() =>
+            void context?.confirmTask(
+              task.id,
+              canAdjustSize && validDimensions ? { width, height } : undefined
+            )
+          }
+        >
+          <HugeiconsIcon icon={PlayIcon} size={14} strokeWidth={1.8} />
+          确认并生成
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function AgentTaskBubble({ task }: { task: AgentTask }) {
+  const context = useContext(AgentMessageContext)
+  if (task.status === "awaiting-confirmation") {
+    return <AgentPromptReview task={task} />
   }
 
   if (!isAgentTaskTerminal(task)) return null

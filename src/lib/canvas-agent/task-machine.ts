@@ -10,6 +10,8 @@ type CreateAgentTaskInput = {
   userInstruction: string
   executionMode?: AgentExecutionMode
   requestedOutputCount?: number
+  requestedWidth?: number
+  requestedHeight?: number
   selectedCanvasId?: string
   skillId?: string
   contextSnapshotId?: string
@@ -110,6 +112,8 @@ export function createAgentTask(
     executionMode: input.executionMode ?? "confirm",
     userInstruction: input.userInstruction,
     requestedOutputCount: input.requestedOutputCount,
+    requestedWidth: input.requestedWidth,
+    requestedHeight: input.requestedHeight,
     selectedCanvasId: input.selectedCanvasId,
     skillId: input.skillId,
     contextSnapshotId: input.contextSnapshotId,
