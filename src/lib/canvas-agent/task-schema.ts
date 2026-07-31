@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { structuredAgentPlanSchema } from "./planner/schema"
+import { procedural3dModelSpecSchema } from "../canvas-3d/model-schema"
 
 export const agentTaskIdSchema = z
   .string()
@@ -36,8 +37,8 @@ export const agentTaskHistoryEventSchema = z.object({
 
 export const compiledPromptOutputSchema = z.object({
   id: agentTaskIdSchema,
-  mediaType: z.enum(["image", "video"]),
-  operation: z.enum(["create", "edit", "animate"]).optional(),
+  mediaType: z.enum(["image", "video", "model3d"]),
+  operation: z.enum(["create", "edit", "animate", "reconstruct"]).optional(),
   prompt: z.string().trim().min(1),
   negativePrompt: z.string().trim().min(1).optional(),
   variantKey: agentTaskIdSchema.optional(),
@@ -149,9 +150,18 @@ export const agentVideoArtifactSchema = z.object({
   resolution: z.string().trim().min(1).optional(),
 })
 
+export const agentModel3dArtifactSchema = z.object({
+  kind: z.literal("model3d"),
+  id: agentTaskIdSchema,
+  sourceContextSnapshotId: agentTaskIdSchema,
+  spec: procedural3dModelSpecSchema,
+  createdAt: z.iso.datetime(),
+})
+
 export const agentArtifactSchema = z.discriminatedUnion("kind", [
   agentImageArtifactSchema,
   agentVideoArtifactSchema,
+  agentModel3dArtifactSchema,
 ])
 
 export const agentTaskSchema = z.object({
@@ -196,5 +206,6 @@ export type AgentTaskError = z.infer<typeof agentTaskErrorSchema>
 export type AgentInterpretation = z.infer<typeof agentInterpretationSchema>
 export type AgentImageArtifact = z.infer<typeof agentImageArtifactSchema>
 export type AgentVideoArtifact = z.infer<typeof agentVideoArtifactSchema>
+export type AgentModel3dArtifact = z.infer<typeof agentModel3dArtifactSchema>
 export type AgentArtifact = z.infer<typeof agentArtifactSchema>
 export type AgentTask = z.infer<typeof agentTaskSchema>

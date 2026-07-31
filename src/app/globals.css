@@ -265,6 +265,132 @@
     pointer-events: none;
   }
 
+  .canvas-surface .asui-3d-model-frame {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+
+  .canvas-surface .asui-3d-model-frame > .tl-frame__body {
+    border-color: transparent !important;
+    background: transparent !important;
+  }
+
+  .canvas-surface .asui-3d-model-frame .tl-frame-heading,
+  .canvas-surface .asui-3d-model-frame .tl-frame-heading-hit-area {
+    display: none !important;
+  }
+
+  .canvas-surface .asui-3d-model-container {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: all;
+  }
+
+  .canvas-3d-model {
+    display: grid;
+    grid-template-rows: 56px minmax(0, 1fr) 52px;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border: 2px solid #a3fe44;
+    border-radius: 30px;
+    background: #0c0c0e;
+    color: #f4f4f5;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 5%);
+  }
+
+  .canvas-3d-model__header,
+  .canvas-3d-model__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    background: #111113;
+  }
+
+  .canvas-3d-model__header {
+    border-bottom: 1px solid #29292e;
+  }
+
+  .canvas-3d-model__footer {
+    border-top: 1px solid #29292e;
+    color: #8f8f98;
+    font-size: 13px;
+  }
+
+  .canvas-3d-model__title {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    font-weight: 650;
+  }
+
+  .canvas-3d-model__title svg {
+    flex: 0 0 auto;
+    color: #a3fe44;
+  }
+
+  .canvas-3d-model__title span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .canvas-3d-model__badge {
+    flex: 0 0 auto;
+    border: 1px solid rgb(163 254 68 / 35%);
+    border-radius: 999px;
+    padding: 5px 10px;
+    background: rgb(163 254 68 / 8%);
+    color: #a3fe44;
+    font-size: 12px;
+  }
+
+  .canvas-3d-model__stage {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .canvas-3d-model__stage:active {
+    cursor: grabbing;
+  }
+
+  .canvas-3d-model__stage canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .canvas-3d-model__actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .canvas-3d-model__actions button {
+    display: inline-grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #a3a3ad;
+    cursor: pointer;
+  }
+
+  .canvas-3d-model__actions button:hover {
+    background: #232328;
+    color: #f7f7f8;
+  }
+
   .canvas-3d-preview {
     position: relative;
     display: grid;

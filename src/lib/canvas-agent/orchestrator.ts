@@ -6,6 +6,7 @@ import {
   createVideoGenerationAdapter,
   type VideoGenerationCredentials,
 } from "./adapters/video-generation"
+import { createModel3dGenerationAdapter } from "./adapters/model3d-generation"
 import {
   createTextModelAdapter,
   type TextModelCredentials,
@@ -424,8 +425,12 @@ export async function runAgentTaskTick(
         videoAdapter:
           dependencies.videoAdapter ??
           createVideoGenerationAdapter({ apiOrigin: dependencies.apiOrigin }),
+        model3dAdapter: createModel3dGenerationAdapter({
+          apiOrigin: dependencies.apiOrigin,
+        }),
         imageCredentials: dependencies.imageCredentials,
         videoCredentials: dependencies.videoCredentials,
+        textCredentials: dependencies.textCredentials,
         now: dependencies.now,
         createId: dependencies.createId,
       })

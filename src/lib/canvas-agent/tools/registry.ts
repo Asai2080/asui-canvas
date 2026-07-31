@@ -27,6 +27,7 @@ export const AGENT_TOOL_NAMES = [
   "generate_image",
   "edit_image",
   "generate_video",
+  "generate_3d_model",
   "get_generation_job",
   "cancel_generation_job",
   "create_canvas_nodes",
@@ -81,6 +82,13 @@ export const registeredAgentTools = {
       sourceStepId: safeId.optional(),
       durationSeconds: z.number().int().min(1).max(15),
       resolution: z.string().trim().min(1),
+    })
+    .strict(),
+  generate_3d_model: z
+    .object({
+      promptOutputId: safeId,
+      contextSnapshotId: safeId,
+      prompt: z.string().trim().min(1),
     })
     .strict(),
   get_generation_job: z

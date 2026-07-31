@@ -30,7 +30,11 @@ export function isImageTo3dSkillName(name?: string) {
 }
 
 export function isImageTo3dVariantKey(variantKey?: string) {
-  return variantKey?.startsWith("three-") ?? false
+  return (
+    variantKey === "procedural-three-model" ||
+    variantKey?.startsWith("three-") ||
+    false
+  )
 }
 
 export function isWorldSkillName(name?: string) {

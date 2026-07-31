@@ -65,7 +65,7 @@ function imageTo3dPromptContent(compiledPrompt: CompiledPrompt) {
     compiledPrompt.originalGoal
       ? `## 用户目标\n${compiledPrompt.originalGoal}`
       : "",
-    "## 交付视图",
+    "## 3D 产物",
     ...compiledPrompt.outputs.map(
       (output, index) =>
         `- ${index + 1}. ${output.variantDifference ?? output.variantKey ?? output.mediaType}`

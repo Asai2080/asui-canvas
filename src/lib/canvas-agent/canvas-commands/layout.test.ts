@@ -32,6 +32,41 @@ function video(id: string): AgentArtifact {
   }
 }
 
+function model3d(id: string): AgentArtifact {
+  return {
+    kind: "model3d",
+    id,
+    sourceContextSnapshotId: "context-model",
+    createdAt,
+    spec: {
+      version: 1,
+      mode: "procedural-three",
+      title: "真实 3D 模型",
+      sourceSummary: "一个程序化主体。",
+      qualityContract: "保持主体轮廓和可交互结构。",
+      suitability: "pass",
+      components: [{
+        id: "body",
+        name: "主体",
+        primitive: "box",
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1],
+        color: "#303034",
+        roughness: 0.7,
+        metalness: 0.1,
+      }],
+      camera: { position: [3, 2, 5], target: [0, 0, 0], fov: 40 },
+      lighting: {
+        ambientIntensity: 1,
+        keyIntensity: 2,
+        keyPosition: [4, 5, 6],
+      },
+      assumptions: [],
+    },
+  }
+}
+
 function task(artifacts: Record<string, AgentArtifact[]>): AgentTask {
   return {
     id: "agent-task-layout",
@@ -328,5 +363,23 @@ describe("buildAgentCanvasCommandBatch", () => {
         "result-turntable",
       ],
     })
+  })
+
+  it("writes a real model artifact with a dedicated 3D command", () => {
+    const source = task({ "generate-model": [model3d("model-1")] })
+    const batch = buildAgentCanvasCommandBatch({
+      task: source,
+      sourceBounds: { x: 0, y: 0, w: 480, h: 480 },
+      viewportBounds: { x: 0, y: 0, w: 1440, h: 900 },
+    })
+
+    expect(batch.commands).toContainEqual(expect.objectContaining({
+      type: "create-3d-model-node",
+      nodeRef: "result-model-1",
+      bounds: expect.objectContaining({ w: 720, h: 720 }),
+    }))
+    expect(batch.commands.some(
+      (command) => command.type === "create-image-node" || command.type === "create-video-node"
+    )).toBe(false)
   })
 })

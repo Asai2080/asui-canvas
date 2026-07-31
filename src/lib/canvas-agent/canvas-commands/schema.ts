@@ -2,6 +2,7 @@ import { z } from "zod"
 
 import {
   agentImageArtifactSchema,
+  agentModel3dArtifactSchema,
   agentTaskIdSchema,
   agentVideoArtifactSchema,
 } from "../task-schema"
@@ -66,6 +67,15 @@ const create3dPreviewNodeCommandSchema = z
   })
   .strict()
 
+const create3dModelNodeCommandSchema = z
+  .object({
+    type: z.literal("create-3d-model-node"),
+    nodeRef: nodeRefSchema,
+    artifact: agentModel3dArtifactSchema,
+    bounds: canvasCommandBoundsSchema,
+  })
+  .strict()
+
 const connectNodesCommandSchema = z
   .object({
     type: z.literal("connect-nodes"),
@@ -93,6 +103,7 @@ export const agentCanvasCommandSchema = z.discriminatedUnion("type", [
   createVideoNodeCommandSchema,
   createPromptNodeCommandSchema,
   create3dPreviewNodeCommandSchema,
+  create3dModelNodeCommandSchema,
   connectNodesCommandSchema,
   setRecommendedResultCommandSchema,
   focusResultsCommandSchema,

@@ -138,30 +138,19 @@ describe("createAgentPlan", () => {
     ).toThrow()
   })
 
-  it("feeds referenced views into image generation and the hero view into turntable video", () => {
+  it("plans a dedicated procedural model step for image-to-3D", () => {
     const compiled: CompiledPrompt = {
       originalGoal: "把产品图转成 3D 预览",
-      summary: "图片转 3D：四视角参考与环绕预览",
+      summary: "图片转 3D：程序化可交互模型",
       sharedConstraints: [],
       outputs: [
         {
-          id: "output-hero",
-          mediaType: "image",
-          operation: "create",
-          prompt: "前侧三分之四视图",
-          width: 1024,
-          height: 1024,
-          variantKey: "three-front-three-quarter",
+          id: "output-model",
+          mediaType: "model3d",
+          operation: "reconstruct",
+          prompt: "重建程序化模型",
+          variantKey: "procedural-three-model",
           sourceContextSnapshotId: "context-3d",
-        },
-        {
-          id: "output-turntable",
-          mediaType: "video",
-          operation: "animate",
-          prompt: "完整 360 度环绕",
-          durationSeconds: 8,
-          resolution: "720p",
-          variantKey: "three-turntable",
         },
       ],
     }
@@ -171,13 +160,13 @@ describe("createAgentPlan", () => {
       compiledPrompt: compiled,
       contextSnapshotId: "context-3d",
     })
-    const image = plan.steps.find((step) => step.id === "generate-1")
-    const video = plan.steps.find((step) => step.id === "generate-2")
-
-    expect(image?.input).toMatchObject({ contextSnapshotId: "context-3d" })
-    expect(video).toMatchObject({
-      dependsOn: ["generate-1"],
-      input: { sourceStepId: "generate-1" },
+    expect(plan.steps.find((step) => step.id === "generate-1")).toMatchObject({
+      tool: "generate_3d_model",
+      dependsOn: ["compile-prompt"],
+      input: {
+        contextSnapshotId: "context-3d",
+        prompt: "重建程序化模型",
+      },
     })
   })
 

@@ -111,6 +111,20 @@ export function createAgentPlan({
   const generationSteps: StructuredAgentPlanStep[] =
     compiledPrompt.outputs.map((output, index) => {
       const id = `generate-${index + 1}`
+      if (output.mediaType === "model3d") {
+        const modelContextId =
+          output.sourceContextSnapshotId ?? contextSnapshotId
+        if (!modelContextId) {
+          throw new Error("图片转 3D 任务缺少图片画布上下文")
+        }
+        return step(id, "构建程序化 3D 模型", "generate_3d_model", [
+          "compile-prompt",
+        ], {
+          promptOutputId: output.id,
+          contextSnapshotId: modelContextId,
+          prompt: output.prompt,
+        })
+      }
       if (output.mediaType === "video") {
         const sourceStepId = sourceStepIdForVideo(
           output,

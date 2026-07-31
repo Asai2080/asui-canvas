@@ -372,7 +372,7 @@ describe("compileGenerationPrompt", () => {
     expect(compiled.outputs[0].prompt).toContain("标题必须逐字保留")
   })
 
-  it("compiles image-to-3D into four consistent views and one turntable video", () => {
+  it("compiles image-to-3D into one real procedural model", () => {
     const context: CanvasContextSnapshot = {
       id: "context-product-3d",
       createdAt,
@@ -420,36 +420,20 @@ describe("compileGenerationPrompt", () => {
       target: { mediaType: "image", count: 1 },
     })
 
-    expect(compiled.summary).toBe("图片转 3D：四视角参考与环绕预览")
-    expect(compiled.outputs).toHaveLength(5)
-    expect(compiled.outputs.slice(0, 4).every((output) =>
-      output.mediaType === "image" &&
-      output.sourceContextSnapshotId === "context-product-3d" &&
-      output.width === 1024 &&
-      output.height === 1024
-    )).toBe(true)
-    expect(compiled.outputs.map((output) => output.variantKey)).toEqual([
-      "three-front-three-quarter",
-      "three-side-profile",
-      "three-rear-three-quarter",
-      "three-top-detail",
-      "three-turntable",
-    ])
-    expect(compiled.outputs[0].prompt).toContain("唯一视觉身份依据")
-    expect(compiled.outputs[0].prompt).toContain("前侧三分之四视图")
+    expect(compiled.summary).toBe("图片转 3D：程序化可交互模型")
+    expect(compiled.outputs).toHaveLength(1)
+    expect(compiled.outputs[0]).toMatchObject({
+      mediaType: "model3d",
+      operation: "reconstruct",
+      variantKey: "procedural-three-model",
+      sourceContextSnapshotId: "context-product-3d",
+    })
+    expect(compiled.outputs[0].prompt).toContain("真实三维几何部件")
+    expect(compiled.outputs[0].prompt).toContain("程序化 Three.js 模型节点")
     expect(compiled.outputs[0].prompt).not.toContain("决定性瞬间")
     expect(compiled.outputs[0].prompt).not.toContain("文字模型创作简报")
-    expect(compiled.outputs[2].prompt).toContain("遮挡关系")
-    expect(compiled.outputs[3].prompt).toContain("顶部与结构细节视图")
-    expect(compiled.outputs[4]).toMatchObject({
-      mediaType: "video",
-      operation: "animate",
-      durationSeconds: 8,
-      resolution: "720p",
-    })
-    expect(compiled.outputs[4].prompt).toContain("完整 360 度匀速环绕")
     expect(compiled.negativeConstraints).toContain(
-      "单张参考图不可见区域只能做有依据的推断，不承诺精确还原"
+      "不得产出四视角图片、环绕视频、贴图立方体或平面代理"
     )
 
     const imagesOnly = compileGenerationPrompt({
@@ -461,15 +445,9 @@ describe("compileGenerationPrompt", () => {
       target: { mediaType: "image", count: 1 },
     })
 
-    expect(imagesOnly.summary).toBe("图片转 3D：四视角建模参考")
-    expect(imagesOnly.outputs).toHaveLength(4)
-    expect(
-      imagesOnly.outputs.every((output) => output.mediaType === "image")
-    ).toBe(true)
-    expect(imagesOnly.outputs.map((output) => output.variantKey)).not.toContain(
-      "three-turntable"
-    )
-    expect(imagesOnly.sharedConstraints.join("\n")).not.toContain("环绕视频")
+    expect(imagesOnly.summary).toBe("图片转 3D：程序化可交互模型")
+    expect(imagesOnly.outputs).toHaveLength(1)
+    expect(imagesOnly.outputs[0].mediaType).toBe("model3d")
   })
 
   it("compiles the world Skill into paired scene images and camera videos", () => {

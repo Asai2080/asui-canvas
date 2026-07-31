@@ -106,6 +106,32 @@ function videoPlan(taskId: string): StructuredAgentPlan {
   }
 }
 
+function model3dPlan(taskId: string): StructuredAgentPlan {
+  return {
+    version: 1,
+    taskId,
+    summary: "图片转 3D",
+    maxParallelism: 1,
+    maxGeneratedNodes: 1,
+    steps: [
+      {
+        id: "generate-model-1",
+        title: "构建程序化 3D 模型",
+        tool: "generate_3d_model",
+        dependsOn: [],
+        status: "pending",
+        attempts: 0,
+        input: {
+          promptOutputId: "output-model-1",
+          contextSnapshotId: "context-model-3d",
+          prompt: "重建真实 3D 几何",
+        },
+        outputRefs: [],
+      },
+    ],
+  }
+}
+
 describe("executeAgentTask", () => {
   it("persists image artifacts and completes the generation step atomically", async () => {
     const root = await createRoot()
@@ -311,6 +337,89 @@ describe("executeAgentTask", () => {
       sourceImageSrc: "https://example.test/source.png",
       referenceImageSrcs: ["https://example.test/side.png"],
     }), {})
+  })
+
+  it("creates a model3d artifact without calling image or video generation", async () => {
+    const root = await createRoot()
+    await createStoredCanvasContextSnapshot({
+      id: "context-model-3d",
+      createdAt: now,
+      scope: "selection",
+      selectedNodeId: "source-model-image",
+      sourceNode: {
+        id: "source-model-image",
+        kind: "image",
+        bounds: { x: 0, y: 0, w: 640, h: 640 },
+        referenceIds: [],
+        media: {
+          referenceType: "url",
+          mediaType: "image",
+          src: "https://example.test/object.png",
+          width: 640,
+          height: 640,
+        },
+      },
+      annotations: [],
+      connectedNodes: [],
+      references: [],
+    }, root)
+    const task = executingTask("task-model-3d", model3dPlan("task-model-3d"))
+    await createStoredAgentTask(task, root)
+    const generateImage = vi.fn()
+    const createVideo = vi.fn()
+    const generateModel = vi.fn(async () => ({
+      version: 1 as const,
+      mode: "procedural-three" as const,
+      title: "程序化物体",
+      sourceSummary: "由主体和圆柱附件构成。",
+      qualityContract: "保持主体轮廓、附件比例与连接关系。",
+      suitability: "pass" as const,
+      components: [{
+        id: "body",
+        name: "主体",
+        primitive: "box" as const,
+        position: [0, 0, 0] as [number, number, number],
+        rotation: [0, 0, 0] as [number, number, number],
+        scale: [2, 1, 1] as [number, number, number],
+        color: "#404044",
+        roughness: 0.6,
+        metalness: 0.1,
+      }],
+      camera: {
+        position: [4, 3, 6] as [number, number, number],
+        target: [0, 0, 0] as [number, number, number],
+        fov: 40,
+      },
+      lighting: {
+        ambientIntensity: 1,
+        keyIntensity: 2,
+        keyPosition: [4, 5, 6] as [number, number, number],
+      },
+      assumptions: [],
+    }))
+
+    const result = await executeAgentTask(task.id, {
+      root,
+      now: () => now,
+      createId: () => "artifact-model-1",
+      imageAdapter: { generate: generateImage },
+      videoAdapter: { create: createVideo, poll: vi.fn() },
+      model3dAdapter: { generate: generateModel },
+      textCredentials: { apiKey: "secret", model: "vision" },
+    })
+
+    expect(generateModel).toHaveBeenCalledWith({
+      prompt: "重建真实 3D 几何",
+      sourceImageSrc: "https://example.test/object.png",
+      contextSnapshotId: "context-model-3d",
+    }, { apiKey: "secret", model: "vision" })
+    expect(generateImage).not.toHaveBeenCalled()
+    expect(createVideo).not.toHaveBeenCalled()
+    expect(result.status).toBe("writing-canvas")
+    expect(result.artifacts?.["generate-model-1"]?.[0]).toMatchObject({
+      kind: "model3d",
+      id: "artifact-model-1",
+    })
   })
 
   it("uses an earlier generated image artifact as the video source", async () => {

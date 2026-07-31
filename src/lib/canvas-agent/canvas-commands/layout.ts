@@ -64,6 +64,10 @@ function artifactSize(
     return { width: artifact.width, height: artifact.height }
   }
 
+  if (artifact.kind === "model3d") {
+    return { width: 720, height: 720 }
+  }
+
   if (sourceBounds) {
     return { width: sourceBounds.w, height: sourceBounds.h }
   }
@@ -239,12 +243,19 @@ export function buildAgentCanvasCommandBatch({
         artifact,
         bounds,
       })
-    } else {
+    } else if (artifact.kind === "video") {
       commands.push({
         type: "create-video-node",
         nodeRef,
         artifact,
         prompt: task.userInstruction,
+        bounds,
+      })
+    } else {
+      commands.push({
+        type: "create-3d-model-node",
+        nodeRef,
+        artifact,
         bounds,
       })
     }

@@ -10,6 +10,11 @@ import type {
   AgentVideoPollResult,
   VideoGenerationCredentials,
 } from "./adapters/video-generation"
+import type {
+  Model3dGenerationInput,
+  createModel3dGenerationAdapter,
+} from "./adapters/model3d-generation"
+import type { TextModelCredentials } from "./adapters/text-model"
 import { getStoredCanvasContextSnapshot } from "./context/store"
 import type { StructuredAgentPlanStep } from "./planner/schema"
 import {
@@ -43,12 +48,16 @@ type VideoAdapter = {
   ): Promise<AgentVideoPollResult>
 }
 
+type Model3dAdapter = ReturnType<typeof createModel3dGenerationAdapter>
+
 export type ExecuteAgentTaskDependencies = {
   root?: string
   imageAdapter: ImageAdapter
   videoAdapter: VideoAdapter
+  model3dAdapter?: Model3dAdapter
   imageCredentials?: ImageGenerationCredentials
   videoCredentials?: VideoGenerationCredentials
+  textCredentials?: TextModelCredentials
   now?: () => string
   createId?: (prefix: string) => string
 }
@@ -57,6 +66,7 @@ const GENERATION_TOOLS = new Set([
   "generate_image",
   "edit_image",
   "generate_video",
+  "generate_3d_model",
 ])
 
 function defaultNow() {
@@ -120,6 +130,26 @@ function toStoredVideoArtifact(
   return {
     ...artifact,
     id: createId("artifact-video"),
+  }
+}
+
+async function model3dInputForStep(
+  step: StructuredAgentPlanStep,
+  root?: string
+): Promise<Model3dGenerationInput & { contextSnapshotId: string }> {
+  if (step.tool !== "generate_3d_model") {
+    throw new Error(`步骤 ${step.id} 不是 3D 模型生成步骤`)
+  }
+  const input = registeredAgentTools.generate_3d_model.parse(step.input)
+  const context = await loadContext(input.contextSnapshotId, root)
+  const sourceImage = sourceImageSrc(context)
+  if (!sourceImage) {
+    throw new Error("图片转 3D 需要选中一个已保存的图片画布")
+  }
+  return {
+    prompt: input.prompt,
+    sourceImageSrc: sourceImage,
+    contextSnapshotId: input.contextSnapshotId,
   }
 }
 
@@ -370,6 +400,48 @@ export async function executeAgentTask(
         },
         generationStep.id,
         artifacts
+      )
+    )
+    return moveToWritingCanvas(task, dependencies, now)
+  }
+
+  if (generationStep.tool === "generate_3d_model") {
+    if (!dependencies.model3dAdapter) {
+      throw new Error("3D 模型生成器未配置")
+    }
+    const input = await model3dInputForStep(
+      generationStep,
+      dependencies.root
+    )
+    const spec = await dependencies.model3dAdapter.generate(
+      input,
+      dependencies.textCredentials ?? {}
+    )
+    task = await persistTask(task, dependencies.root, now, (draft) =>
+      withCompletedStep(
+        {
+          ...draft,
+          executionPlan: draft.executionPlan
+            ? {
+                ...draft.executionPlan,
+                steps: draft.executionPlan.steps.map((step) =>
+                  step.id === generationStep.id
+                    ? { ...step, attempts: step.attempts + 1 }
+                    : step
+                ),
+              }
+            : undefined,
+        },
+        generationStep.id,
+        [
+          {
+            kind: "model3d",
+            id: createId("artifact-model3d"),
+            sourceContextSnapshotId: input.contextSnapshotId,
+            spec,
+            createdAt: now(),
+          },
+        ]
       )
     )
     return moveToWritingCanvas(task, dependencies, now)

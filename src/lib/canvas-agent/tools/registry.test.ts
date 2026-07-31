@@ -15,6 +15,7 @@ describe("agent tool registry", () => {
       "generate_image",
       "edit_image",
       "generate_video",
+      "generate_3d_model",
       "get_generation_job",
       "cancel_generation_job",
       "create_canvas_nodes",

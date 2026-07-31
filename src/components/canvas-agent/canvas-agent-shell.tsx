@@ -168,6 +168,7 @@ function promptWithDimensions(
 }
 
 const IMAGE_TO_3D_OUTPUT_LABELS: Record<string, string> = {
+  "procedural-three-model": "程序化 3D 模型",
   "three-front-three-quarter": "前侧三分之四",
   "three-side-profile": "正侧面",
   "three-rear-three-quarter": "后侧三分之四",
