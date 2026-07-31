@@ -320,6 +320,54 @@ describe("runAgentTaskTick", () => {
       .toMatchObject({ status: "completed", attempts: 1 })
   })
 
+  it("keeps the latest task when concurrent ticks race on one revision", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: "使用图片转 3D Skill 处理当前图片",
+        executionMode: "confirm",
+      },
+      { id: "task-concurrent-tick", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = dependencies(root)
+    await runAgentTaskTick(task.id, deps)
+
+    const interpretation = {
+      message: "我会根据当前图片建立四视角参考。",
+      summary: "图片转 3D 四视角参考",
+      normalizedInstruction: "根据当前图片建立一致的四视角建模参考。",
+      intent: "image" as const,
+      target: { mediaType: "image" as const },
+    }
+    let releaseFirst: (() => void) | undefined
+    let calls = 0
+    const textAdapter = {
+      interpret: vi.fn(async () => {
+        calls += 1
+        if (calls === 1) {
+          await new Promise<void>((resolve) => {
+            releaseFirst = resolve
+          })
+        }
+        return interpretation
+      }),
+    }
+    const racingDeps = { ...deps, textAdapter }
+
+    const firstTick = runAgentTaskTick(task.id, racingDeps)
+    await vi.waitFor(() => expect(calls).toBe(1))
+    const secondResult = await runAgentTaskTick(task.id, racingDeps)
+    releaseFirst?.()
+    const firstResult = await firstTick
+    const stored = await getStoredAgentTask(task.id, root)
+
+    expect(firstResult.status).toBe("compiling-prompt")
+    expect(secondResult.status).toBe("compiling-prompt")
+    expect(stored?.task.status).toBe("compiling-prompt")
+    expect(stored?.task.error).toBeUndefined()
+  })
+
   it("waits after prompt compilation when confirmation mode is enabled", async () => {
     const root = await createRoot()
     const task = createAgentTask(

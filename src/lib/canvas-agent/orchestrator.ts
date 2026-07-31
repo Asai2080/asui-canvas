@@ -31,6 +31,7 @@ import {
 import { transitionAgentTask } from "./task-machine"
 import {
   AgentTaskNotFoundError,
+  AgentTaskRevisionConflictError,
   getStoredAgentTask,
   saveStoredAgentTask,
 } from "./task-store"
@@ -309,7 +310,7 @@ export async function runAgentTaskTick(
 
   try {
     if (task.status === "queued") {
-      return persistTransition(task, "understanding", dependencies)
+      return await persistTransition(task, "understanding", dependencies)
     }
 
     if (task.status === "understanding") {
@@ -318,7 +319,7 @@ export async function runAgentTaskTick(
         interpretation.intent === "unsupported" ||
         interpretation.intent === "conversation"
       ) {
-        return persistTransition(task, "completed", dependencies, (next) => ({
+        return await persistTransition(task, "completed", dependencies, (next) => ({
           ...next,
           interpretation,
         }))
@@ -328,7 +329,7 @@ export async function runAgentTaskTick(
         : task.contextSnapshotId
           ? "reading-canvas"
           : "compiling-prompt"
-      return persistTransition(task, next, dependencies, (nextTask) => ({
+      return await persistTransition(task, next, dependencies, (nextTask) => ({
         ...nextTask,
         interpretation,
       }))
@@ -336,7 +337,7 @@ export async function runAgentTaskTick(
 
     if (task.status === "reading-skill") {
       await loadSkill(task, dependencies.root, (dependencies.now ?? defaultNow)())
-      return persistTransition(
+      return await persistTransition(
         task,
         task.contextSnapshotId ? "reading-canvas" : "compiling-prompt",
         dependencies
@@ -345,7 +346,7 @@ export async function runAgentTaskTick(
 
     if (task.status === "reading-canvas") {
       await loadContext(task, dependencies.root)
-      return persistTransition(task, "compiling-prompt", dependencies)
+      return await persistTransition(task, "compiling-prompt", dependencies)
     }
 
     if (task.status === "compiling-prompt") {
@@ -374,7 +375,7 @@ export async function runAgentTaskTick(
             task.interpretation?.target?.height,
         },
       })
-      return persistTransition(
+      return await persistTransition(
         task,
         task.executionMode === "confirm"
           ? "awaiting-confirmation"
@@ -394,7 +395,7 @@ export async function runAgentTaskTick(
         compiledPrompt: task.compiledPrompt,
         contextSnapshotId: task.contextSnapshotId,
       })
-      return persistTransition(task, "executing", dependencies, (next) =>
+      return await persistTransition(task, "executing", dependencies, (next) =>
         completePreparationSteps({ ...next, executionPlan })
       )
     }
@@ -418,6 +419,9 @@ export async function runAgentTaskTick(
     return task
   } catch (error) {
     const latest = await getStoredAgentTask(task.id, dependencies.root)
+    if (error instanceof AgentTaskRevisionConflictError && latest) {
+      return latest.task
+    }
     return failTask(latest?.task ?? task, error, dependencies)
   }
 }

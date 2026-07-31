@@ -13,6 +13,14 @@ export function isAgentTaskTerminal(task: AgentTask) {
   return TERMINAL_STATUSES.has(task.status)
 }
 
+function taskErrorMessage(task: AgentTask) {
+  const message = task.error?.message
+  if (message?.includes("Canvas Agent task revision conflict")) {
+    return "任务状态已同步，请点击重试继续。"
+  }
+  return message ?? "执行遇到问题，请稍后重试。"
+}
+
 export function selectForegroundTask(tasks: readonly AgentTask[]) {
   return tasks
     .filter(
@@ -51,7 +59,7 @@ export function getAgentTaskResultText(task: AgentTask) {
   }
 
   if (task.status === "failed") {
-    return `未能完成${target}：${task.error?.message ?? "执行遇到问题，请稍后重试。"}`
+    return `未能完成${target}：${taskErrorMessage(task)}`
   }
 
   if (task.status === "cancelled") {
@@ -71,12 +79,16 @@ export function tasksToConversationHistory(
   tasks: readonly AgentTask[],
   activeTaskId?: string
 ) {
+  const activeSkillId = activeTaskId
+    ? tasks.find((task) => task.id === activeTaskId)?.skillId
+    : undefined
   return [...tasks]
     .filter(
       (task) =>
         task.id !== activeTaskId &&
         isAgentTaskTerminal(task) &&
-        task.status !== "cancelled"
+        task.status !== "cancelled" &&
+        (!activeTaskId || task.skillId === activeSkillId)
     )
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
     .slice(-6)

@@ -252,4 +252,41 @@ describe("agent view model", () => {
       },
     ])
   })
+
+  it("does not carry conversation history across different Skills", () => {
+    const storyboard = {
+      ...task("storyboard", "completed", "2026-07-26T08:00:00.000Z"),
+      skillId: "skill-storyboard",
+      userInstruction: "生成四张分镜",
+    } satisfies AgentTask
+    const imageTo3d = {
+      ...task("image-to-3d", "understanding", "2026-07-26T08:01:00.000Z"),
+      skillId: "builtin-image-to-3d",
+      userInstruction: "使用这个 Skill",
+    } satisfies AgentTask
+
+    expect(
+      tasksToConversationHistory(
+        [storyboard, imageTo3d],
+        imageTo3d.id
+      )
+    ).toEqual([])
+  })
+
+  it("hides legacy revision conflict details behind a retry message", () => {
+    const failed = {
+      ...task("revision-conflict", "failed", "2026-07-26T08:00:00.000Z"),
+      error: {
+        code: "AGENT_EXECUTION_FAILED",
+        message:
+          "Canvas Agent task revision conflict for task-one: expected 7, actual 8",
+        retryable: true,
+      },
+    } satisfies AgentTask
+
+    expect(getAgentTaskResultText(failed)).toContain(
+      "任务状态已同步，请点击重试继续。"
+    )
+    expect(getAgentTaskResultText(failed)).not.toContain("expected 7")
+  })
 })

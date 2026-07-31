@@ -82,6 +82,7 @@ export function useAgentTasks({
     >()
   )
   const writebackRevisionRef = useRef("")
+  const advanceRevisionRef = useRef("")
   const promptWritebackTaskIdsRef = useRef(new Set<string>())
   const textModelByTaskRef = useRef(new Map<string, string>())
   const foregroundTask = useMemo(() => selectForegroundTask(tasks), [tasks])
@@ -165,13 +166,16 @@ export function useAgentTasks({
   useEffect(() => {
     if (!foregroundTask) return
     let cancelled = false
+    const revisionKey = `${foregroundTask.id}:${foregroundTask.revision}:${foregroundTask.status}`
 
     const advance = async () => {
+      if (advanceRevisionRef.current === revisionKey) return
+      advanceRevisionRef.current = revisionKey
       try {
         if (foregroundTask.status === "writing-canvas") {
-          const revisionKey = `${foregroundTask.id}:${foregroundTask.revision}`
-          if (writebackRevisionRef.current === revisionKey) return
-          writebackRevisionRef.current = revisionKey
+          const writebackKey = `${foregroundTask.id}:${foregroundTask.revision}`
+          if (writebackRevisionRef.current === writebackKey) return
+          writebackRevisionRef.current = writebackKey
           const fallback = getCanvasContext()
           const bounds = boundsByTaskRef.current.get(foregroundTask.id)
           const next = await writeAgentTaskToCanvas({
@@ -222,6 +226,9 @@ export function useAgentTasks({
         if (!cancelled) upsertTask(next)
       } catch (reason) {
         writebackRevisionRef.current = ""
+        if (advanceRevisionRef.current === revisionKey) {
+          advanceRevisionRef.current = ""
+        }
         if (!cancelled) {
           setError(reason instanceof Error ? reason.message : "Agent 任务推进失败")
         }
