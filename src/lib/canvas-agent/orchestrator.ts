@@ -24,6 +24,7 @@ import {
   buildProfessionalCreativeBrief,
   compileGenerationPrompt,
 } from "./prompts/compiler"
+import { isCoverSkillName } from "./skills/identifiers"
 import { createSkillSnapshot } from "./skills/registry"
 import {
   agentTaskSchema,
@@ -75,7 +76,8 @@ function localInterpretation(
   const instruction = input.userInstruction.trim()
   const video = /视频|动画|镜头|动起来|图生视频/.test(instruction)
   const creative = Boolean(
-    input.context?.sourceNode ||
+    input.skill ||
+      input.context?.sourceNode ||
       /图|海报|主视觉|封面|插画|照片|广告|设计|logo|素材|画面|场景|分镜|做饭|烹饪|标注|修改|替换|抠图|动画|镜头|视频/i.test(
         instruction
       )
@@ -141,6 +143,48 @@ function hasTextModelCredentials(credentials?: TextModelCredentials) {
   )
 }
 
+function missingCoverDetails(instruction: string) {
+  const titlePattern =
+    /(?:主标题|标题|封面文案)(?:是|为|叫|[:：])?\s*[《“"'「]?[^》”"'」\n，。；;]{2,24}[》”"'」]?/i
+  const hasTitle = titlePattern.test(instruction)
+  const topic = instruction
+    .replace(titlePattern, "")
+    .replace(/gbro-cover-design|cover-design/gi, "")
+    .replace(/封面\s*skill/gi, "")
+    .replace(/\bskill\b/gi, "")
+    .replace(
+      /使用|调用|用|这个|帮我|请|生成|制作|做|一张|封面|图片|设计|一下|可以|需要|想要|我要|吧|呀|哟|的/gi,
+      ""
+    )
+    .replace(/[\s，。！？、,.!?:：；;“”"'《》「」]/g, "")
+  return {
+    topic: topic.length < 2,
+    title: !hasTitle,
+  }
+}
+
+function coverClarification(
+  instruction: string
+): AgentInterpretation | undefined {
+  const missing = missingCoverDetails(instruction)
+  if (!missing.topic && !missing.title) return undefined
+
+  const request =
+    missing.topic && missing.title
+      ? "请先告诉我封面的主题或核心内容，以及要放在画面上的主标题（建议 4 至 12 字）。"
+      : missing.topic
+        ? "主标题我记下了。还需要你告诉我这张封面要表达的主题或核心内容。"
+        : "主题我记下了。请再告诉我要放在画面上的主标题（建议 4 至 12 字）。"
+  return {
+    message: `${request}如果有指定人物、产品、界面或品牌素材，也可以先选中对应图片；构图、配色和版式我来完成。`,
+    summary: "封面信息待补充",
+    normalizedInstruction: instruction.trim(),
+    intent: "conversation",
+    source: "local-rules",
+    target: undefined,
+  }
+}
+
 function creativeContextForTask(context?: CanvasContextSnapshot) {
   if (!context) return context
   const source = context.sourceNode
@@ -168,6 +212,10 @@ async function understandTask(
     context: creativeContextForTask(context),
     skill,
     conversationHistory: dependencies.conversationHistory,
+  }
+  if (isCoverSkillName(skill?.name)) {
+    const clarification = coverClarification(task.userInstruction)
+    if (clarification) return clarification
   }
   const useTextModel = Boolean(
     dependencies.textAdapter || hasTextModelCredentials(dependencies.textCredentials)

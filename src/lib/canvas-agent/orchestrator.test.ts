@@ -318,6 +318,39 @@ describe("runAgentTaskTick", () => {
     expect(answered.compiledPrompt).toBeUndefined()
   })
 
+  it("asks for the missing topic and title before running the cover Skill", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: "用这个 Skill，帮我生成封面",
+        executionMode: "confirm",
+        skillId: "builtin-cover-design",
+      },
+      { id: "task-cover-clarification", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      textAdapter: {
+        interpret: vi.fn(),
+      },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const answered = await runAgentTaskTick(task.id, deps)
+
+    expect(answered.status).toBe("completed")
+    expect(answered.interpretation).toMatchObject({
+      intent: "conversation",
+      summary: "封面信息待补充",
+      source: "local-rules",
+    })
+    expect(answered.interpretation?.message).toContain("主题或核心内容")
+    expect(answered.interpretation?.message).toContain("主标题")
+    expect(answered.compiledPrompt).toBeUndefined()
+    expect(deps.textAdapter.interpret).not.toHaveBeenCalled()
+  })
+
   it("provides a natural local conversation fallback when no text model is configured", async () => {
     const root = await createRoot()
     const task = createAgentTask(

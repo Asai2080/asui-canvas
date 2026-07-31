@@ -369,10 +369,18 @@ describe("compileGenerationPrompt", () => {
       height: 1024,
     })
     expect(compiled.sharedConstraints).toContain("宽高比 3:4")
-    expect(compiled.outputs[0].prompt).toContain("标题必须逐字保留")
+    expect(compiled.outputs[0].prompt).toContain("【专业封面设计任务】")
+    expect(compiled.outputs[0].prompt).toContain("主标题原文：“Agent 上岗”")
+    expect(compiled.outputs[0].prompt).toContain("产品主视觉风")
+    expect(compiled.outputs[0].prompt).toContain("12 列视觉网格")
+    expect(compiled.outputs[0].prompt).toContain("手机缩略图")
+    expect(compiled.outputs[0].prompt).not.toContain("决定性瞬间")
+    expect(compiled.outputs[0].prompt).not.toContain(
+      "围绕“给这篇 AI 产品文章做封面"
+    )
   })
 
-  it("compiles image-to-3D into one real procedural model", () => {
+  it("compiles image-to-3D into four independent reference views", () => {
     const context: CanvasContextSnapshot = {
       id: "context-product-3d",
       createdAt,
