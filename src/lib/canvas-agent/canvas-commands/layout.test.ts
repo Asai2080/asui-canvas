@@ -240,7 +240,7 @@ describe("buildAgentCanvasCommandBatch", () => {
     ).not.toThrow()
   })
 
-  it("adds a typed interactive 3D proxy after four image-to-3D views", () => {
+  it("keeps image-to-3D phase one outputs without inventing a fake mesh", () => {
     const source = task({
       "generate-1": [image("front", 1024, 1024)],
       "generate-2": [image("side", 1024, 1024)],
@@ -309,35 +309,24 @@ describe("buildAgentCanvasCommandBatch", () => {
       viewportBounds: { x: 0, y: 0, w: 1440, h: 900 },
       gap: 64,
     })
-    const preview = batch.commands.find(
-      (command) => command.type === "create-3d-preview-node"
-    )
-
-    expect(preview).toEqual({
-      type: "create-3d-preview-node",
-      nodeRef: "safe-3d-preview",
-      title: "3D 多视角代理",
-      referenceNodeRefs: [
+    expect(
+      batch.commands.some(
+        (command) => command.type === "create-3d-preview-node"
+      )
+    ).toBe(false)
+    expect(batch.commands).toContainEqual({
+      type: "set-recommended-result",
+      nodeRef: "result-front",
+    })
+    expect(batch.commands).toContainEqual({
+      type: "focus-results",
+      nodeRefs: [
         "result-front",
         "result-side",
         "result-back",
         "result-top",
+        "result-turntable",
       ],
-      bounds: {
-        x: 544,
-        y: 2720,
-        w: 640,
-        h: 640,
-      },
-    })
-    expect(batch.commands).toContainEqual({
-      type: "set-recommended-result",
-      nodeRef: "safe-3d-preview",
-    })
-    expect(batch.commands).toContainEqual({
-      type: "connect-nodes",
-      sourceNodeId: "shape-source",
-      targetNodeRef: "safe-3d-preview",
     })
   })
 })

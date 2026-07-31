@@ -274,7 +274,7 @@
     overflow: hidden;
     border-radius: 30px;
     background:
-      radial-gradient(circle at 50% 46%, rgb(255 255 255 / 7%), transparent 42%),
+      linear-gradient(180deg, rgb(255 255 255 / 3%), transparent 24%),
       #111214;
     color: #eceeef;
     font-family: var(--font-geist-sans), sans-serif;
@@ -328,20 +328,76 @@
 
   .canvas-3d-preview__stage {
     position: relative;
+    display: grid;
     min-height: 0;
+    place-items: center;
+    overflow: hidden;
     cursor: grab;
     touch-action: none;
     pointer-events: all;
+  }
+
+  .canvas-3d-preview__stage::before {
+    position: absolute;
+    inset: 9% 8%;
+    border: 1px solid rgb(255 255 255 / 8%);
+    border-radius: 18px;
+    background:
+      linear-gradient(rgb(255 255 255 / 3%), rgb(255 255 255 / 1%)),
+      #0d0e10;
+    content: "";
   }
 
   .canvas-3d-preview__stage:active {
     cursor: grabbing;
   }
 
-  .canvas-3d-preview__stage canvas {
-    display: block;
-    width: 100% !important;
-    height: 100% !important;
+  .canvas-3d-preview__image {
+    position: absolute;
+    z-index: 1;
+    width: 84%;
+    height: 84%;
+    border-radius: 16px;
+    object-fit: contain;
+    opacity: 0;
+    filter: saturate(0.92);
+    transform: translateX(18px) scale(0.985);
+    transition:
+      opacity 220ms ease,
+      filter 220ms ease,
+      transform 220ms ease;
+    user-select: none;
+  }
+
+  .canvas-3d-preview__image[data-active="true"] {
+    opacity: 1;
+    filter: saturate(1);
+    transform: translateX(0) scale(1);
+  }
+
+  .canvas-3d-preview__pagination {
+    position: absolute;
+    z-index: 2;
+    bottom: 7%;
+    left: 50%;
+    display: flex;
+    gap: 6px;
+    transform: translateX(-50%);
+  }
+
+  .canvas-3d-preview__pagination span {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 24%);
+    transition:
+      background-color 180ms ease,
+      transform 180ms ease;
+  }
+
+  .canvas-3d-preview__pagination span[data-active="true"] {
+    background: #a3fe44;
+    transform: scale(1.35);
   }
 
   .canvas-3d-preview__empty {
@@ -364,6 +420,7 @@
 
   .canvas-3d-preview__actions {
     display: flex;
+    align-items: center;
     gap: 4px;
     pointer-events: all;
   }
