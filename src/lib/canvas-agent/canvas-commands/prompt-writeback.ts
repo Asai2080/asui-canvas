@@ -81,7 +81,7 @@ function estimatedPromptHeight(content: string) {
       (total, line) => total + Math.max(1, Math.ceil(line.length / 28)),
       0
     )
-  return Math.max(460, 168 + estimatedLines * 28)
+  return Math.max(460, 168 + estimatedLines * 21)
 }
 
 function promptBounds(
@@ -118,23 +118,14 @@ function storyboardPromptCommands(
     storyboardPromptContent(compiledPrompt, index)
   )
   const heights = contents.map(estimatedPromptHeight)
-  const rowHeights = Array.from(
-    { length: Math.ceil(contents.length / 2) },
-    (_, rowIndex) =>
-      Math.max(
-        heights[rowIndex * 2] ?? 0,
-        heights[rowIndex * 2 + 1] ?? 0
-      )
-  )
+  const uniformHeight = Math.max(...heights)
 
   return contents.map((content, index) => {
     const row = Math.floor(index / 2)
     const column = index % 2
     const y =
       baseY +
-      rowHeights
-        .slice(0, row)
-        .reduce((offset, height) => offset + height + rowGap, 0)
+      row * (uniformHeight + rowGap)
     const frameNumber = String(index + 1).padStart(2, "0")
     return {
       type: "create-prompt-node" as const,
@@ -145,7 +136,7 @@ function storyboardPromptCommands(
         x: baseX + column * (width + columnGap),
         y,
         w: width,
-        h: heights[index],
+        h: uniformHeight,
       },
     }
   })

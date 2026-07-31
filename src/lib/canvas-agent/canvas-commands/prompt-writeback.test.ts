@@ -127,11 +127,20 @@ describe("writeAgentPromptToCanvas", () => {
       "分镜提示词 KF#04",
     ])
     expect(commands?.every((command) => command.bounds.h > 920)).toBe(true)
+    expect(commands?.every((command) => command.bounds.h < 1800)).toBe(true)
+    expect(new Set(commands?.map((command) => command.bounds.h))).toEqual(
+      new Set([commands?.[0]?.bounds.h])
+    )
     expect(commands?.[1]?.bounds.x).toBeGreaterThan(
       commands?.[0]?.bounds.x ?? 0
     )
     expect(commands?.[2]?.bounds.y).toBeGreaterThan(
       commands?.[0]?.bounds.y ?? 0
+    )
+    expect(commands?.[2]?.bounds.y).toBe(
+      (commands?.[0]?.bounds.y ?? 0) +
+        (commands?.[0]?.bounds.h ?? 0) +
+        64
     )
   })
 })
