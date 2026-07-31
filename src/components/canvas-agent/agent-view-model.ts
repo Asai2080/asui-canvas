@@ -9,8 +9,38 @@ const TERMINAL_STATUSES = new Set<AgentTask["status"]>([
   "cancelled",
 ])
 
+const PROMPT_EXECUTION_STATUSES = new Set<AgentTask["status"]>([
+  "planning",
+  "executing",
+  "writing-canvas",
+])
+
 export function isAgentTaskTerminal(task: AgentTask) {
   return TERMINAL_STATUSES.has(task.status)
+}
+
+export function getAgentPromptReviewState(
+  task: AgentTask,
+  pendingAction: "confirming" | "cancelling" | null,
+  readOnly: boolean
+) {
+  const isExecuting =
+    !isAgentTaskTerminal(task) &&
+    (pendingAction === "confirming" ||
+      PROMPT_EXECUTION_STATUSES.has(task.status))
+  const label = isExecuting
+    ? "执行中"
+    : task.status === "cancelled"
+      ? "已取消"
+      : task.status === "completed" || task.status === "partially-completed"
+        ? "已完成"
+        : task.status === "failed"
+          ? "执行失败"
+          : readOnly
+            ? "已确认"
+            : "等待确认"
+
+  return { isExecuting, label }
 }
 
 function taskErrorMessage(task: AgentTask) {

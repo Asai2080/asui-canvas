@@ -54,6 +54,7 @@ import {
 
 import { CuriousAiOrb } from "./curious-ai-orb"
 import {
+  getAgentPromptReviewState,
   getAgentTaskResultText,
   isAgentCapabilityIntroduction,
   isAgentTaskTerminal,
@@ -237,6 +238,11 @@ function AgentPromptReview({
   const [heightInput, setHeightInput] = useState(
     String(firstOutput?.height ?? 1024)
   )
+  const [pendingAction, setPendingAction] = useState<
+    "confirming" | "cancelling" | null
+  >(null)
+  const { isExecuting, label: reviewStatusLabel } =
+    getAgentPromptReviewState(task, pendingAction, readOnly)
 
   if (!compiledPrompt) return null
 
@@ -256,18 +262,34 @@ function AgentPromptReview({
   const currentSizeLabel = canAdjustSize && validDimensions
     ? dimensionsLabel(width, height)
     : outputSizeLabel(firstOutput)
+  const confirmPrompt = async () => {
+    if (!context || pendingAction) return
+    setPendingAction("confirming")
+    try {
+      await context.confirmTask(
+        task.id,
+        canAdjustSize && validDimensions ? { width, height } : undefined
+      )
+    } catch {
+      setPendingAction(null)
+    }
+  }
+
+  const cancelPrompt = async () => {
+    if (!context || pendingAction) return
+    setPendingAction("cancelling")
+    try {
+      await context.cancelTask(task.id)
+    } catch {
+      setPendingAction(null)
+    }
+  }
 
   return (
     <div className="agent-bubble agent-bubble--assistant agent-prompt-review">
       <div className="agent-prompt-review__header">
         <span>专业提示词已准备好</span>
-        <span>
-          {readOnly
-            ? task.status === "cancelled"
-              ? "已取消"
-              : "已确认"
-            : "等待确认"}
-        </span>
+        <span aria-live="polite">{reviewStatusLabel}</span>
       </div>
       <p className="agent-prompt-review__summary">
         {compiledPrompt.summary}
@@ -393,32 +415,50 @@ function AgentPromptReview({
           )
         })}
       </div>
-      {!readOnly && (
+      {(!readOnly || isExecuting) && (
         <>
           <p className="agent-prompt-review__hint">
-            提示词已同步到画布。确认后我会自动生成并写回结果。
+            {isExecuting
+              ? "正在执行当前任务，完成后会自动写回画布。"
+              : "提示词已同步到画布。确认后我会自动生成并写回结果。"}
           </p>
           <div className="agent-prompt-review__actions">
-            <button
-              type="button"
-              className="is-secondary"
-              onClick={() => void context?.cancelTask(task.id)}
-            >
-              取消
-            </button>
+            {!isExecuting && (
+              <button
+                type="button"
+                className="is-secondary"
+                disabled={pendingAction !== null}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  void cancelPrompt()
+                }}
+              >
+                {pendingAction === "cancelling" ? "取消中" : "取消"}
+              </button>
+            )}
             <button
               type="button"
               className="is-primary"
-              disabled={canAdjustSize && !validDimensions}
-              onClick={() =>
-                void context?.confirmTask(
-                  task.id,
-                  canAdjustSize && validDimensions ? { width, height } : undefined
-                )
+              aria-busy={isExecuting}
+              disabled={
+                isExecuting ||
+                pendingAction !== null ||
+                (canAdjustSize && !validDimensions)
               }
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                void confirmPrompt()
+              }}
             >
-              <HugeiconsIcon icon={PlayIcon} size={14} strokeWidth={1.8} />
-              确认并生成
+              <HugeiconsIcon
+                icon={isExecuting ? Loading03Icon : PlayIcon}
+                size={14}
+                strokeWidth={1.8}
+                className={isExecuting ? "animate-spin" : undefined}
+              />
+              {isExecuting ? "执行中" : "确认并生成"}
             </button>
           </div>
         </>

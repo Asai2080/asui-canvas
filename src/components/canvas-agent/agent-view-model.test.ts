@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import type { AgentTask } from "@/lib/canvas-agent/task-schema"
 
 import {
+  getAgentPromptReviewState,
   getAgentTaskResultText,
   isAgentCapabilityIntroduction,
   isAgentTaskTerminal,
@@ -37,6 +38,35 @@ function task(
 }
 
 describe("agent view model", () => {
+  it("keeps prompt confirmation inside the existing task and exposes execution state", () => {
+    const waiting = task(
+      "prompt-confirmation",
+      "awaiting-confirmation",
+      "2026-07-26T08:00:00.000Z"
+    )
+    const planning = { ...waiting, status: "planning" as const }
+    const completed = { ...waiting, status: "completed" as const }
+
+    expect(getAgentPromptReviewState(waiting, null, false)).toEqual({
+      isExecuting: false,
+      label: "等待确认",
+    })
+    expect(
+      getAgentPromptReviewState(waiting, "confirming", false)
+    ).toEqual({
+      isExecuting: true,
+      label: "执行中",
+    })
+    expect(getAgentPromptReviewState(planning, null, true)).toEqual({
+      isExecuting: true,
+      label: "执行中",
+    })
+    expect(getAgentPromptReviewState(completed, "confirming", true)).toEqual({
+      isExecuting: false,
+      label: "已完成",
+    })
+  })
+
   it("selects the oldest unfinished task for foreground execution", () => {
     const newer = task("newer", "queued", "2026-07-26T08:01:00.000Z")
     const older = task("older", "planning", "2026-07-26T08:00:00.000Z")

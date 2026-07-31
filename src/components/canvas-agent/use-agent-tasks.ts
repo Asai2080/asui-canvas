@@ -292,15 +292,22 @@ export function useAgentTasks({
       input?: { width: number; height: number }
     ) => {
       setError("")
-      const response = await fetch(
-        `/api/agent/tasks/${encodeURIComponent(taskId)}/${action}`,
-        {
-          method: "POST",
-          headers: input ? { "content-type": "application/json" } : undefined,
-          body: input ? JSON.stringify(input) : undefined,
-        }
-      )
-      upsertTask(await readTaskResponse(response))
+      try {
+        const response = await fetch(
+          `/api/agent/tasks/${encodeURIComponent(taskId)}/${action}`,
+          {
+            method: "POST",
+            headers: input ? { "content-type": "application/json" } : undefined,
+            body: input ? JSON.stringify(input) : undefined,
+          }
+        )
+        upsertTask(await readTaskResponse(response))
+      } catch (reason) {
+        setError(
+          reason instanceof Error ? reason.message : "Agent 任务操作失败"
+        )
+        throw reason
+      }
     },
     [upsertTask]
   )
