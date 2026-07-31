@@ -155,5 +155,15 @@ describe("Canvas Agent personal Skill registry", () => {
         key: "image-to-3d",
       },
     })
+
+    const world = skills.find((skill) => skill.id === "builtin-world")
+    expect(world).toMatchObject({
+      name: "世界 Skill",
+      available: true,
+      source: {
+        type: "builtin",
+        key: "world",
+      },
+    })
   })
 })

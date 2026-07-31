@@ -38,6 +38,23 @@ function step(
   }
 }
 
+function sourceStepIdForVideo(
+  output: CompiledPrompt["outputs"][number],
+  outputs: CompiledPrompt["outputs"]
+) {
+  if (output.variantKey === "three-turntable") return "generate-1"
+
+  const worldScene = output.variantKey?.match(
+    /^world-scene-(\d{2})-video$/
+  )
+  if (!worldScene) return undefined
+  const sourceIndex = outputs.findIndex(
+    (candidate) =>
+      candidate.variantKey === `world-scene-${worldScene[1]}-image`
+  )
+  return sourceIndex >= 0 ? `generate-${sourceIndex + 1}` : undefined
+}
+
 export function createAgentPlan({
   taskId,
   compiledPrompt,
@@ -95,8 +112,10 @@ export function createAgentPlan({
     compiledPrompt.outputs.map((output, index) => {
       const id = `generate-${index + 1}`
       if (output.mediaType === "video") {
-        const sourceStepId =
-          output.variantKey === "three-turntable" ? "generate-1" : undefined
+        const sourceStepId = sourceStepIdForVideo(
+          output,
+          compiledPrompt.outputs
+        )
         return step(id, `生成视频 ${index + 1}`, "generate_video", [
           sourceStepId ?? "compile-prompt",
         ], {

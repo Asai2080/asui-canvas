@@ -4,6 +4,7 @@ import {
   isCoverSkillName,
   isImageTo3dSkillName,
   isStoryboardSkillName,
+  isWorldSkillName,
 } from "../skills/identifiers"
 import {
   compiledPromptSchema,
@@ -810,6 +811,243 @@ function compileImageTo3dPrompt({
   })
 }
 
+const WORLD_SCENE_DIRECTIONS = [
+  {
+    title: "入口与建立",
+    narrative:
+      "从具有明确尺度线索的世界入口建立空间全貌，让观众立刻理解环境规则、主体位置和前进方向。",
+    composition:
+      "使用宽景构图，把可穿行的入口放在前景或中景，远处核心地标形成稳定视觉锚点；路径、光线和空间层级共同指向画面深处。",
+    camera:
+      "从稳定建立帧开始，摄影机沿入口轴线缓慢 dolly-in；前景产生自然视差，地平线和焦距稳定，不跨越既定运动轴线。",
+    ending:
+      "在接近第一处门洞、路径转折或前景遮挡前减速停住，为下一场景保留明确的同向入口。",
+  },
+  {
+    title: "深入与引导",
+    narrative:
+      "沿上一场景建立的通道进入世界内部，通过更近的尺度关系、环境细节和主体互动增强沉浸感。",
+    composition:
+      "延续上一场景的屏幕运动方向，以中广角呈现可穿行路径；前景遮挡、中景主体和远景目标形成连续纵深。",
+    camera:
+      "摄影机沿轻微弧形路径稳定前进并小幅横移，利用近景元素掠过产生视差；速度均匀，转向符合真实惯性。",
+    ending:
+      "让摄影机朝向一个被部分遮挡的新空间或光源稳定停住，保留清楚的空间出口和下一段观看方向。",
+  },
+  {
+    title: "变化与揭示",
+    narrative:
+      "让尺度、材质、地形或光线发生由世界规则推导出的变化，揭示此前未见的空间层级，但保持核心身份连续。",
+    composition:
+      "使用更强的前后景尺度对比和垂直层次，先用遮挡控制信息，再逐步揭示新的地标或环境结构。",
+    camera:
+      "摄影机在缓慢前推中加入克制的摇臂上升或下降，穿过遮挡后完成一次完整揭示；运动轨迹连续，不瞬移或突然变焦。",
+    ending:
+      "在新地标完整可读后减速，镜头朝向核心区域的进入路径，为高潮场景建立直接空间关系。",
+  },
+  {
+    title: "核心与高潮",
+    narrative:
+      "完整呈现这个世界最具记忆点的核心地标、品牌主体、产品或叙事事件，让前面建立的视觉规则在此达到高潮。",
+    composition:
+      "核心主体具有清晰轮廓和最高视觉权重，环境以环绕结构、引导线和受控留白强化它；仍保留可穿行的摄影机通道。",
+    camera:
+      "摄影机缓慢接近核心主体，并沿不超过 30 度的圆弧轨道完成克制环绕；始终保持主体为视觉中心和光线焦点。",
+    ending:
+      "在最具识别度的正面或三分之四角度稳定停住，保留可继续探索或回到入口的明确方向。",
+  },
+  {
+    title: "对照与回响",
+    narrative:
+      "从新的高度、距离或空间侧面回应核心主题，展示世界的另一种尺度与情绪，但不更换美术体系和主体身份。",
+    composition:
+      "使用与高潮场景形成对照的景别和负空间，通过重复出现的材质、形状、色彩或地标建立视觉回响。",
+    camera:
+      "摄影机以稳定横移或缓慢拉远展开新的空间关系，运动方向承接上一场景，视差和遮挡符合真实空间。",
+    ending:
+      "让重复出现的视觉锚点落在清楚位置，并把观看方向引向最终出口或循环路径。",
+  },
+  {
+    title: "出口与循环",
+    narrative:
+      "收束旅程并建立可继续连接的稳定终点，让观众感到完成了一次空间穿梭，同时保留回到入口的视觉呼应。",
+    composition:
+      "在完整环境中重新出现入口阶段的核心形状、光色或路径关系，构图更克制，清楚交代出口和世界整体尺度。",
+    camera:
+      "摄影机沿既定轴线缓慢拉远或穿过最后一道门洞，平滑减速至静止；运动曲线适合后续剪辑或循环。",
+    ending:
+      "停在结构稳定、无遮挡且可与入口建立视觉呼应的画面，不伪造未生成的下一场景或转场。",
+  },
+] as const
+
+function compileWorldPrompt({
+  taskId,
+  originalGoal,
+  professionalBrief,
+  context,
+  skill,
+  target,
+}: {
+  taskId: string
+  originalGoal: string
+  professionalBrief?: string
+  context?: CanvasContextSnapshot
+  skill: SkillSnapshot
+  target?: CompileGenerationPromptInput["target"]
+}): CompiledPrompt {
+  const sceneCount = target?.count ?? 4
+  if (sceneCount < 3 || sceneCount > WORLD_SCENE_DIRECTIONS.length) {
+    throw new Error(
+      `世界 Skill 的场景数量必须为 3 至 ${WORLD_SCENE_DIRECTIONS.length} 个`
+    )
+  }
+
+  const creativeInstruction = professionalBrief
+    ? `${originalGoal}\n${professionalBrief}`
+    : originalGoal
+  const requestedRatio = extractAspectRatio(creativeInstruction) ?? [16, 9]
+  const defaultSize = dimensionsForRatio(requestedRatio)
+  const width = target?.width ?? defaultSize.width
+  const height = target?.height ?? defaultSize.height
+  const durationSeconds =
+    target?.durationSeconds ??
+    Number(creativeInstruction.match(/(\d{1,2})\s*秒/)?.[1] ?? 5)
+  if (durationSeconds > 15) {
+    throw new Error("世界 Skill 的单段视频时长最多为 15 秒")
+  }
+  const resolution =
+    target?.resolution ??
+    creativeInstruction.match(/(480p|720p|1080p|4k)/i)?.[1] ??
+    "720p"
+  const direction = imageCreativeDirection(creativeInstruction)
+  const scene = sceneSpecificDirection(creativeInstruction)
+  const referenced = hasImageReference(context)
+  const identityRule = referenced
+    ? "把当前选中的图片画布及其引用图片作为世界身份依据，严格保持其中的人物、产品、品牌、建筑、主色和材质语言。"
+    : "根据用户目标建立原创且一致的世界美术圣经，所有场景共享同一设计语法，不借用或复刻未获授权的现有影视 IP。"
+  const continuityRules = [
+    identityRule,
+    `全部 ${sceneCount} 个场景保持相同世界观、时代、季节、主体身份、品牌识别、设计语法、材质体系和综合色彩脚本。`,
+    "相邻场景通过门洞、路径、隧道、云层、水面、光源、前景遮挡或同向运动建立可解释的空间连接。",
+    "保持地平线、主光方向、天气、尺度线索、屏幕运动方向和摄影机轴线连续。",
+    "每个场景都具有可穿行的前景、中景、背景、摄影机入口、运动路径、视觉焦点和出口方向。",
+    "不得凭空更换主体、Logo、产品结构、人物身份或核心建筑，不使用随机传送和无动机的风格跳变。",
+  ]
+  const negativePrompt = [
+    direction.negative,
+    "不要场景身份漂移、比例突变、空间断裂、地平线跳动、光源反转或材质随机变化",
+    "不要封死摄影机通道，不要平面贴图式布景、结构融化、纹理游走、物体闪烁或随机新增元素",
+    "不要拼图、网格、故事板、字幕、解释文字、伪文字、水印、边框或转场模板",
+  ].join("；")
+
+  const outputs = WORLD_SCENE_DIRECTIONS.slice(0, sceneCount).flatMap(
+    (worldScene, index) => {
+      const number = String(index + 1).padStart(2, "0")
+      const imageOutputId = `${taskId}-output-${index * 2 + 1}`
+      const videoOutputId = `${taskId}-output-${index * 2 + 2}`
+      const imagePrompt = [
+        `【世界场景 SC#${number} · ${worldScene.title}】`,
+        "",
+        "【项目目标】",
+        originalGoal,
+        ...(professionalBrief
+          ? ["", "【文字模型创作简报】", professionalBrief]
+          : []),
+        "",
+        "【全局美术圣经】",
+        identityRule,
+        direction.style,
+        `${scene.subject} ${scene.environment}`,
+        "",
+        "【本场景叙事功能】",
+        worldScene.narrative,
+        "",
+        "【空间构图与摄影机通道】",
+        worldScene.composition,
+        direction.composition,
+        "",
+        "【光线、色彩与材质】",
+        direction.lighting,
+        direction.color,
+        direction.material,
+        "",
+        "【跨场景连续性】",
+        ...continuityRules.map((rule) => `- ${rule}`),
+        "",
+        "【输出要求】",
+        `只生成一张 ${width} × ${height}、比例 ${requestedRatio[0]}:${requestedRatio[1]} 的独立高清场景图；画面结构稳定、边缘完整，并为后续图生视频保留明确入口、运动路径和出口。`,
+      ].join("\n")
+      const videoPrompt = [
+        `【世界运镜 SC#${number} · ${worldScene.title}】`,
+        `严格以刚生成的 SC#${number} 场景图为唯一首帧和空间依据，不重绘主体，不改变构图、身份、材质、光向或品牌识别。`,
+        "",
+        "【叙事目标】",
+        worldScene.narrative,
+        "",
+        "【摄影机运动】",
+        worldScene.camera,
+        "",
+        "【时间与节奏】",
+        `0.0–${Math.max(0.5, durationSeconds * 0.18).toFixed(1)} 秒：首帧保持稳定，环境微动自然启动，明确空间入口与观看重点。`,
+        `${Math.max(0.5, durationSeconds * 0.18).toFixed(1)}–${Math.max(1, durationSeconds * 0.8).toFixed(1)} 秒：完成一次连续、有动机的摄影机运动，速度、景深、环境反馈和主体动作保持同一节奏。`,
+        `${Math.max(1, durationSeconds * 0.8).toFixed(1)}–${durationSeconds.toFixed(1)} 秒：${worldScene.ending}`,
+        "",
+        "【连续性与交付】",
+        ...continuityRules.map((rule) => `- ${rule}`),
+        `输出 ${durationSeconds} 秒 ${resolution} 单镜头视频。当前只交付独立分段，不伪造视频合并、首尾帧连接或滚动网页预览。`,
+      ].join("\n")
+
+      return [
+        {
+          id: imageOutputId,
+          mediaType: "image" as const,
+          operation: "create" as const,
+          prompt: imagePrompt,
+          negativePrompt,
+          variantKey: `world-scene-${number}-image`,
+          variantDifference: `${worldScene.title}场景图`,
+          sourceContextSnapshotId: referenced ? context?.id : undefined,
+          preserveConstraints: continuityRules,
+          width,
+          height,
+        },
+        {
+          id: videoOutputId,
+          mediaType: "video" as const,
+          operation: "animate" as const,
+          prompt: videoPrompt,
+          negativePrompt: `${negativePrompt}；不要镜头瞬移、数字变焦、无动机抖动、速度突变、结构闪烁或结尾跳变`,
+          variantKey: `world-scene-${number}-video`,
+          variantDifference: `${worldScene.title}沉浸式运镜`,
+          preserveConstraints: continuityRules,
+          durationSeconds,
+          resolution,
+        },
+      ]
+    }
+  )
+
+  return compiledPromptSchema.parse({
+    originalGoal,
+    summary: `世界 Skill：${sceneCount} 个连续场景`,
+    sharedConstraints: [
+      `${sceneCount} 张独立场景图`,
+      `${sceneCount} 段 ${durationSeconds} 秒 ${resolution} 运镜视频`,
+      `场景图尺寸 ${width} × ${height}`,
+      `画幅比例 ${requestedRatio[0]}:${requestedRatio[1]}`,
+      ...continuityRules,
+    ],
+    negativeConstraints: [
+      "当前阶段只交付场景图与分段视频，不宣称已经完成视频合并或滚动网页预览",
+      "视频生成会消耗多次模型额度，执行前应检查生成数量与提示词",
+      "不执行 Skill 中的代码、Shell、网络请求或文件写入指令",
+      "不访问当前任务快照之外的画布或文件",
+    ],
+    skillSnapshotId: skill.id,
+    outputs,
+  })
+}
+
 export function compileGenerationPrompt({
   taskId,
   userInstruction,
@@ -846,6 +1084,17 @@ export function compileGenerationPrompt({
       originalGoal,
       context,
       skill,
+    })
+  }
+
+  if (isWorldSkillName(skill?.name) && skill) {
+    return compileWorldPrompt({
+      taskId,
+      originalGoal,
+      professionalBrief,
+      context,
+      skill,
+      target,
     })
   }
 

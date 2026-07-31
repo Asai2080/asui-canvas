@@ -24,6 +24,7 @@ import {
   ArrowUp01Icon,
   Clock01Icon,
   ClapperboardIcon,
+  Globe02Icon,
   Image01Icon,
   Loading03Icon,
   MultiplicationSignIcon,
@@ -45,7 +46,10 @@ import type {
   DiscoveredSkill,
   SkillRecord,
 } from "@/lib/canvas-agent/skills/schema"
-import { isStoryboardSkillName } from "@/lib/canvas-agent/skills/identifiers"
+import {
+  isStoryboardSkillName,
+  isWorldSkillName,
+} from "@/lib/canvas-agent/skills/identifiers"
 
 import { CuriousAiOrb } from "./curious-ai-orb"
 import {
@@ -102,6 +106,7 @@ type AgentMessageContextValue = {
 const AgentMessageContext = createContext<AgentMessageContextValue | null>(null)
 const EXECUTION_MODE_STORAGE_KEY = "asui-canvas:agent-execution-mode"
 const STORYBOARD_COUNTS = [4, 6, 8, 12] as const
+const WORLD_SCENE_COUNTS = [3, 4, 5, 6] as const
 const IMAGE_SIZE_PRESETS = [
   { label: "1:1", width: 1024, height: 1024 },
   { label: "3:4", width: 768, height: 1024 },
@@ -177,6 +182,14 @@ function promptOutputLabel(
     ? IMAGE_TO_3D_OUTPUT_LABELS[output.variantKey]
     : undefined
   if (imageTo3dLabel) return imageTo3dLabel
+  const worldScene = output.variantKey?.match(
+    /^world-scene-(\d{2})-(image|video)$/
+  )
+  if (worldScene) {
+    return `场景 ${worldScene[1]} · ${
+      worldScene[2] === "image" ? "场景图" : "运镜视频"
+    }`
+  }
   if (compiledPrompt.summary.includes("分镜")) {
     return `KF#${String(index + 1).padStart(2, "0")}`
   }
@@ -212,6 +225,10 @@ function AgentPromptReview({
   const isImageTo3d =
     compiledPrompt?.outputs.some(
       (output) => output.variantKey === "three-turntable"
+    ) ?? false
+  const isWorld =
+    compiledPrompt?.outputs.some((output) =>
+      output.variantKey?.startsWith("world-scene-")
     ) ?? false
   const [widthInput, setWidthInput] = useState(
     String(firstOutput?.width ?? 1024)
@@ -258,6 +275,8 @@ function AgentPromptReview({
         <span>
           {isImageTo3d
             ? `${imageOutputCount} 张参考图 · ${videoOutputCount} 段环绕视频`
+            : isWorld
+              ? `${imageOutputCount} 张场景图 · ${videoOutputCount} 段运镜视频`
             : `${compiledPrompt.outputs.length} 个生成结果`}
         </span>
         {!isImageTo3d && currentSizeLabel && <span>{currentSizeLabel}</span>}
@@ -545,10 +564,12 @@ export function CanvasAgentShell({
   const [executionMode, setExecutionMode] =
     useState<AgentExecutionMode>("confirm")
   const [storyboardCount, setStoryboardCount] = useState(6)
+  const [worldSceneCount, setWorldSceneCount] = useState(4)
   const [storyboardSetupError, setStoryboardSetupError] = useState("")
   const [conversationStartedAt, setConversationStartedAt] = useState("")
   const [showHistory, setShowHistory] = useState(false)
   const storyboardMode = isStoryboardSkillName(selectedSkill?.name)
+  const worldMode = isWorldSkillName(selectedSkill?.name)
   const {
     tasks,
     foregroundTask,
@@ -562,7 +583,11 @@ export function CanvasAgentShell({
     getCanvasContext,
     selectedSkillId,
     selectedTextModel,
-    requestedOutputCount: storyboardMode ? storyboardCount : undefined,
+    requestedOutputCount: storyboardMode
+      ? storyboardCount
+      : worldMode
+        ? worldSceneCount
+        : undefined,
     executionMode,
     conversationStartedAt,
     onBusyChange,
@@ -822,28 +847,60 @@ export function CanvasAgentShell({
                     placeholder={
                       storyboardMode
                         ? "描述分镜主题，Enter 生成分镜提示词"
+                        : worldMode
+                          ? "描述想要穿梭的世界，Enter 规划连续场景"
                         : "输入消息，Enter 发送"
                     }
                     rows={3}
                   />
-                  {storyboardMode && (
+                  {(storyboardMode || worldMode) && (
                     <div className="canvas-agent-storyboard-config">
                       <span>
                         <HugeiconsIcon
-                          icon={ClapperboardIcon}
+                          icon={
+                            storyboardMode
+                              ? ClapperboardIcon
+                              : Globe02Icon
+                          }
                           size={14}
                           strokeWidth={1.8}
                         />
-                        分镜张数
+                        {storyboardMode ? "分镜张数" : "世界场景数"}
                       </span>
-                      <div role="group" aria-label="选择分镜张数">
-                        {STORYBOARD_COUNTS.map((count) => (
+                      <div
+                        role="group"
+                        aria-label={
+                          storyboardMode
+                            ? "选择分镜张数"
+                            : "选择世界场景数"
+                        }
+                      >
+                        {(storyboardMode
+                          ? STORYBOARD_COUNTS
+                          : WORLD_SCENE_COUNTS
+                        ).map((count) => (
                           <button
                             key={count}
                             type="button"
-                            className={storyboardCount === count ? "is-active" : undefined}
-                            onClick={() => setStoryboardCount(count)}
-                            aria-pressed={storyboardCount === count}
+                            className={
+                              (storyboardMode
+                                ? storyboardCount
+                                : worldSceneCount) === count
+                                ? "is-active"
+                                : undefined
+                            }
+                            onClick={() => {
+                              if (storyboardMode) {
+                                setStoryboardCount(count)
+                              } else {
+                                setWorldSceneCount(count)
+                              }
+                            }}
+                            aria-pressed={
+                              (storyboardMode
+                                ? storyboardCount
+                                : worldSceneCount) === count
+                            }
                           >
                             {count}
                           </button>

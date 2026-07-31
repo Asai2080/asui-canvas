@@ -29,9 +29,20 @@ export function isImageTo3dSkillName(name?: string) {
   )
 }
 
+export function isWorldSkillName(name?: string) {
+  if (!name) return false
+  const normalized = normalizedSkillName(name)
+  return (
+    normalized === "世界-skill" ||
+    normalized === "world-skill" ||
+    normalized === "scroll-world"
+  )
+}
+
 export function skillDisplayName(name: string) {
   if (isStoryboardSkillName(name)) return "分镜 Skill"
   if (isCoverSkillName(name)) return "封面 Skill"
   if (isImageTo3dSkillName(name)) return "图片转 3D Skill"
+  if (isWorldSkillName(name)) return "世界 Skill"
   return name
 }

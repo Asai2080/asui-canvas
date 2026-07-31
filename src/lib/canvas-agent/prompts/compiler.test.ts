@@ -451,4 +451,62 @@ describe("compileGenerationPrompt", () => {
       "单张参考图不可见区域只能做有依据的推断，不承诺精确还原"
     )
   })
+
+  it("compiles the world Skill into paired scene images and camera videos", () => {
+    const skill: SkillSnapshot = {
+      id: "skill-snapshot-world",
+      skillId: "builtin-world",
+      name: "世界 Skill",
+      description: "生成连续世界场景与沉浸式运镜",
+      contentHash: "f".repeat(64),
+      instructions: "保持世界空间与运镜连续。",
+      risks: [],
+      createdAt,
+    }
+
+    const compiled = compileGenerationPrompt({
+      taskId: "task-tea-world",
+      userInstruction:
+        "为东方茶饮品牌制作一个可以穿梭的微缩山水世界，青绿与朱砂配色，9:16",
+      skill,
+      target: {
+        count: 3,
+        durationSeconds: 6,
+        resolution: "1080p",
+      },
+    })
+
+    expect(compiled.summary).toBe("世界 Skill：3 个连续场景")
+    expect(compiled.outputs).toHaveLength(6)
+    expect(compiled.outputs.map((output) => output.variantKey)).toEqual([
+      "world-scene-01-image",
+      "world-scene-01-video",
+      "world-scene-02-image",
+      "world-scene-02-video",
+      "world-scene-03-image",
+      "world-scene-03-video",
+    ])
+    expect(compiled.outputs[0]).toMatchObject({
+      mediaType: "image",
+      operation: "create",
+      width: 576,
+      height: 1024,
+    })
+    expect(compiled.outputs[0].prompt).toContain("【全局美术圣经】")
+    expect(compiled.outputs[0].prompt).toContain("可穿行的入口")
+    expect(compiled.outputs[0].prompt).toContain("当代东方视觉语言")
+    expect(compiled.outputs[1]).toMatchObject({
+      mediaType: "video",
+      operation: "animate",
+      durationSeconds: 6,
+      resolution: "1080p",
+    })
+    expect(compiled.outputs[1].prompt).toContain(
+      "严格以刚生成的 SC#01 场景图为唯一首帧"
+    )
+    expect(compiled.outputs[1].prompt).toContain("缓慢 dolly-in")
+    expect(compiled.negativeConstraints).toContain(
+      "当前阶段只交付场景图与分段视频，不宣称已经完成视频合并或滚动网页预览"
+    )
+  })
 })

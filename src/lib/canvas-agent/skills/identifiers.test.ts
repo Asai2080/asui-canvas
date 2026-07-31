@@ -4,6 +4,7 @@ import {
   isCoverSkillName,
   isImageTo3dSkillName,
   isStoryboardSkillName,
+  isWorldSkillName,
   skillDisplayName,
 } from "./identifiers"
 
@@ -24,5 +25,11 @@ describe("Canvas Agent Skill identifiers", () => {
     expect(isImageTo3dSkillName("图片转 3D Skill")).toBe(true)
     expect(isImageTo3dSkillName("img2threejs")).toBe(true)
     expect(skillDisplayName("img2threejs")).toBe("图片转 3D Skill")
+  })
+
+  it("recognizes the built-in and upstream world Skill names", () => {
+    expect(isWorldSkillName("世界 Skill")).toBe(true)
+    expect(isWorldSkillName("scroll-world")).toBe(true)
+    expect(skillDisplayName("scroll-world")).toBe("世界 Skill")
   })
 })

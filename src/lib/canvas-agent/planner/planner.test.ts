@@ -180,4 +180,53 @@ describe("createAgentPlan", () => {
       input: { sourceStepId: "generate-1" },
     })
   })
+
+  it("feeds every world scene image into its matching camera video", () => {
+    const compiled: CompiledPrompt = {
+      originalGoal: "创建三段连续世界",
+      summary: "世界 Skill：3 个连续场景",
+      sharedConstraints: [],
+      outputs: Array.from({ length: 3 }).flatMap((_, index) => {
+        const number = String(index + 1).padStart(2, "0")
+        return [
+          {
+            id: `output-image-${number}`,
+            mediaType: "image" as const,
+            operation: "create" as const,
+            prompt: `场景 ${number}`,
+            width: 1024,
+            height: 576,
+            variantKey: `world-scene-${number}-image`,
+          },
+          {
+            id: `output-video-${number}`,
+            mediaType: "video" as const,
+            operation: "animate" as const,
+            prompt: `运镜 ${number}`,
+            durationSeconds: 5,
+            resolution: "720p",
+            variantKey: `world-scene-${number}-video`,
+          },
+        ]
+      }),
+    }
+
+    const plan = createAgentPlan({
+      taskId: "task-world",
+      compiledPrompt: compiled,
+    })
+
+    expect(plan.steps.find((step) => step.id === "generate-2")).toMatchObject({
+      dependsOn: ["generate-1"],
+      input: { sourceStepId: "generate-1" },
+    })
+    expect(plan.steps.find((step) => step.id === "generate-4")).toMatchObject({
+      dependsOn: ["generate-3"],
+      input: { sourceStepId: "generate-3" },
+    })
+    expect(plan.steps.find((step) => step.id === "generate-6")).toMatchObject({
+      dependsOn: ["generate-5"],
+      input: { sourceStepId: "generate-5" },
+    })
+  })
 })
