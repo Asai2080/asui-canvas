@@ -47,7 +47,9 @@ import type {
   SkillRecord,
 } from "@/lib/canvas-agent/skills/schema"
 import {
+  isCoverSkillName,
   isImageTo3dVariantKey,
+  isImageTo3dSkillName,
   isStoryboardSkillName,
   isWorldSkillName,
 } from "@/lib/canvas-agent/skills/identifiers"
@@ -618,6 +620,8 @@ export function CanvasAgentShell({
   const [conversationStartedAt, setConversationStartedAt] = useState("")
   const [showHistory, setShowHistory] = useState(false)
   const storyboardMode = isStoryboardSkillName(selectedSkill?.name)
+  const coverMode = isCoverSkillName(selectedSkill?.name)
+  const imageTo3dMode = isImageTo3dSkillName(selectedSkill?.name)
   const worldMode = isWorldSkillName(selectedSkill?.name)
   const {
     tasks,
@@ -897,8 +901,12 @@ export function CanvasAgentShell({
                       storyboardMode
                         ? "描述分镜主题，Enter 生成分镜提示词"
                         : worldMode
-                          ? "描述想要穿梭的世界，Enter 规划连续场景"
-                        : "输入消息，Enter 发送"
+                          ? "描述世界主题并选择运镜，Enter 规划场景"
+                          : coverMode
+                            ? "输入封面主题和主标题，Enter 发送"
+                            : imageTo3dMode
+                              ? "选中图片后描述四视角用途，Enter 发送"
+                              : "输入消息，Enter 发送"
                     }
                     rows={3}
                   />

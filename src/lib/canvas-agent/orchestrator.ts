@@ -24,7 +24,7 @@ import {
   buildProfessionalCreativeBrief,
   compileGenerationPrompt,
 } from "./prompts/compiler"
-import { isCoverSkillName } from "./skills/identifiers"
+import { resolveBuiltinSkillIntake } from "./skills/intake"
 import { createSkillSnapshot } from "./skills/registry"
 import {
   agentTaskSchema,
@@ -143,48 +143,6 @@ function hasTextModelCredentials(credentials?: TextModelCredentials) {
   )
 }
 
-function missingCoverDetails(instruction: string) {
-  const titlePattern =
-    /(?:主标题|标题|封面文案)(?:是|为|叫|[:：])?\s*[《“"'「]?[^》”"'」\n，。；;]{2,24}[》”"'」]?/i
-  const hasTitle = titlePattern.test(instruction)
-  const topic = instruction
-    .replace(titlePattern, "")
-    .replace(/gbro-cover-design|cover-design/gi, "")
-    .replace(/封面\s*skill/gi, "")
-    .replace(/\bskill\b/gi, "")
-    .replace(
-      /使用|调用|用|这个|帮我|请|生成|制作|做|一张|封面|图片|设计|一下|可以|需要|想要|我要|吧|呀|哟|的/gi,
-      ""
-    )
-    .replace(/[\s，。！？、,.!?:：；;“”"'《》「」]/g, "")
-  return {
-    topic: topic.length < 2,
-    title: !hasTitle,
-  }
-}
-
-function coverClarification(
-  instruction: string
-): AgentInterpretation | undefined {
-  const missing = missingCoverDetails(instruction)
-  if (!missing.topic && !missing.title) return undefined
-
-  const request =
-    missing.topic && missing.title
-      ? "请先告诉我封面的主题或核心内容，以及要放在画面上的主标题（建议 4 至 12 字）。"
-      : missing.topic
-        ? "主标题我记下了。还需要你告诉我这张封面要表达的主题或核心内容。"
-        : "主题我记下了。请再告诉我要放在画面上的主标题（建议 4 至 12 字）。"
-  return {
-    message: `${request}如果有指定人物、产品、界面或品牌素材，也可以先选中对应图片；构图、配色和版式我来完成。`,
-    summary: "封面信息待补充",
-    normalizedInstruction: instruction.trim(),
-    intent: "conversation",
-    source: "local-rules",
-    target: undefined,
-  }
-}
-
 function creativeContextForTask(context?: CanvasContextSnapshot) {
   if (!context) return context
   const source = context.sourceNode
@@ -207,21 +165,29 @@ async function understandTask(
     loadContext(task, dependencies.root),
     loadSkill(task, dependencies.root, timestamp),
   ])
+  const creativeContext = creativeContextForTask(context)
+  const intake = resolveBuiltinSkillIntake({
+    userInstruction: task.userInstruction,
+    context: creativeContext,
+    skill,
+    conversationHistory: dependencies.conversationHistory,
+  })
+  if (intake.clarification) return intake.clarification
   const input = {
     userInstruction: task.userInstruction,
-    context: creativeContextForTask(context),
+    context: creativeContext,
     skill,
     conversationHistory: dependencies.conversationHistory,
   }
-  if (isCoverSkillName(skill?.name)) {
-    const clarification = coverClarification(task.userInstruction)
-    if (clarification) return clarification
+  const resolvedInput = {
+    ...input,
+    userInstruction: intake.resolvedInstruction,
   }
   const useTextModel = Boolean(
     dependencies.textAdapter || hasTextModelCredentials(dependencies.textCredentials)
   )
   if (!useTextModel) {
-    return localInterpretation(input, false, task.executionMode)
+    return localInterpretation(resolvedInput, false, task.executionMode)
   }
 
   try {
@@ -235,13 +201,13 @@ async function understandTask(
     const normalizedInstruction =
       creativeIntent &&
       needsProfessionalExpansion(
-        task.userInstruction,
+        intake.resolvedInstruction,
         interpreted.normalizedInstruction
       )
         ? [
             interpreted.normalizedInstruction.trim(),
             buildProfessionalCreativeBrief(
-              task.userInstruction,
+              intake.resolvedInstruction,
               creativeIntent
             ),
           ]
@@ -263,7 +229,7 @@ async function understandTask(
             },
     }
   } catch {
-    return localInterpretation(input, true, task.executionMode)
+    return localInterpretation(resolvedInput, true, task.executionMode)
   }
 }
 

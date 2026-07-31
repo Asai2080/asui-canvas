@@ -303,6 +303,30 @@ describe("agent view model", () => {
     ).toEqual([])
   })
 
+  it("does not revive an older run of the same Skill after another workflow", () => {
+    const oldCover = {
+      ...task("old-cover", "completed", "2026-07-26T08:00:00.000Z"),
+      skillId: "builtin-cover-design",
+      userInstruction: "主标题：旧封面",
+    } satisfies AgentTask
+    const ordinary = {
+      ...task("ordinary", "completed", "2026-07-26T08:01:00.000Z"),
+      userInstruction: "你好",
+    } satisfies AgentTask
+    const activeCover = {
+      ...task("active-cover", "understanding", "2026-07-26T08:02:00.000Z"),
+      skillId: "builtin-cover-design",
+      userInstruction: "用封面 Skill 做一个新的封面",
+    } satisfies AgentTask
+
+    expect(
+      tasksToConversationHistory(
+        [oldCover, ordinary, activeCover],
+        activeCover.id
+      )
+    ).toEqual([])
+  })
+
   it("hides legacy revision conflict details behind a retry message", () => {
     const failed = {
       ...task("revision-conflict", "failed", "2026-07-26T08:00:00.000Z"),

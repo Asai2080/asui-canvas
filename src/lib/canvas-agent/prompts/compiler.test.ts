@@ -522,9 +522,33 @@ describe("compileGenerationPrompt", () => {
     expect(compiled.outputs[1].prompt).toContain(
       "严格以刚生成的 SC#01 场景图为唯一首帧"
     )
+    expect(compiled.outputs[1].prompt).toContain("运镜模式：飞行穿梭")
     expect(compiled.outputs[1].prompt).toContain("缓慢 dolly-in")
     expect(compiled.negativeConstraints).toContain(
       "当前阶段只交付场景图与分段视频，不宣称已经完成视频合并或滚动网页预览"
     )
+
+    const locked = compileGenerationPrompt({
+      taskId: "task-locked-world",
+      userInstruction:
+        "制作一个未来温室世界，使用固定视角，银灰与荧光绿色，16:9",
+      skill,
+      target: { count: 3 },
+    })
+    expect(locked.outputs[1].prompt).toContain("运镜模式：固定视角")
+    expect(locked.outputs[1].prompt).toContain("不旋转、不环绕、不俯仰")
+    expect(locked.outputs[3].prompt).toContain("相同的高位等距角度")
+
+    const walkthrough = compileGenerationPrompt({
+      taskId: "task-walkthrough-world",
+      userInstruction:
+        "制作一个春日园林世界，采用第一人称步行漫游，粉绿配色，16:9",
+      skill,
+      target: { count: 4 },
+    })
+    expect(walkthrough.outputs[1].prompt).toContain("运镜模式：平视漫游")
+    expect(walkthrough.outputs[1].prompt).toContain("沿本场景已经建立的可行走通道")
+    expect(walkthrough.outputs[5].prompt).not.toContain("摇臂")
+    expect(walkthrough.outputs[7].prompt).not.toContain("圆弧轨道")
   })
 })

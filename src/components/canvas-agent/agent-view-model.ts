@@ -109,18 +109,29 @@ export function tasksToConversationHistory(
   tasks: readonly AgentTask[],
   activeTaskId?: string
 ) {
-  const activeSkillId = activeTaskId
-    ? tasks.find((task) => task.id === activeTaskId)?.skillId
-    : undefined
-  return [...tasks]
+  const ordered = [...tasks].sort((left, right) =>
+    left.createdAt.localeCompare(right.createdAt)
+  )
+  const activeIndex = activeTaskId
+    ? ordered.findIndex((task) => task.id === activeTaskId)
+    : -1
+  const activeSkillId =
+    activeIndex >= 0 ? ordered[activeIndex]?.skillId : undefined
+  const priorTasks = activeIndex >= 0 ? ordered.slice(0, activeIndex) : ordered
+  let sameWorkflow = priorTasks
+  if (activeIndex >= 0) {
+    sameWorkflow = []
+    for (let index = priorTasks.length - 1; index >= 0; index -= 1) {
+      const task = priorTasks[index]
+      if (task.skillId !== activeSkillId) break
+      sameWorkflow.unshift(task)
+    }
+  }
+  return sameWorkflow
     .filter(
       (task) =>
-        task.id !== activeTaskId &&
-        isAgentTaskTerminal(task) &&
-        task.status !== "cancelled" &&
-        (!activeTaskId || task.skillId === activeSkillId)
+        isAgentTaskTerminal(task) && task.status !== "cancelled"
     )
-    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
     .slice(-6)
     .flatMap((task) => [
       { role: "user" as const, content: task.userInstruction.slice(0, 4_000) },

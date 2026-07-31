@@ -351,6 +351,97 @@ describe("runAgentTaskTick", () => {
     expect(deps.textAdapter.interpret).not.toHaveBeenCalled()
   })
 
+  it("carries same-Skill answers into the final cover prompt", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: "主题是独立设计师的春季新品",
+        executionMode: "confirm",
+        skillId: "builtin-cover-design",
+      },
+      { id: "task-cover-multiturn", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      conversationHistory: [
+        { role: "user" as const, content: "用这个 Skill 帮我生成封面" },
+        { role: "assistant" as const, content: "请告诉我主题和主标题。" },
+        { role: "user" as const, content: "主标题：春日新章" },
+      ],
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
+    const waiting = await runAgentTaskTick(task.id, deps)
+
+    expect(waiting.status).toBe("awaiting-confirmation")
+    expect(waiting.compiledPrompt?.summary).toBe("封面设计：春日新章")
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain(
+      "独立设计师的春季新品"
+    )
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain(
+      "主标题原文：“春日新章”"
+    )
+  })
+
+  it("asks for an image before starting the built-in four-view Skill", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: "使用这个 Skill 生成四视角",
+        executionMode: "confirm",
+        skillId: "builtin-image-to-3d",
+      },
+      { id: "task-four-view-no-image", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      textAdapter: { interpret: vi.fn() },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const answered = await runAgentTaskTick(task.id, deps)
+
+    expect(answered.status).toBe("completed")
+    expect(answered.interpretation).toMatchObject({
+      intent: "conversation",
+      summary: "四视角输入待选择",
+    })
+    expect(answered.compiledPrompt).toBeUndefined()
+    expect(deps.textAdapter.interpret).not.toHaveBeenCalled()
+  })
+
+  it("asks for the world theme and camera mode before creating scene media", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: "用世界 Skill 帮我生成",
+        executionMode: "confirm",
+        skillId: "builtin-world",
+      },
+      { id: "task-world-clarification", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      textAdapter: { interpret: vi.fn() },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const answered = await runAgentTaskTick(task.id, deps)
+
+    expect(answered.status).toBe("completed")
+    expect(answered.interpretation).toMatchObject({
+      intent: "conversation",
+      summary: "世界规划信息待补充",
+    })
+    expect(answered.compiledPrompt).toBeUndefined()
+    expect(deps.textAdapter.interpret).not.toHaveBeenCalled()
+  })
+
   it("provides a natural local conversation fallback when no text model is configured", async () => {
     const root = await createRoot()
     const task = createAgentTask(

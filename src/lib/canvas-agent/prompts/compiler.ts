@@ -854,6 +854,49 @@ const WORLD_SCENE_DIRECTIONS = [
   },
 ] as const
 
+type WorldCameraMode = "fly-through" | "walkthrough" | "locked-iso"
+
+function worldCameraMode(instruction: string): WorldCameraMode {
+  if (/固定视角|锁定视角|等距视角|同一角度/i.test(instruction)) {
+    return "locked-iso"
+  }
+  if (/平视漫游|漫游|步行|游览|走进|第一人称/i.test(instruction)) {
+    return "walkthrough"
+  }
+  return "fly-through"
+}
+
+function worldCameraModeLabel(mode: WorldCameraMode) {
+  if (mode === "locked-iso") return "固定视角"
+  if (mode === "walkthrough") return "平视漫游"
+  return "飞行穿梭"
+}
+
+function worldCameraDirection(
+  mode: WorldCameraMode,
+  sceneDirection: (typeof WORLD_SCENE_DIRECTIONS)[number]
+) {
+  if (mode === "locked-iso") {
+    return [
+      "摄影机保持相同的高位等距角度、镜头高度、焦距和地平线，不旋转、不环绕、不俯仰，也不改变观察方向。",
+      "只允许沿既定世界轴线做缓慢、匀速的直线平移或轻微前推，让场景从固定视角下自然经过画面。",
+      `本段空间目标：${sceneDirection.narrative}`,
+    ].join(" ")
+  }
+  if (mode === "walkthrough") {
+    return [
+      "摄影机保持接近人眼的 1.5 至 1.7 米高度，以稳定器式连续平视前进；不升空、不俯冲、不突然环绕。",
+      `沿本场景已经建立的可行走通道自然接近目标，空间叙事重点为：${sceneDirection.narrative}`,
+      "转向只来自可行走路径的自然弯曲，镜头始终面向前进方向并保留稳定地平线。",
+    ].join(" ")
+  }
+  return [
+    "摄影机采用飞行穿梭模式，从较高或较远的稳定位置进入空间，沿清楚通道平滑下降、推进或掠过，保持连续惯性和可读视差。",
+    sceneDirection.camera,
+    "运动过程不瞬移、不反向跳轴，结尾回到稳定的同向前进状态。",
+  ].join(" ")
+}
+
 function compileWorldPrompt({
   taskId,
   originalGoal,
@@ -895,6 +938,8 @@ function compileWorldPrompt({
     "720p"
   const direction = imageCreativeDirection(creativeInstruction)
   const scene = sceneSpecificDirection(creativeInstruction)
+  const cameraMode = worldCameraMode(creativeInstruction)
+  const cameraModeLabel = worldCameraModeLabel(cameraMode)
   const referenced = hasImageReference(context)
   const identityRule = referenced
     ? "把当前选中的图片画布及其引用图片作为世界身份依据，严格保持其中的人物、产品、品牌、建筑、主色和材质语言。"
@@ -902,6 +947,7 @@ function compileWorldPrompt({
   const continuityRules = [
     identityRule,
     `全部 ${sceneCount} 个场景保持相同世界观、时代、季节、主体身份、品牌识别、设计语法、材质体系和综合色彩脚本。`,
+    `全部视频统一使用“${cameraModeLabel}”运镜模式，不在不同场景间切换摄影机语言。`,
     "相邻场景通过门洞、路径、隧道、云层、水面、光源、前景遮挡或同向运动建立可解释的空间连接。",
     "保持地平线、主光方向、天气、尺度线索、屏幕运动方向和摄影机轴线连续。",
     "每个场景都具有可穿行的前景、中景、背景、摄影机入口、运动路径、视觉焦点和出口方向。",
@@ -937,6 +983,7 @@ function compileWorldPrompt({
         worldScene.narrative,
         "",
         "【空间构图与摄影机通道】",
+        `运镜模式：${cameraModeLabel}。场景构图必须为该模式预留真实可执行的摄影机通道。`,
         worldScene.composition,
         direction.composition,
         "",
@@ -959,7 +1006,8 @@ function compileWorldPrompt({
         worldScene.narrative,
         "",
         "【摄影机运动】",
-        worldScene.camera,
+        `运镜模式：${cameraModeLabel}。`,
+        worldCameraDirection(cameraMode, worldScene),
         "",
         "【时间与节奏】",
         `0.0–${Math.max(0.5, durationSeconds * 0.18).toFixed(1)} 秒：首帧保持稳定，环境微动自然启动，明确空间入口与观看重点。`,
@@ -1068,21 +1116,26 @@ function coverComposition(instruction: string) {
 function compileCoverPrompt({
   taskId,
   originalGoal,
+  professionalBrief,
   context,
   skill,
 }: {
   taskId: string
   originalGoal: string
+  professionalBrief?: string
   context?: CanvasContextSnapshot
   skill: SkillSnapshot
 }): CompiledPrompt {
-  const title = extractCoverTitle(originalGoal)
-  const platform = /小红书/i.test(originalGoal)
+  const creativeGoal = professionalBrief
+    ? `${originalGoal}\n${professionalBrief}`
+    : originalGoal
+  const title = extractCoverTitle(creativeGoal)
+  const platform = /小红书/i.test(creativeGoal)
     ? "小红书内容封面"
-    : /公众号|微信/i.test(originalGoal)
+    : /公众号|微信/i.test(creativeGoal)
       ? "微信公众号文章封面"
       : "社交媒体内容封面"
-  const composition = coverComposition(originalGoal)
+  const composition = coverComposition(creativeGoal)
   const hasReference = context?.sourceNode?.media?.mediaType === "image"
   const titleRule = title
     ? `主标题原文：“${title}”。必须逐字保留，不改写、不增删、不拆散为无意义字符。`
@@ -1093,7 +1146,7 @@ function compileCoverPrompt({
   const prompt = [
     "【专业封面设计任务】",
     `封面用途：${platform}`,
-    `内容主题与核心传播信息：${originalGoal}`,
+    `内容主题与核心传播信息：${creativeGoal}`,
     "目标：在 1 秒内建立明确主题，在手机缩略图尺寸下仍能读出核心视觉与信息层级。",
     "",
     "【标题与文字系统】",
@@ -1210,6 +1263,7 @@ export function compileGenerationPrompt({
     return compileCoverPrompt({
       taskId,
       originalGoal,
+      professionalBrief,
       context,
       skill,
     })
