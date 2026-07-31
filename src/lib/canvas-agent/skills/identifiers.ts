@@ -29,6 +29,10 @@ export function isImageTo3dSkillName(name?: string) {
   )
 }
 
+export function isImageTo3dVariantKey(variantKey?: string) {
+  return variantKey?.startsWith("three-") ?? false
+}
+
 export function isWorldSkillName(name?: string) {
   if (!name) return false
   const normalized = normalizedSkillName(name)

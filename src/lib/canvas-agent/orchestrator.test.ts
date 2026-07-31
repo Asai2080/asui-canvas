@@ -4,6 +4,7 @@ import { join } from "node:path"
 
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import type { TextModelInterpretationInput } from "./adapters/text-model"
 import { createStoredCanvasContextSnapshot } from "./context/store"
 import { runAgentTaskTick } from "./orchestrator"
 import { createAgentTask } from "./task-machine"
@@ -87,6 +88,101 @@ describe("runAgentTaskTick", () => {
     })
     expect(compiled.compiledPrompt?.outputs).toHaveLength(4)
     expect(JSON.stringify(compiled)).not.toContain("text-secret")
+  })
+
+  it("treats a selected image as independent input for a new operation", async () => {
+    const root = await createRoot()
+    await createStoredCanvasContextSnapshot(
+      {
+        id: "context-independent-skill",
+        createdAt: now,
+        scope: "selection",
+        selectedNodeId: "image-current",
+        sourceNode: {
+          id: "image-current",
+          kind: "image",
+          bounds: { x: 100, y: 100, w: 640, h: 480 },
+          media: {
+            referenceType: "url",
+            mediaType: "image",
+            src: "https://example.test/current-image.png",
+            width: 640,
+            height: 480,
+          },
+          parentNodeId: "current-image-holder",
+          referenceIds: ["explicit-reference"],
+        },
+        annotations: [],
+        connectedNodes: [
+          {
+            id: "old-storyboard-prompt",
+            kind: "other",
+            bounds: { x: 780, y: 100, w: 360, h: 640 },
+            text: "继续之前的四格分镜流程",
+            sourceNodeId: "image-current",
+            referenceIds: [],
+          },
+          {
+            id: "current-image-holder",
+            kind: "holder",
+            bounds: { x: 94, y: 94, w: 652, h: 492 },
+            referenceIds: [],
+          },
+        ],
+        references: [
+          {
+            id: "explicit-reference",
+            kind: "image",
+            bounds: { x: 0, y: 0, w: 320, h: 240 },
+            media: {
+              referenceType: "url",
+              mediaType: "image",
+              src: "https://example.test/reference.png",
+              width: 320,
+              height: 240,
+            },
+            referenceIds: [],
+          },
+        ],
+      },
+      root
+    )
+    const task = createAgentTask(
+      {
+        userInstruction: "调用这个 Skill，帮我生成图片",
+        executionMode: "confirm",
+        contextSnapshotId: "context-independent-skill",
+        skillId: "builtin-image-to-3d",
+      },
+      { id: "task-independent-skill", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const modelInputs: TextModelInterpretationInput[] = []
+    const textAdapter = {
+      interpret: vi.fn(async (input: TextModelInterpretationInput) => {
+        modelInputs.push(input)
+        return {
+          message: "我会把当前图片扩展为四视角建模参考。",
+          summary: "图片转 3D 四视角参考",
+          normalizedInstruction: "基于当前选中图片生成一致的四视角建模参考。",
+          intent: "image" as const,
+          target: { mediaType: "image" as const },
+        }
+      }),
+    }
+    const deps = { ...dependencies(root), textAdapter }
+
+    await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
+
+    const modelInput = modelInputs[0]
+    expect(modelInput?.context?.sourceNode?.id).toBe("image-current")
+    expect(modelInput?.context?.references.map(({ id }) => id)).toEqual([
+      "explicit-reference",
+    ])
+    expect(modelInput?.context?.connectedNodes.map(({ id }) => id)).toEqual([
+      "current-image-holder",
+    ])
   })
 
   it("preserves the exact user style when the text model generalizes it", async () => {

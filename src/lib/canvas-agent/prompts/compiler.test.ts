@@ -413,7 +413,8 @@ describe("compileGenerationPrompt", () => {
         "选择事件正在发生的决定性瞬间。",
         "用电影主光塑造主体体积。",
       ].join("\n"),
-      sourceInstruction: "把这个复古相机转成可用于 3D 建模的参考预览",
+      sourceInstruction:
+        "把这个复古相机转成可用于 3D 建模的参考图，并生成 360 度环绕视频",
       context,
       skill,
       target: { mediaType: "image", count: 1 },
@@ -450,6 +451,25 @@ describe("compileGenerationPrompt", () => {
     expect(compiled.negativeConstraints).toContain(
       "单张参考图不可见区域只能做有依据的推断，不承诺精确还原"
     )
+
+    const imagesOnly = compileGenerationPrompt({
+      taskId: "task-product-3d-images-only",
+      userInstruction: "调用这个 Skill，帮我生成图片",
+      sourceInstruction: "调用这个 Skill，帮我生成图片",
+      context,
+      skill,
+      target: { mediaType: "image", count: 1 },
+    })
+
+    expect(imagesOnly.summary).toBe("图片转 3D：四视角建模参考")
+    expect(imagesOnly.outputs).toHaveLength(4)
+    expect(
+      imagesOnly.outputs.every((output) => output.mediaType === "image")
+    ).toBe(true)
+    expect(imagesOnly.outputs.map((output) => output.variantKey)).not.toContain(
+      "three-turntable"
+    )
+    expect(imagesOnly.sharedConstraints.join("\n")).not.toContain("环绕视频")
   })
 
   it("compiles the world Skill into paired scene images and camera videos", () => {

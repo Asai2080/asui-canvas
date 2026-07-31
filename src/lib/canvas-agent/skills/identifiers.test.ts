@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   isCoverSkillName,
   isImageTo3dSkillName,
+  isImageTo3dVariantKey,
   isStoryboardSkillName,
   isWorldSkillName,
   skillDisplayName,
@@ -25,6 +26,9 @@ describe("Canvas Agent Skill identifiers", () => {
     expect(isImageTo3dSkillName("图片转 3D Skill")).toBe(true)
     expect(isImageTo3dSkillName("img2threejs")).toBe(true)
     expect(skillDisplayName("img2threejs")).toBe("图片转 3D Skill")
+    expect(isImageTo3dVariantKey("three-front-three-quarter")).toBe(true)
+    expect(isImageTo3dVariantKey("three-turntable")).toBe(true)
+    expect(isImageTo3dVariantKey("storyboard-frame-01")).toBe(false)
   })
 
   it("recognizes the built-in and upstream world Skill names", () => {

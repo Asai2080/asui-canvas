@@ -1,4 +1,5 @@
 import type { AgentArtifact, AgentTask } from "../task-schema"
+import { isImageTo3dVariantKey } from "../skills/identifiers"
 import {
   agentCanvasCommandBatchSchema,
   type AgentCanvasCommand,
@@ -140,7 +141,7 @@ function nodeRefFor(artifact: AgentArtifact) {
 function isImageTo3dTask(task: AgentTask) {
   return (
     task.compiledPrompt?.outputs.some(
-      (output) => output.variantKey === "three-turntable"
+      (output) => isImageTo3dVariantKey(output.variantKey)
     ) ?? false
   )
 }

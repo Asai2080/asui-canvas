@@ -47,6 +47,7 @@ import type {
   SkillRecord,
 } from "@/lib/canvas-agent/skills/schema"
 import {
+  isImageTo3dVariantKey,
   isStoryboardSkillName,
   isWorldSkillName,
 } from "@/lib/canvas-agent/skills/identifiers"
@@ -224,7 +225,7 @@ function AgentPromptReview({
       .length ?? 0
   const isImageTo3d =
     compiledPrompt?.outputs.some(
-      (output) => output.variantKey === "three-turntable"
+      (output) => isImageTo3dVariantKey(output.variantKey)
     ) ?? false
   const isWorld =
     compiledPrompt?.outputs.some((output) =>
@@ -274,7 +275,14 @@ function AgentPromptReview({
       <div className="agent-prompt-review__meta">
         <span>
           {isImageTo3d
-            ? `${imageOutputCount} 张参考图 · ${videoOutputCount} 段环绕视频`
+            ? [
+                `${imageOutputCount} 张参考图`,
+                videoOutputCount > 0
+                  ? `${videoOutputCount} 段环绕视频`
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")
             : isWorld
               ? `${imageOutputCount} 张场景图 · ${videoOutputCount} 段运镜视频`
             : `${compiledPrompt.outputs.length} 个生成结果`}

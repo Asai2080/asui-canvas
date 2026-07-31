@@ -13,6 +13,7 @@ import {
   type TextModelInterpretationInput,
 } from "./adapters/text-model"
 import { getStoredCanvasContextSnapshot } from "./context/store"
+import type { CanvasContextSnapshot } from "./context/schema"
 import {
   executeAgentTask,
   type ExecuteAgentTaskDependencies,
@@ -139,6 +140,19 @@ function hasTextModelCredentials(credentials?: TextModelCredentials) {
   )
 }
 
+function creativeContextForTask(context?: CanvasContextSnapshot) {
+  if (!context) return context
+  const source = context.sourceNode
+  return {
+    ...context,
+    connectedNodes: context.connectedNodes.filter(
+      (node) =>
+        node.parentNodeId === source?.id ||
+        source?.parentNodeId === node.id
+    ),
+  }
+}
+
 async function understandTask(
   task: AgentTask,
   dependencies: RunAgentTaskDependencies
@@ -150,7 +164,7 @@ async function understandTask(
   ])
   const input = {
     userInstruction: task.userInstruction,
-    context,
+    context: creativeContextForTask(context),
     skill,
     conversationHistory: dependencies.conversationHistory,
   }
@@ -355,12 +369,13 @@ export async function runAgentTaskTick(
         loadContext(task, dependencies.root),
         loadSkill(task, dependencies.root, timestamp),
       ])
+      const creativeContext = creativeContextForTask(context)
       const compiledPrompt = compileGenerationPrompt({
         taskId: task.id,
         userInstruction:
           task.interpretation?.normalizedInstruction ?? task.userInstruction,
         sourceInstruction: task.userInstruction,
-        context,
+        context: creativeContext,
         skill,
         target: {
           ...task.interpretation?.target,

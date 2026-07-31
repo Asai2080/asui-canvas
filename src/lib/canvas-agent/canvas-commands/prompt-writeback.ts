@@ -1,4 +1,5 @@
 import type { AgentTask, CompiledPrompt } from "../task-schema"
+import { isImageTo3dVariantKey } from "../skills/identifiers"
 import { canvasCommandBridge, type CanvasCommandBridge } from "./bridge"
 import {
   agentCanvasCommandBatchSchema,
@@ -51,13 +52,13 @@ function promptContent(compiledPrompt: CompiledPrompt) {
 
 function isImageTo3dPrompt(compiledPrompt: CompiledPrompt) {
   return compiledPrompt.outputs.some(
-    (output) => output.variantKey === "three-turntable"
+    (output) => isImageTo3dVariantKey(output.variantKey)
   )
 }
 
 function imageTo3dPromptContent(compiledPrompt: CompiledPrompt) {
   return [
-    "# 图片转 3D：四视角参考与环绕预览",
+    `# ${compiledPrompt.summary}`,
     compiledPrompt.originalGoal
       ? `## 用户目标\n${compiledPrompt.originalGoal}`
       : "",
