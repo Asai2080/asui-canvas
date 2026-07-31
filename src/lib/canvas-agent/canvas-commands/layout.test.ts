@@ -275,17 +275,16 @@ describe("buildAgentCanvasCommandBatch", () => {
     ).not.toThrow()
   })
 
-  it("keeps image-to-3D phase one outputs without inventing a fake mesh", () => {
+  it("lays out the four image-to-3D reference views in a stable 2 by 2 grid", () => {
     const source = task({
       "generate-1": [image("front", 1024, 1024)],
       "generate-2": [image("side", 1024, 1024)],
       "generate-3": [image("back", 1024, 1024)],
       "generate-4": [image("top", 1024, 1024)],
-      "generate-5": [video("turntable")],
     })
     source.compiledPrompt = {
       originalGoal: "把复古相机转成 3D 参考",
-      summary: "图片转 3D：四视角参考与环绕预览",
+      summary: "图片转 3D：四视角建模参考",
       sharedConstraints: [],
       negativeConstraints: [],
       skillSnapshotId: "skill-image-to-3d",
@@ -326,15 +325,6 @@ describe("buildAgentCanvasCommandBatch", () => {
           width: 1024,
           height: 1024,
         },
-        {
-          id: "output-turntable",
-          mediaType: "video",
-          operation: "animate",
-          prompt: "turntable",
-          variantKey: "three-turntable",
-          durationSeconds: 8,
-          resolution: "720p",
-        },
       ],
     }
 
@@ -346,9 +336,22 @@ describe("buildAgentCanvasCommandBatch", () => {
     })
     expect(
       batch.commands.some(
-        (command) => command.type === "create-3d-preview-node"
+        (command) =>
+          command.type === "create-3d-preview-node" ||
+          command.type === "create-3d-model-node" ||
+          command.type === "create-video-node"
       )
     ).toBe(false)
+    expect(
+      batch.commands
+        .filter((command) => command.type === "create-image-node")
+        .map((command) => command.bounds)
+    ).toEqual([
+      { x: 544, y: 0, w: 1024, h: 1024 },
+      { x: 1632, y: 0, w: 1024, h: 1024 },
+      { x: 544, y: 1088, w: 1024, h: 1024 },
+      { x: 1632, y: 1088, w: 1024, h: 1024 },
+    ])
     expect(batch.commands).toContainEqual({
       type: "set-recommended-result",
       nodeRef: "result-front",
@@ -360,7 +363,6 @@ describe("buildAgentCanvasCommandBatch", () => {
         "result-side",
         "result-back",
         "result-top",
-        "result-turntable",
       ],
     })
   })

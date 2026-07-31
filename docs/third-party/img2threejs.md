@@ -8,7 +8,7 @@ ASUI Canvas 的“图片转 3D Skill”参考了
 - Upstream license: Apache-2.0
 - ASUI integration: modified, constrained implementation
 
-ASUI 不执行 Skill 文本或模型返回的任意代码。当前实现使用两阶段视觉评估和
-经过 schema 校验的白名单几何规格，由本地 Three.js 解释器创建可交互的
-`THREE.Group`。该产物是程序化重建，不等同于摄影测量、NeRF、Gaussian Splat
-或可直接制造的精确网格。
+ASUI 不执行 Skill 文本或模型返回的任意代码。当前内置 Skill 使用上游的图片
+准入、结构拆解和质量合同方法，把当前选中的图片扩展为前侧三分之四、正侧面、
+后侧三分之四、顶部结构细节四张独立参考图。它不生成或冒充真实 3D 模型，结果
+也不等同于摄影测量、NeRF、Gaussian Splat 或可直接制造的精确网格。
