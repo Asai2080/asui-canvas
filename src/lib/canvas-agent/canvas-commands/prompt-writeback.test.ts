@@ -143,4 +143,77 @@ describe("writeAgentPromptToCanvas", () => {
         64
     )
   })
+
+  it("writes one concise reconstruction spec for image-to-3D instead of duplicating five prompts", async () => {
+    const publish = vi.fn(async (batch: AgentCanvasCommandBatch) => ({
+      batchId: batch.id,
+      taskId: batch.taskId,
+      status: "applied" as const,
+      resultNodeIds: ["shape-3d-spec"],
+      artifactNodeIds: {},
+      errors: [],
+    }))
+    const base = promptTask()
+    const task = agentTaskSchema.parse({
+      ...base,
+      id: "task-image-to-3d",
+      compiledPrompt: {
+        ...base.compiledPrompt,
+        summary: "图片转 3D：四视角参考与环绕预览",
+        sharedConstraints: [
+          "四张 1024 × 1024 独立参考图",
+          "单张参考图不可见区域只做保守推断",
+        ],
+        outputs: [
+          ...Array.from({ length: 4 }, (_, index) => ({
+            ...base.compiledPrompt?.outputs[0],
+            id: `task-image-to-3d-output-${index + 1}`,
+            variantKey: [
+              "three-front-three-quarter",
+              "three-side-profile",
+              "three-rear-three-quarter",
+              "three-top-detail",
+            ][index],
+            variantDifference: `视角 ${index + 1}`,
+            prompt: `完整视角提示词 ${index + 1}。`.repeat(80),
+          })),
+          {
+            id: "task-image-to-3d-output-5",
+            mediaType: "video",
+            operation: "animate",
+            prompt: "完整 360 度环绕视频提示词。".repeat(80),
+            variantKey: "three-turntable",
+            variantDifference: "8 秒完整 360 度匀速环绕预览",
+            durationSeconds: 8,
+            resolution: "720p",
+          },
+        ],
+      },
+    })
+
+    await writeAgentPromptToCanvas(
+      {
+        task,
+        sourceBounds: { x: 10, y: 20, w: 360, h: 480 },
+        viewportBounds: { x: 0, y: 0, w: 1600, h: 900 },
+      },
+      { publish, now: () => now }
+    )
+
+    const command = publish.mock.calls[0]?.[0].commands[0]
+    expect(command).toMatchObject({
+      type: "create-prompt-node",
+      title: "图片转 3D 规格",
+      bounds: expect.objectContaining({ w: 440 }),
+    })
+    expect(command && "content" in command ? command.content : "").toContain(
+      "四视角参考与环绕预览"
+    )
+    expect(command && "content" in command ? command.content : "").toContain(
+      "8 秒完整 360 度匀速环绕预览"
+    )
+    expect(command && "content" in command ? command.content.length : 99999).toBeLessThan(
+      1800
+    )
+  })
 })

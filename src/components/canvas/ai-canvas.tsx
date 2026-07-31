@@ -52,6 +52,10 @@ import type {
   AgentCanvasCommandAcknowledgement,
   AgentCanvasCommandBatch,
 } from "@/lib/canvas-agent/canvas-commands/schema"
+import {
+  parseSafe3dPreviewSpec,
+  safe3dPreviewSpecSchema,
+} from "@/lib/canvas-3d/preview-schema"
 import type { AgentTask } from "@/lib/canvas-agent/task-schema"
 import { buildCanvasContextSnapshot } from "@/lib/canvas-agent/context/build-context"
 import type {
@@ -88,6 +92,14 @@ const CanvasAgentShell = dynamic(
   { ssr: false }
 )
 
+const Canvas3dPreview = dynamic(
+  () =>
+    import("@/components/canvas/canvas-3d-preview").then(
+      (module) => module.Canvas3dPreview
+    ),
+  { ssr: false }
+)
+
 const CANVAS_AGENT_ENABLED = ["1", "true", "yes", "on"].includes(
   (process.env.NEXT_PUBLIC_CANVAS_AGENT_ENABLED ?? "").trim().toLowerCase()
 )
@@ -120,13 +132,18 @@ const isVideoNodeShape = (shape?: TLShape | null) => {
 }
 const isAgentPromptShape = (shape?: TLShape | null) =>
   shapeMeta(shape).kind === "agent-prompt"
+const is3dPreviewShape = (shape?: TLShape | null) => {
+  const meta = shapeMeta(shape)
+  return meta.kind === "3d-preview" || meta.asuiNode === "3d-preview"
+}
 
 class AsuiFrameShapeUtil extends FrameShapeUtil {
   override hideResizeHandles(shape: TLFrameShape) {
     return (
       isImageHolderShape(shape) ||
       isVideoNodeShape(shape) ||
-      isAgentPromptShape(shape)
+      isAgentPromptShape(shape) ||
+      is3dPreviewShape(shape)
     )
   }
 
@@ -134,7 +151,8 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
     return (
       isImageHolderShape(shape) ||
       isVideoNodeShape(shape) ||
-      isAgentPromptShape(shape)
+      isAgentPromptShape(shape) ||
+      is3dPreviewShape(shape)
     )
   }
 
@@ -142,7 +160,8 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
     return (
       isImageHolderShape(shape) ||
       isVideoNodeShape(shape) ||
-      isAgentPromptShape(shape)
+      isAgentPromptShape(shape) ||
+      is3dPreviewShape(shape)
     )
   }
 
@@ -150,7 +169,8 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
     if (
       !isImageHolderShape(shape) &&
       !isVideoNodeShape(shape) &&
-      !isAgentPromptShape(shape)
+      !isAgentPromptShape(shape) &&
+      !is3dPreviewShape(shape)
     ) {
       return super.getGeometry(shape)
     }
@@ -172,6 +192,55 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
 
   override component(shape: TLFrameShape) {
     const content = super.component(shape)
+    if (is3dPreviewShape(shape)) {
+      const parsedSpec = parseSafe3dPreviewSpec(
+        shapeMeta(shape).agent3dPreview
+      )
+      const referenceShapeIds = parsedSpec.success
+        ? parsedSpec.data.referenceShapeIds
+        : []
+      // Shape util components are invoked as reactive React components by tldraw.
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      const sources = useValue(
+        `3D preview sources for ${shape.id}`,
+        () =>
+          referenceShapeIds.flatMap((referenceShapeId) => {
+            const holder = this.editor.getShape(
+              referenceShapeId as TLShapeId
+            )
+            if (!holder || !isImageHolderShape(holder)) return []
+            const imageId = getLatestImageShapeIdFromHolder(
+              this.editor,
+              holder.id
+            )
+            const src = imageId
+              ? getImageShapeSource(this.editor, imageId)
+              : null
+            return src ? [{ shapeId: holder.id, src }] : []
+          }),
+        [referenceShapeIds.join("|"), shape.id]
+      )
+      const title = parsedSpec.success
+        ? parsedSpec.data.title
+        : "3D 多视角代理"
+
+      return (
+        <div className="asui-3d-preview-frame">
+          {content}
+          <HTMLContainer
+            className="asui-3d-preview-container"
+            style={{ width: shape.props.w, height: shape.props.h }}
+          >
+            <Canvas3dPreview
+              title={title}
+              sources={sources}
+              onActivate={() => this.editor.select(shape.id)}
+            />
+          </HTMLContainer>
+        </div>
+      )
+    }
+
     if (isAgentPromptShape(shape)) {
       const promptContent = String(
         shapeMeta(shape).agentPromptContent ?? ""
@@ -262,7 +331,11 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
       path.roundRect(0, 0, shape.props.w, shape.props.h, 18)
       return path
     }
-    if (!isImageHolderShape(shape) && !isVideoNodeShape(shape)) {
+    if (
+      !isImageHolderShape(shape) &&
+      !isVideoNodeShape(shape) &&
+      !is3dPreviewShape(shape)
+    ) {
       return super.getIndicatorPath(shape)
     }
 
@@ -2527,6 +2600,59 @@ export function AiCanvas() {
             })
             resultNodeIds.push(videoNodeId)
             artifactNodeIds[command.artifact.id] = videoNodeId
+            continue
+          }
+
+          if (command.type === "create-3d-preview-node") {
+            const referenceShapeIds = command.referenceNodeRefs.map(
+              (nodeRef) => {
+                const referencedNode = createdNodes.get(nodeRef)
+                const referencedShape = referencedNode
+                  ? editor.getShape(referencedNode.logicalId)
+                  : null
+                if (
+                  !referencedNode ||
+                  !isImageHolderShape(referencedShape)
+                ) {
+                  throw new Error("3D 预览缺少有效的图片参考节点")
+                }
+                return referencedNode.logicalId
+              }
+            )
+            const previewSpec = safe3dPreviewSpecSchema.parse({
+              version: 1,
+              mode: "multiview-proxy",
+              title: command.title,
+              referenceShapeIds,
+            })
+            const previewNodeId = createShapeId()
+            editor.createShape({
+              id: previewNodeId,
+              type: "frame",
+              x: command.bounds.x,
+              y: command.bounds.y,
+              props: {
+                w: command.bounds.w,
+                h: command.bounds.h,
+                name: command.title,
+                color: "grey",
+              },
+              meta: {
+                kind: "3d-preview",
+                asuiNode: "3d-preview",
+                asuiMetaVersion: ASUI_META_VERSION,
+                status: "completed",
+                agentTaskId: batch.taskId,
+                agent3dPreview: previewSpec,
+              },
+            })
+
+            createdNodes.set(command.nodeRef, {
+              logicalId: previewNodeId,
+              connectionId: previewNodeId,
+              artifactId: command.nodeRef,
+            })
+            resultNodeIds.push(previewNodeId)
             continue
           }
 

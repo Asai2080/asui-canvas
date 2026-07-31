@@ -56,6 +56,16 @@ const createPromptNodeCommandSchema = z
   })
   .strict()
 
+const create3dPreviewNodeCommandSchema = z
+  .object({
+    type: z.literal("create-3d-preview-node"),
+    nodeRef: nodeRefSchema,
+    title: z.string().trim().min(1).max(120),
+    referenceNodeRefs: z.array(nodeRefSchema).min(2).max(4),
+    bounds: canvasCommandBoundsSchema,
+  })
+  .strict()
+
 const connectNodesCommandSchema = z
   .object({
     type: z.literal("connect-nodes"),
@@ -82,6 +92,7 @@ export const agentCanvasCommandSchema = z.discriminatedUnion("type", [
   createImageNodeCommandSchema,
   createVideoNodeCommandSchema,
   createPromptNodeCommandSchema,
+  create3dPreviewNodeCommandSchema,
   connectNodesCommandSchema,
   setRecommendedResultCommandSchema,
   focusResultsCommandSchema,

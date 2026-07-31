@@ -137,4 +137,47 @@ describe("createAgentPlan", () => {
       })
     ).toThrow()
   })
+
+  it("feeds referenced views into image generation and the hero view into turntable video", () => {
+    const compiled: CompiledPrompt = {
+      originalGoal: "把产品图转成 3D 预览",
+      summary: "图片转 3D：四视角参考与环绕预览",
+      sharedConstraints: [],
+      outputs: [
+        {
+          id: "output-hero",
+          mediaType: "image",
+          operation: "create",
+          prompt: "前侧三分之四视图",
+          width: 1024,
+          height: 1024,
+          variantKey: "three-front-three-quarter",
+          sourceContextSnapshotId: "context-3d",
+        },
+        {
+          id: "output-turntable",
+          mediaType: "video",
+          operation: "animate",
+          prompt: "完整 360 度环绕",
+          durationSeconds: 8,
+          resolution: "720p",
+          variantKey: "three-turntable",
+        },
+      ],
+    }
+
+    const plan = createAgentPlan({
+      taskId: "task-image-to-3d",
+      compiledPrompt: compiled,
+      contextSnapshotId: "context-3d",
+    })
+    const image = plan.steps.find((step) => step.id === "generate-1")
+    const video = plan.steps.find((step) => step.id === "generate-2")
+
+    expect(image?.input).toMatchObject({ contextSnapshotId: "context-3d" })
+    expect(video).toMatchObject({
+      dependsOn: ["generate-1"],
+      input: { sourceStepId: "generate-1" },
+    })
+  })
 })

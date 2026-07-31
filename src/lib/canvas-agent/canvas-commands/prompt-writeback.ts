@@ -49,6 +49,38 @@ function promptContent(compiledPrompt: CompiledPrompt) {
     .join("\n\n")
 }
 
+function isImageTo3dPrompt(compiledPrompt: CompiledPrompt) {
+  return compiledPrompt.outputs.some(
+    (output) => output.variantKey === "three-turntable"
+  )
+}
+
+function imageTo3dPromptContent(compiledPrompt: CompiledPrompt) {
+  return [
+    "# 图片转 3D：四视角参考与环绕预览",
+    compiledPrompt.originalGoal
+      ? `## 用户目标\n${compiledPrompt.originalGoal}`
+      : "",
+    "## 交付视图",
+    ...compiledPrompt.outputs.map(
+      (output, index) =>
+        `- ${index + 1}. ${output.variantDifference ?? output.variantKey ?? output.mediaType}`
+    ),
+    compiledPrompt.sharedConstraints.length > 0
+      ? `## 重建规格\n${compiledPrompt.sharedConstraints
+          .map((constraint) => `- ${constraint}`)
+          .join("\n")}`
+      : "",
+    compiledPrompt.negativeConstraints?.length
+      ? `## 可信边界\n${compiledPrompt.negativeConstraints
+          .map((constraint) => `- ${constraint}`)
+          .join("\n")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+}
+
 function storyboardPromptContent(
   compiledPrompt: CompiledPrompt,
   outputIndex: number
@@ -157,7 +189,12 @@ export async function writeAgentPromptToCanvas(
   const isStoryboard =
     task.compiledPrompt.outputs.length > 1 &&
     task.compiledPrompt.summary.includes("分镜")
-  const content = isStoryboard ? "" : promptContent(task.compiledPrompt)
+  const isImageTo3d = isImageTo3dPrompt(task.compiledPrompt)
+  const content = isStoryboard
+    ? ""
+    : isImageTo3d
+      ? imageTo3dPromptContent(task.compiledPrompt)
+      : promptContent(task.compiledPrompt)
   const commands = isStoryboard
     ? storyboardPromptCommands(
         task.compiledPrompt,
@@ -168,7 +205,7 @@ export async function writeAgentPromptToCanvas(
         {
           type: "create-prompt-node" as const,
           nodeRef: "professional-prompt",
-          title: "专业提示词",
+          title: isImageTo3d ? "图片转 3D 规格" : "专业提示词",
           content,
           bounds: promptBounds(content, sourceBounds, viewportBounds),
         },

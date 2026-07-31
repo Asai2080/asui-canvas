@@ -160,6 +160,31 @@ function promptWithDimensions(
     .join(`${width}x${height}`)
 }
 
+const IMAGE_TO_3D_OUTPUT_LABELS: Record<string, string> = {
+  "three-front-three-quarter": "前侧三分之四",
+  "three-side-profile": "正侧面",
+  "three-rear-three-quarter": "后侧三分之四",
+  "three-top-detail": "顶部与结构细节",
+  "three-turntable": "360° 环绕预览",
+}
+
+function promptOutputLabel(
+  compiledPrompt: NonNullable<AgentTask["compiledPrompt"]>,
+  output: NonNullable<AgentTask["compiledPrompt"]>["outputs"][number],
+  index: number
+) {
+  const imageTo3dLabel = output.variantKey
+    ? IMAGE_TO_3D_OUTPUT_LABELS[output.variantKey]
+    : undefined
+  if (imageTo3dLabel) return imageTo3dLabel
+  if (compiledPrompt.summary.includes("分镜")) {
+    return `KF#${String(index + 1).padStart(2, "0")}`
+  }
+  return compiledPrompt.outputs.length > 1
+    ? `版本 ${index + 1}`
+    : "最终提示词"
+}
+
 function AgentPromptReview({
   task,
   readOnly = false,
@@ -178,6 +203,16 @@ function AgentPromptReview({
     )
   )
   const isStoryboard = compiledPrompt?.summary.includes("分镜") ?? false
+  const imageOutputCount =
+    compiledPrompt?.outputs.filter((output) => output.mediaType === "image")
+      .length ?? 0
+  const videoOutputCount =
+    compiledPrompt?.outputs.filter((output) => output.mediaType === "video")
+      .length ?? 0
+  const isImageTo3d =
+    compiledPrompt?.outputs.some(
+      (output) => output.variantKey === "three-turntable"
+    ) ?? false
   const [widthInput, setWidthInput] = useState(
     String(firstOutput?.width ?? 1024)
   )
@@ -220,8 +255,12 @@ function AgentPromptReview({
         {compiledPrompt.summary}
       </p>
       <div className="agent-prompt-review__meta">
-        <span>{compiledPrompt.outputs.length} 个生成结果</span>
-        {currentSizeLabel && <span>{currentSizeLabel}</span>}
+        <span>
+          {isImageTo3d
+            ? `${imageOutputCount} 张参考图 · ${videoOutputCount} 段环绕视频`
+            : `${compiledPrompt.outputs.length} 个生成结果`}
+        </span>
+        {!isImageTo3d && currentSizeLabel && <span>{currentSizeLabel}</span>}
       </div>
       {canAdjustSize && (
         <div className="agent-prompt-review__size-editor">
@@ -319,11 +358,7 @@ function AgentPromptReview({
           return (
             <section key={output.id}>
               <strong>
-                {compiledPrompt.summary.includes("分镜")
-                  ? `KF#${String(index + 1).padStart(2, "0")}`
-                  : compiledPrompt.outputs.length > 1
-                    ? `版本 ${index + 1}`
-                    : "最终提示词"}
+                {promptOutputLabel(compiledPrompt, output, index)}
                 {outputLabel ? ` · ${outputLabel}` : ""}
               </strong>
               <p>{outputPrompt}</p>

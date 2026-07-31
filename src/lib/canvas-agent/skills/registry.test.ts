@@ -143,5 +143,17 @@ describe("Canvas Agent personal Skill registry", () => {
       instructions: expect.stringContaining("10 种构图风格"),
       createdAt: "2026-07-31T02:00:00.000Z",
     })
+
+    const imageTo3d = skills.find(
+      (skill) => skill.id === "builtin-image-to-3d"
+    )
+    expect(imageTo3d).toMatchObject({
+      name: "图片转 3D Skill",
+      available: true,
+      source: {
+        type: "builtin",
+        key: "image-to-3d",
+      },
+    })
   })
 })

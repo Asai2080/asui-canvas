@@ -53,6 +53,7 @@ export const registeredAgentTools = {
   generate_image: z
     .object({
       promptOutputId: safeId,
+      contextSnapshotId: safeId.optional(),
       prompt: z.string().trim().min(1),
       negativePrompt: z.string().trim().min(1).optional(),
       width: z.number().int().positive(),

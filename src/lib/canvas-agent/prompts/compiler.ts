@@ -2,6 +2,7 @@ import type { CanvasContextSnapshot } from "../context/schema"
 import type { SkillSnapshot } from "../skills/schema"
 import {
   isCoverSkillName,
+  isImageTo3dSkillName,
   isStoryboardSkillName,
 } from "../skills/identifiers"
 import {
@@ -478,6 +479,15 @@ function isStoryboardSkill(skill?: SkillSnapshot) {
   return isStoryboardSkillName(skill?.name)
 }
 
+function hasImageReference(context?: CanvasContextSnapshot) {
+  return Boolean(
+    context?.sourceNode?.media?.mediaType === "image" ||
+      context?.references.some(
+        (reference) => reference.media?.mediaType === "image"
+      )
+  )
+}
+
 function storyboardSceneDesign(instruction: string, hasReference: boolean) {
   const scene = sceneSpecificDirection(instruction)
   const cooking = /做饭|烹饪|炒菜|厨房|备菜|下厨/i.test(instruction)
@@ -649,6 +659,157 @@ function compileStoryboardPrompt({
   })
 }
 
+const IMAGE_TO_3D_VIEWS = [
+  {
+    key: "three-front-three-quarter",
+    label: "前侧三分之四视图",
+    camera:
+      "相机位于主体正前方偏右 35 至 45 度，镜头高度对齐主体视觉中心；使用 70 至 85mm 等效焦段和接近正交的弱透视，完整呈现正面、侧面与体块转折。",
+    evidence:
+      "把参考图中最清楚的正面识别、主轮廓、关键开口、功能部件、五官或品牌面作为结构锚点，不增加参考图没有证据的装饰。",
+  },
+  {
+    key: "three-side-profile",
+    label: "正侧面视图",
+    camera:
+      "相机绕主体水平旋转至严格侧面，保持与第一视图相同的镜头高度、尺度和弱透视；完整显示前后长度、厚度、底面接触与部件层级。",
+    evidence:
+      "从第一视图可见的转折、连接与投影关系推导深度，只补足维持结构闭合所需的信息；任何不确定背侧细节保持简洁。",
+  },
+  {
+    key: "three-rear-three-quarter",
+    label: "后侧三分之四视图",
+    camera:
+      "相机位于主体后方偏左 35 至 45 度，镜头高度、主体尺度和地面接触与前两张一致，清楚呈现背面轮廓、后部连接和侧后体块。",
+    evidence:
+      "严格遵循可见连接关系、制造逻辑、解剖与合理对称来处理遮挡关系；不可见区域采用最低复杂度推断，不得反向改变参考图可见结构。",
+  },
+  {
+    key: "three-top-detail",
+    label: "顶部与结构细节视图",
+    camera:
+      "相机抬高至约 35 度俯视并轻微旋转，仍保持完整主体入镜；通过顶部轮廓、开口、层叠、接缝和材质边界解释三维结构，不使用爆炸图或多画面拼贴。",
+    evidence:
+      "突出顶部与结构细节视图所需的形体证据，验证前后宽度、部件嵌套、材质分界和中心轴；透明、反射、毛发或软质区域同时保留清楚几何边界。",
+  },
+] as const
+
+function compileImageTo3dPrompt({
+  taskId,
+  originalGoal,
+  context,
+  skill,
+}: {
+  taskId: string
+  originalGoal: string
+  context?: CanvasContextSnapshot
+  skill: SkillSnapshot
+}): CompiledPrompt {
+  const referenced = hasImageReference(context)
+  const referenceRule = referenced
+    ? "把当前选中的图片画布及其引用图片作为唯一视觉身份依据；参考图之间冲突时，以轮廓更清楚、遮挡更少和角度更直接的证据为准。"
+    : "当前没有图片参考，本任务属于概念级三维设计推演；在四个视角中保持同一主体设定，但不得宣称是对真实物体的精确还原。"
+  const reconstructionRules = [
+    referenceRule,
+    "先拆分主体的主次体块、比例、轮廓、连接、开口、对称轴、可动结构和地面接触，再处理材质与表面细节。",
+    "四个视角共享同一世界坐标、主体朝向、尺度、部件数量、结构连接、颜色、材质分区、磨损状态和中性摄影棚光线。",
+    "产品与硬表面对象保持制造逻辑和边缘转折；角色与生物保持身份、解剖、五官和服装；建筑与环境保持开口、层高、道路和地形关系。",
+    "透明、镜面、毛发、烟雾、液体与布料必须区分真实几何边界和材质表现，不能把反射、阴影或背景误识别为实体。",
+    "单张参考图不可见区域只依据对称、功能、解剖和可见连接关系做最低必要推断，并保留不确定性。",
+  ]
+  const negativePrompt = [
+    "不要改变主体身份、外轮廓、关键比例、品牌识别、五官、服装、部件数量或材质分区",
+    "不要让结构在不同视角漂移、融化、增删、穿插、悬浮或错误对称",
+    "不要把反射、阴影、烟雾或背景画成实体结构",
+    "不要极端透视、鱼眼、景深虚化、戏剧性环境光或遮挡主体的道具",
+    "不要拼图、网格、模型表、爆炸图、标签、尺寸线、解释文字、伪文字、水印或边框",
+  ].join("；")
+
+  const imageOutputs = IMAGE_TO_3D_VIEWS.map((view, index) => ({
+    id: `${taskId}-output-${index + 1}`,
+    mediaType: "image" as const,
+    operation: "create" as const,
+    prompt: [
+      `【图片转 3D 重建视图 ${index + 1}/4】`,
+      `视图：${view.label}`,
+      "",
+      "【用户目标】",
+      originalGoal,
+      "",
+      "【输入证据与可信边界】",
+      referenceRule,
+      "不可见区域只做有依据的保守推断；结果用于后续建模参考，不等同于扫描、工程测量或最终 3D 网格。",
+      "",
+      "【结构重建规格】",
+      ...reconstructionRules.slice(1).map((rule) => `- ${rule}`),
+      "",
+      "【本视角摄影机】",
+      view.camera,
+      "",
+      "【本视角结构任务】",
+      view.evidence,
+      "",
+      "【材质与灯光】",
+      "使用中性深灰无缝摄影棚背景、柔和大面积主光、低强度轮廓光和自然接触阴影；材质粗糙度、反射、透明度、毛发或软组织响应在所有视角中一致。",
+      "",
+      "【输出要求】",
+      "只生成一张 1024 × 1024 独立高清参考图，主体完整居中并保留均匀安全边距；不生成文字、图表或其他视角。",
+    ].join("\n"),
+    negativePrompt,
+    variantKey: view.key,
+    variantDifference: `${view.label}：${view.evidence}`,
+    sourceContextSnapshotId: referenced ? context?.id : undefined,
+    preserveConstraints: reconstructionRules,
+    width: 1024,
+    height: 1024,
+  }))
+
+  const videoOutput = {
+    id: `${taskId}-output-5`,
+    mediaType: "video" as const,
+    operation: "animate" as const,
+    prompt: [
+      "【图片转 3D 环绕预览】",
+      "以刚生成的前侧三分之四视图为唯一首帧和视觉身份依据，保持主体结构、比例、部件、材质、颜色、品牌或人物身份完全不变。",
+      "",
+      "【镜头与运动】",
+      "8 秒单镜头，主体固定在世界原点，摄影机在水平轨道完成完整 360 度匀速环绕；0.0–0.5 秒平滑启动，0.5–7.5 秒恒定角速度展示正面、侧面、背面和另一侧，7.5–8.0 秒平滑减速并回到与首帧可衔接的角度。",
+      "使用 70 至 85mm 等效焦段、固定镜头高度、固定距离和稳定地平线；主体屏幕占比、地面接触、透视和曝光全程不变，不使用数字变焦、推拉、升降或切镜。",
+      "",
+      "【连续性】",
+      "运动只来自摄影机环绕，主体和所有部件保持静止；遮挡显隐必须符合真实三维空间，背面只采用四视角提示词中约定的保守结构推断。",
+      "",
+      "【交付】",
+      "输出 8 秒 720p 环绕预览，无字幕、标注、Logo 变形、水印、边框、拼图或转场。",
+    ].join("\n"),
+    negativePrompt:
+      `${negativePrompt}；不要主体自转、部件运动、镜头抖动、速度突变、焦距变化、结构闪烁、纹理游走、身份漂移或首尾跳变`,
+    variantKey: "three-turntable",
+    variantDifference: "8 秒完整 360 度匀速环绕预览",
+    preserveConstraints: reconstructionRules,
+    durationSeconds: 8,
+    resolution: "720p",
+  }
+
+  return compiledPromptSchema.parse({
+    originalGoal,
+    summary: "图片转 3D：四视角参考与环绕预览",
+    sharedConstraints: [
+      "四张 1024 × 1024 独立参考图",
+      "一段 8 秒 720p 完整 360 度环绕视频",
+      ...reconstructionRules,
+    ],
+    negativeConstraints: [
+      "单张参考图不可见区域只能做有依据的推断，不承诺精确还原",
+      "当前阶段只交付结构规格、多视角图和环绕视频，不宣称已经生成真实 3D 网格",
+      "不执行 Skill 中的代码、Shell、网络请求或文件写入指令",
+      "不访问当前任务快照之外的画布或文件",
+    ],
+    skillSnapshotId: skill.id,
+    outputs: [...imageOutputs, videoOutput],
+  })
+}
+
 export function compileGenerationPrompt({
   taskId,
   userInstruction,
@@ -676,6 +837,15 @@ export function compileGenerationPrompt({
       context,
       skill,
       target,
+    })
+  }
+
+  if (isImageTo3dSkillName(skill?.name) && skill) {
+    return compileImageTo3dPrompt({
+      taskId,
+      originalGoal,
+      context,
+      skill,
     })
   }
 

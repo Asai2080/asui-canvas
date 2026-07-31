@@ -163,7 +163,20 @@ async function imageInputForStep(
   root?: string
 ): Promise<AgentImageGenerationInput> {
   if (step.tool === "generate_image") {
-    return registeredAgentTools.generate_image.parse(step.input)
+    const input = registeredAgentTools.generate_image.parse(step.input)
+    const context = input.contextSnapshotId
+      ? await loadContext(input.contextSnapshotId, root)
+      : null
+    return {
+      prompt: input.prompt,
+      negativePrompt: input.negativePrompt,
+      width: input.width,
+      height: input.height,
+      count: 1,
+      sourceImageSrc: sourceImageSrc(context),
+      parentVersionId: context?.snapshot.sourceNode?.versionId,
+      referenceImageSrcs: referenceImageSrcs(context),
+    }
   }
 
   if (step.tool !== "edit_image") {
@@ -198,6 +211,7 @@ async function imageInputForStep(
 
 async function videoInputForStep(
   step: StructuredAgentPlanStep,
+  task: AgentTask,
   root?: string
 ): Promise<AgentVideoGenerationInput> {
   if (step.tool !== "generate_video") {
@@ -207,11 +221,17 @@ async function videoInputForStep(
   const context = input.contextSnapshotId
     ? await loadContext(input.contextSnapshotId, root)
     : null
+  const generatedSource = input.sourceStepId
+    ? task.artifacts?.[input.sourceStepId]?.find(
+        (artifact): artifact is Extract<AgentArtifact, { kind: "image" }> =>
+          artifact.kind === "image"
+      )
+    : undefined
 
   return {
     prompt: input.prompt,
     negativePrompt: input.negativePrompt,
-    sourceImageSrc: sourceImageSrc(context),
+    sourceImageSrc: generatedSource?.src ?? sourceImageSrc(context),
     referenceAssets:
       context?.snapshot.references.flatMap((reference) => {
         const media = reference.media
@@ -355,7 +375,11 @@ export async function executeAgentTask(
     return moveToWritingCanvas(task, dependencies, now)
   }
 
-  const input = await videoInputForStep(generationStep, dependencies.root)
+  const input = await videoInputForStep(
+    generationStep,
+    task,
+    dependencies.root
+  )
   const providerJobId = task.providerJobIds?.[generationStep.id]
   if (!providerJobId) {
     const providerTask = await dependencies.videoAdapter.create(

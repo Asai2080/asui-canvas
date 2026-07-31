@@ -192,4 +192,105 @@ describe("buildAgentCanvasCommandBatch", () => {
       })
     ).not.toThrow()
   })
+
+  it("adds a typed interactive 3D proxy after four image-to-3D views", () => {
+    const source = task({
+      "generate-1": [image("front", 1024, 1024)],
+      "generate-2": [image("side", 1024, 1024)],
+      "generate-3": [image("back", 1024, 1024)],
+      "generate-4": [image("top", 1024, 1024)],
+      "generate-5": [video("turntable")],
+    })
+    source.compiledPrompt = {
+      originalGoal: "把复古相机转成 3D 参考",
+      summary: "图片转 3D：四视角参考与环绕预览",
+      sharedConstraints: [],
+      negativeConstraints: [],
+      skillSnapshotId: "skill-image-to-3d",
+      outputs: [
+        {
+          id: "output-front",
+          mediaType: "image",
+          operation: "create",
+          prompt: "front",
+          variantKey: "three-front-three-quarter",
+          width: 1024,
+          height: 1024,
+        },
+        {
+          id: "output-side",
+          mediaType: "image",
+          operation: "create",
+          prompt: "side",
+          variantKey: "three-side-profile",
+          width: 1024,
+          height: 1024,
+        },
+        {
+          id: "output-back",
+          mediaType: "image",
+          operation: "create",
+          prompt: "back",
+          variantKey: "three-rear-three-quarter",
+          width: 1024,
+          height: 1024,
+        },
+        {
+          id: "output-top",
+          mediaType: "image",
+          operation: "create",
+          prompt: "top",
+          variantKey: "three-top-detail",
+          width: 1024,
+          height: 1024,
+        },
+        {
+          id: "output-turntable",
+          mediaType: "video",
+          operation: "animate",
+          prompt: "turntable",
+          variantKey: "three-turntable",
+          durationSeconds: 8,
+          resolution: "720p",
+        },
+      ],
+    }
+
+    const batch = buildAgentCanvasCommandBatch({
+      task: source,
+      sourceBounds: { x: 0, y: 0, w: 480, h: 480 },
+      viewportBounds: { x: 0, y: 0, w: 1440, h: 900 },
+      gap: 64,
+    })
+    const preview = batch.commands.find(
+      (command) => command.type === "create-3d-preview-node"
+    )
+
+    expect(preview).toEqual({
+      type: "create-3d-preview-node",
+      nodeRef: "safe-3d-preview",
+      title: "3D 多视角代理",
+      referenceNodeRefs: [
+        "result-front",
+        "result-side",
+        "result-back",
+        "result-top",
+      ],
+      bounds: {
+        x: 544,
+        y: 2720,
+        w: 640,
+        h: 640,
+      },
+    })
+    expect(batch.commands).toContainEqual({
+      type: "set-recommended-result",
+      nodeRef: "safe-3d-preview",
+    })
+    expect(batch.commands).toContainEqual({
+      type: "connect-nodes",
+      sourceNodeId: "shape-source",
+      targetNodeRef: "safe-3d-preview",
+    })
+  })
 })

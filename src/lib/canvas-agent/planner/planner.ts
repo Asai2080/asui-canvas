@@ -95,14 +95,17 @@ export function createAgentPlan({
     compiledPrompt.outputs.map((output, index) => {
       const id = `generate-${index + 1}`
       if (output.mediaType === "video") {
+        const sourceStepId =
+          output.variantKey === "three-turntable" ? "generate-1" : undefined
         return step(id, `生成视频 ${index + 1}`, "generate_video", [
-          "compile-prompt",
+          sourceStepId ?? "compile-prompt",
         ], {
           promptOutputId: output.id,
           prompt: output.prompt,
           negativePrompt: output.negativePrompt,
           contextSnapshotId:
             output.sourceContextSnapshotId ?? contextSnapshotId,
+          sourceStepId,
           durationSeconds: output.durationSeconds ?? 4,
           resolution: output.resolution ?? "720p",
         })
@@ -131,6 +134,8 @@ export function createAgentPlan({
         "compile-prompt",
       ], {
         promptOutputId: output.id,
+        contextSnapshotId:
+          output.sourceContextSnapshotId ?? contextSnapshotId,
         prompt: output.prompt,
         negativePrompt: output.negativePrompt,
         width: output.width ?? 1024,

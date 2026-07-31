@@ -4,14 +4,6 @@ import { join } from "node:path"
 
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import type {
-  AgentImageGenerationInput,
-  ImageGenerationCredentials,
-} from "./adapters/image-generation"
-import type {
-  AgentVideoGenerationInput,
-  VideoGenerationCredentials,
-} from "./adapters/video-generation"
 import { executeAgentTask } from "./executor"
 import type { StructuredAgentPlan } from "./planner/schema"
 import { agentTaskSchema, type AgentTask } from "./task-schema"
@@ -19,6 +11,7 @@ import {
   createStoredAgentTask,
   getStoredAgentTask,
 } from "./task-store"
+import { createStoredCanvasContextSnapshot } from "./context/store"
 
 const roots: string[] = []
 const now = "2026-07-25T08:00:00.000Z"
@@ -119,10 +112,7 @@ describe("executeAgentTask", () => {
     const task = executingTask("task-image", imagePlan("task-image"))
     await createStoredAgentTask(task, root)
     const generate = vi.fn(
-      async (
-        _input: AgentImageGenerationInput,
-        _credentials?: ImageGenerationCredentials
-      ) => [
+      async () => [
         {
           kind: "image" as const,
           versionId: "version-1",
@@ -172,10 +162,7 @@ describe("executeAgentTask", () => {
     const task = executingTask("task-video", videoPlan("task-video"))
     await createStoredAgentTask(task, root)
     const create = vi.fn(
-      async (
-        _input: AgentVideoGenerationInput,
-        _credentials?: VideoGenerationCredentials
-      ) => ({
+      async () => ({
         taskId: "provider-job-1",
         status: "queued",
       })
@@ -258,5 +245,106 @@ describe("executeAgentTask", () => {
       id: "artifact-video-1",
       src: "https://example.test/result.mp4",
     })
+  })
+
+  it("passes the selected source image and references into create-image steps", async () => {
+    const root = await createRoot()
+    await createStoredCanvasContextSnapshot({
+      id: "context-image-to-3d",
+      createdAt: now,
+      scope: "selection",
+      selectedNodeId: "source-image",
+      sourceNode: {
+        id: "source-image",
+        kind: "image",
+        bounds: { x: 0, y: 0, w: 1024, h: 768 },
+        referenceIds: [],
+        media: {
+          referenceType: "url",
+          mediaType: "image",
+          src: "https://example.test/source.png",
+          width: 1024,
+          height: 768,
+        },
+      },
+      annotations: [],
+      connectedNodes: [],
+      references: [
+        {
+          id: "reference-side",
+          kind: "image",
+          bounds: { x: 1200, y: 0, w: 1024, h: 768 },
+          referenceIds: [],
+          media: {
+            referenceType: "url",
+            mediaType: "image",
+            src: "https://example.test/side.png",
+            width: 1024,
+            height: 768,
+          },
+        },
+      ],
+    }, root)
+    const plan = imagePlan("task-image-reference")
+    plan.steps[0].input.contextSnapshotId = "context-image-to-3d"
+    const task = executingTask("task-image-reference", plan)
+    await createStoredAgentTask(task, root)
+    const generate = vi.fn(async () => [{
+      kind: "image" as const,
+      versionId: "version-reference",
+      src: "https://example.test/result.png",
+      prompt: "绿色环保海报",
+      width: 768,
+      height: 1024,
+      createdAt: now,
+    }])
+
+    await executeAgentTask(task.id, {
+      root,
+      now: () => now,
+      createId: () => "artifact-image-reference",
+      imageAdapter: { generate },
+      videoAdapter: { create: vi.fn(), poll: vi.fn() },
+    })
+
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({
+      sourceImageSrc: "https://example.test/source.png",
+      referenceImageSrcs: ["https://example.test/side.png"],
+    }), {})
+  })
+
+  it("uses an earlier generated image artifact as the video source", async () => {
+    const root = await createRoot()
+    const plan = videoPlan("task-turntable")
+    plan.steps[0].input.sourceStepId = "generate-image-hero"
+    const task = agentTaskSchema.parse({
+      ...executingTask("task-turntable", plan),
+      artifacts: {
+        "generate-image-hero": [{
+          kind: "image",
+          id: "artifact-hero",
+          versionId: "version-hero",
+          src: "https://example.test/hero.png",
+          prompt: "前侧三分之四视图",
+          width: 1024,
+          height: 1024,
+          createdAt: now,
+        }],
+      },
+    })
+    await createStoredAgentTask(task, root)
+    const create = vi.fn(async () => ({ taskId: "provider-turntable" }))
+
+    await executeAgentTask(task.id, {
+      root,
+      now: () => now,
+      createId: () => "unused",
+      imageAdapter: { generate: vi.fn() },
+      videoAdapter: { create, poll: vi.fn() },
+    })
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      sourceImageSrc: "https://example.test/hero.png",
+    }), {})
   })
 })

@@ -33,6 +33,7 @@ type BuildCommandBatchInput = {
 
 const DEFAULT_GAP = 64
 const DEFAULT_VIDEO_SIZE = { width: 640, height: 360 }
+const DEFAULT_3D_PREVIEW_SIZE = { width: 640, height: 640 }
 const MAX_COLUMNS = 2
 
 function orderedStepIds(task: AgentTask) {
@@ -136,6 +137,36 @@ function nodeRefFor(artifact: AgentArtifact) {
   return `result-${artifact.id}`
 }
 
+function isImageTo3dTask(task: AgentTask) {
+  return (
+    task.compiledPrompt?.outputs.some(
+      (output) => output.variantKey === "three-turntable"
+    ) ?? false
+  )
+}
+
+function threePreviewBounds(
+  layouts: ArtifactLayout[],
+  sourceBounds: CanvasCommandBounds | undefined,
+  viewportBounds: ViewportBounds,
+  gap: number
+) {
+  const bottom = layouts.reduce(
+    (value, layout) =>
+      Math.max(value, layout.bounds.y + layout.bounds.h),
+    sourceBounds?.y ?? viewportBounds.y
+  )
+  return {
+    x: sourceBounds
+      ? sourceBounds.x + sourceBounds.w + gap
+      : viewportBounds.x +
+        Math.max(0, (viewportBounds.w - DEFAULT_3D_PREVIEW_SIZE.width) / 2),
+    y: bottom + gap,
+    w: DEFAULT_3D_PREVIEW_SIZE.width,
+    h: DEFAULT_3D_PREVIEW_SIZE.height,
+  }
+}
+
 export function buildAgentCanvasCommandBatch({
   task,
   sourceBounds,
@@ -151,12 +182,15 @@ export function buildAgentCanvasCommandBatch({
   })
   const commands: AgentCanvasCommand[] = []
   const resultRefs: string[] = []
+  const imageResultRefs: string[] = []
+  const resolvedGap = gap ?? DEFAULT_GAP
 
   for (const { artifact, bounds } of layouts) {
     const nodeRef = nodeRefFor(artifact)
     resultRefs.push(nodeRef)
 
     if (artifact.kind === "image") {
+      imageResultRefs.push(nodeRef)
       commands.push({
         type: "create-image-node",
         nodeRef,
@@ -182,10 +216,36 @@ export function buildAgentCanvasCommandBatch({
     }
   }
 
-  if (resultRefs[0]) {
+  let recommendedRef = resultRefs[0]
+  if (isImageTo3dTask(task) && imageResultRefs.length >= 2) {
+    const previewRef = "safe-3d-preview"
+    commands.push({
+      type: "create-3d-preview-node",
+      nodeRef: previewRef,
+      title: "3D 多视角代理",
+      referenceNodeRefs: imageResultRefs.slice(0, 4),
+      bounds: threePreviewBounds(
+        layouts,
+        sourceBounds,
+        viewportBounds,
+        resolvedGap
+      ),
+    })
+    if (task.selectedCanvasId) {
+      commands.push({
+        type: "connect-nodes",
+        sourceNodeId: task.selectedCanvasId,
+        targetNodeRef: previewRef,
+      })
+    }
+    resultRefs.push(previewRef)
+    recommendedRef = previewRef
+  }
+
+  if (recommendedRef) {
     commands.push({
       type: "set-recommended-result",
-      nodeRef: resultRefs[0],
+      nodeRef: recommendedRef,
     })
     commands.push({
       type: "focus-results",

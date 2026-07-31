@@ -371,4 +371,84 @@ describe("compileGenerationPrompt", () => {
     expect(compiled.sharedConstraints).toContain("宽高比 3:4")
     expect(compiled.outputs[0].prompt).toContain("标题必须逐字保留")
   })
+
+  it("compiles image-to-3D into four consistent views and one turntable video", () => {
+    const context: CanvasContextSnapshot = {
+      id: "context-product-3d",
+      createdAt,
+      scope: "selection",
+      selectedNodeId: "image-product",
+      sourceNode: {
+        id: "image-product",
+        kind: "image",
+        bounds: { x: 0, y: 0, w: 1200, h: 900 },
+        referenceIds: [],
+        media: {
+          referenceType: "url",
+          mediaType: "image",
+          src: "https://example.com/product.png",
+          width: 1200,
+          height: 900,
+        },
+      },
+      annotations: [],
+      connectedNodes: [],
+      references: [],
+    }
+    const skill: SkillSnapshot = {
+      id: "skill-snapshot-image-to-3d",
+      skillId: "builtin-image-to-3d",
+      name: "图片转 3D Skill",
+      description: "将参考图扩展为多视角 3D 概念预览",
+      contentHash: "e".repeat(64),
+      instructions: "保持参考主体身份、结构、材质和比例一致。",
+      risks: [],
+      createdAt,
+    }
+
+    const compiled = compileGenerationPrompt({
+      taskId: "task-product-3d",
+      userInstruction: [
+        "【专业创作目标】",
+        "选择事件正在发生的决定性瞬间。",
+        "用电影主光塑造主体体积。",
+      ].join("\n"),
+      sourceInstruction: "把这个复古相机转成可用于 3D 建模的参考预览",
+      context,
+      skill,
+      target: { mediaType: "image", count: 1 },
+    })
+
+    expect(compiled.summary).toBe("图片转 3D：四视角参考与环绕预览")
+    expect(compiled.outputs).toHaveLength(5)
+    expect(compiled.outputs.slice(0, 4).every((output) =>
+      output.mediaType === "image" &&
+      output.sourceContextSnapshotId === "context-product-3d" &&
+      output.width === 1024 &&
+      output.height === 1024
+    )).toBe(true)
+    expect(compiled.outputs.map((output) => output.variantKey)).toEqual([
+      "three-front-three-quarter",
+      "three-side-profile",
+      "three-rear-three-quarter",
+      "three-top-detail",
+      "three-turntable",
+    ])
+    expect(compiled.outputs[0].prompt).toContain("唯一视觉身份依据")
+    expect(compiled.outputs[0].prompt).toContain("前侧三分之四视图")
+    expect(compiled.outputs[0].prompt).not.toContain("决定性瞬间")
+    expect(compiled.outputs[0].prompt).not.toContain("文字模型创作简报")
+    expect(compiled.outputs[2].prompt).toContain("遮挡关系")
+    expect(compiled.outputs[3].prompt).toContain("顶部与结构细节视图")
+    expect(compiled.outputs[4]).toMatchObject({
+      mediaType: "video",
+      operation: "animate",
+      durationSeconds: 8,
+      resolution: "720p",
+    })
+    expect(compiled.outputs[4].prompt).toContain("完整 360 度匀速环绕")
+    expect(compiled.negativeConstraints).toContain(
+      "单张参考图不可见区域只能做有依据的推断，不承诺精确还原"
+    )
+  })
 })

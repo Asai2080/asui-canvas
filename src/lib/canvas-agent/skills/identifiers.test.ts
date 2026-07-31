@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   isCoverSkillName,
+  isImageTo3dSkillName,
   isStoryboardSkillName,
   skillDisplayName,
 } from "./identifiers"
@@ -17,5 +18,11 @@ describe("Canvas Agent Skill identifiers", () => {
     expect(isCoverSkillName("封面 Skill")).toBe(true)
     expect(isCoverSkillName("gbro-cover-design")).toBe(true)
     expect(skillDisplayName("gbro-cover-design")).toBe("封面 Skill")
+  })
+
+  it("recognizes the built-in and upstream image-to-3D Skill names", () => {
+    expect(isImageTo3dSkillName("图片转 3D Skill")).toBe(true)
+    expect(isImageTo3dSkillName("img2threejs")).toBe(true)
+    expect(skillDisplayName("img2threejs")).toBe("图片转 3D Skill")
   })
 })

@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@source "../components/canvas/canvas-3d-preview.tsx";
 
 @font-face {
   font-family: "tldraw_draw";
@@ -238,6 +239,154 @@
   .asui-agent-prompt-spacer {
     display: block;
     height: 12px;
+  }
+
+  .canvas-surface .asui-3d-preview-frame {
+    display: contents;
+  }
+
+  .canvas-surface .asui-3d-preview-frame .tl-frame__body {
+    fill: #111214 !important;
+    stroke: #3b3c41 !important;
+    stroke-width: 3px !important;
+    rx: 30px !important;
+    ry: 30px !important;
+  }
+
+  .canvas-surface .asui-3d-preview-frame .tl-frame-heading,
+  .canvas-surface .asui-3d-preview-frame .tl-frame-heading-hit-area {
+    display: none !important;
+  }
+
+  .canvas-surface .asui-3d-preview-container {
+    z-index: 2;
+    overflow: hidden;
+    border-radius: 30px;
+    pointer-events: none;
+  }
+
+  .canvas-3d-preview {
+    position: relative;
+    display: grid;
+    width: 100%;
+    height: 100%;
+    grid-template-rows: 54px minmax(0, 1fr) 46px;
+    overflow: hidden;
+    border-radius: 30px;
+    background:
+      radial-gradient(circle at 50% 46%, rgb(255 255 255 / 7%), transparent 42%),
+      #111214;
+    color: #eceeef;
+    font-family: var(--font-geist-sans), sans-serif;
+    pointer-events: none;
+  }
+
+  .canvas-3d-preview__chrome,
+  .canvas-3d-preview__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 18px;
+  }
+
+  .canvas-3d-preview__chrome {
+    border-bottom: 1px solid rgb(255 255 255 / 8%);
+  }
+
+  .canvas-3d-preview__title {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    color: #f5f6f6;
+    font-size: 14px;
+    font-weight: 650;
+  }
+
+  .canvas-3d-preview__title svg {
+    flex: 0 0 auto;
+    color: #a3fe44;
+  }
+
+  .canvas-3d-preview__title span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .canvas-3d-preview__badge {
+    flex: 0 0 auto;
+    border: 1px solid rgb(163 254 68 / 28%);
+    border-radius: 999px;
+    padding: 5px 9px;
+    background: rgb(163 254 68 / 8%);
+    color: #b8e98a;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .canvas-3d-preview__stage {
+    position: relative;
+    min-height: 0;
+    cursor: grab;
+    touch-action: none;
+    pointer-events: all;
+  }
+
+  .canvas-3d-preview__stage:active {
+    cursor: grabbing;
+  }
+
+  .canvas-3d-preview__stage canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  .canvas-3d-preview__empty {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    color: #8d9095;
+    font-size: 13px;
+    text-align: center;
+  }
+
+  .canvas-3d-preview__footer {
+    border-top: 1px solid rgb(255 255 255 / 8%);
+    color: #85898e;
+    font-size: 11px;
+  }
+
+  .canvas-3d-preview__actions {
+    display: flex;
+    gap: 4px;
+    pointer-events: all;
+  }
+
+  .canvas-3d-preview__actions button {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #a9adb1;
+    cursor: pointer;
+  }
+
+  .canvas-3d-preview__actions button:hover {
+    background: rgb(255 255 255 / 8%);
+    color: #f4f5f5;
+  }
+
+  .canvas-3d-preview__actions button[aria-pressed="true"] {
+    color: #a3fe44;
   }
 
   .canvas-surface .asui-generated-media {
