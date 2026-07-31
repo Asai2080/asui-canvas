@@ -72,6 +72,35 @@ describe("writeAgentPromptToCanvas", () => {
     )
   })
 
+  it("places a prompt after occupied canvases without overlapping them", async () => {
+    const publish = vi.fn(async (batch: AgentCanvasCommandBatch) => ({
+      batchId: batch.id,
+      taskId: batch.taskId,
+      status: "applied" as const,
+      resultNodeIds: ["shape-prompt"],
+      artifactNodeIds: {},
+      errors: [],
+    }))
+
+    await writeAgentPromptToCanvas(
+      {
+        task: promptTask(),
+        sourceBounds: { x: 10, y: 20, w: 360, h: 480 },
+        viewportBounds: { x: 0, y: 0, w: 1600, h: 900 },
+        occupiedBounds: [
+          { x: 10, y: 20, w: 360, h: 480 },
+          { x: 450, y: 0, w: 500, h: 1000 },
+        ],
+      },
+      { publish, now: () => now }
+    )
+
+    expect(publish.mock.calls[0]?.[0].commands[0]).toMatchObject({
+      type: "create-prompt-node",
+      bounds: expect.objectContaining({ x: 1014, w: 440 }),
+    })
+  })
+
   it("publishes one fully-sized prompt canvas for every storyboard frame", async () => {
     const publish = vi.fn(async (batch: AgentCanvasCommandBatch) => ({
       batchId: batch.id,

@@ -4,12 +4,15 @@ import { canvasCommandBridge, type CanvasCommandBridge } from "./bridge"
 import {
   agentCanvasCommandBatchSchema,
   type CanvasCommandBounds,
+  type CanvasOccupiedBounds,
 } from "./schema"
+import { offsetBoundsGroupToAvoidOverlaps } from "./layout"
 
 type WriteAgentPromptToCanvasInput = {
   task: AgentTask
   sourceBounds?: CanvasCommandBounds
   viewportBounds: CanvasCommandBounds
+  occupiedBounds?: CanvasOccupiedBounds[]
 }
 
 type WriteAgentPromptToCanvasDependencies = {
@@ -138,7 +141,8 @@ function promptBounds(
 function storyboardPromptCommands(
   compiledPrompt: CompiledPrompt,
   sourceBounds: CanvasCommandBounds | undefined,
-  viewportBounds: CanvasCommandBounds
+  viewportBounds: CanvasCommandBounds,
+  occupiedBounds: CanvasOccupiedBounds[]
 ) {
   const width = 440
   const columnGap = 64
@@ -153,7 +157,7 @@ function storyboardPromptCommands(
   const heights = contents.map(estimatedPromptHeight)
   const uniformHeight = Math.max(...heights)
 
-  return contents.map((content, index) => {
+  const promptCommands = contents.map((content, index) => {
     const row = Math.floor(index / 2)
     const column = index % 2
     const y =
@@ -173,6 +177,16 @@ function storyboardPromptCommands(
       },
     }
   })
+  const placedBounds = offsetBoundsGroupToAvoidOverlaps(
+    promptCommands.map(({ bounds }) => bounds),
+    occupiedBounds,
+    columnGap
+  )
+
+  return promptCommands.map((command, index) => ({
+    ...command,
+    bounds: placedBounds[index],
+  }))
 }
 
 export async function writeAgentPromptToCanvas(
@@ -180,6 +194,7 @@ export async function writeAgentPromptToCanvas(
     task,
     sourceBounds,
     viewportBounds,
+    occupiedBounds = [],
   }: WriteAgentPromptToCanvasInput,
   dependencies: WriteAgentPromptToCanvasDependencies = {}
 ) {
@@ -196,11 +211,15 @@ export async function writeAgentPromptToCanvas(
     : isImageTo3d
       ? imageTo3dPromptContent(task.compiledPrompt)
       : promptContent(task.compiledPrompt)
+  const otherOccupiedBounds = occupiedBounds.filter(
+    (bounds) => bounds.taskId !== task.id
+  )
   const commands = isStoryboard
     ? storyboardPromptCommands(
         task.compiledPrompt,
         sourceBounds,
-        viewportBounds
+        viewportBounds,
+        otherOccupiedBounds
       )
     : [
         {
@@ -208,7 +227,11 @@ export async function writeAgentPromptToCanvas(
           nodeRef: "professional-prompt",
           title: isImageTo3d ? "图片转 3D 规格" : "专业提示词",
           content,
-          bounds: promptBounds(content, sourceBounds, viewportBounds),
+          bounds: offsetBoundsGroupToAvoidOverlaps(
+            [promptBounds(content, sourceBounds, viewportBounds)],
+            otherOccupiedBounds,
+            64
+          )[0],
         },
       ]
   const batch = agentCanvasCommandBatchSchema.parse({

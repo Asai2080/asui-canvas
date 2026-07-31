@@ -5,6 +5,7 @@ import {
   type AgentCanvasCommand,
   type AgentCanvasCommandBatch,
   type CanvasCommandBounds,
+  type CanvasOccupiedBounds,
 } from "./schema"
 
 type ViewportBounds = CanvasCommandBounds
@@ -18,6 +19,7 @@ type LayoutAgentArtifactsInput = {
   artifacts: AgentArtifact[]
   sourceBounds?: CanvasCommandBounds
   viewportBounds: ViewportBounds
+  occupiedBounds?: CanvasOccupiedBounds[]
   gap?: number
   videoSize?: {
     width: number
@@ -29,6 +31,7 @@ type BuildCommandBatchInput = {
   task: AgentTask
   sourceBounds?: CanvasCommandBounds
   viewportBounds: ViewportBounds
+  occupiedBounds?: CanvasOccupiedBounds[]
   gap?: number
 }
 
@@ -78,10 +81,62 @@ function chunk<T>(items: T[], size: number) {
   return rows
 }
 
+function boundsOverlapWithGap(
+  left: CanvasCommandBounds,
+  right: CanvasCommandBounds,
+  gap: number
+) {
+  return (
+    left.x < right.x + right.w + gap &&
+    left.x + left.w + gap > right.x &&
+    left.y < right.y + right.h + gap &&
+    left.y + left.h + gap > right.y
+  )
+}
+
+function enclosingBounds(bounds: CanvasCommandBounds[]) {
+  const left = Math.min(...bounds.map((item) => item.x))
+  const top = Math.min(...bounds.map((item) => item.y))
+  const right = Math.max(...bounds.map((item) => item.x + item.w))
+  const bottom = Math.max(...bounds.map((item) => item.y + item.h))
+  return {
+    x: left,
+    y: top,
+    w: right - left,
+    h: bottom - top,
+  }
+}
+
+export function offsetBoundsGroupToAvoidOverlaps(
+  bounds: CanvasCommandBounds[],
+  occupiedBounds: CanvasCommandBounds[] = [],
+  gap = DEFAULT_GAP
+) {
+  if (bounds.length === 0 || occupiedBounds.length === 0) return bounds
+
+  let placed = bounds.map((item) => ({ ...item }))
+  for (let attempt = 0; attempt <= occupiedBounds.length; attempt += 1) {
+    const groupBounds = enclosingBounds(placed)
+    const collisions = occupiedBounds.filter((occupied) =>
+      boundsOverlapWithGap(groupBounds, occupied, gap)
+    )
+    if (collisions.length === 0) return placed
+
+    const nextLeft = Math.max(
+      ...collisions.map((item) => item.x + item.w + gap)
+    )
+    const offsetX = Math.max(gap, nextLeft - groupBounds.x)
+    placed = placed.map((item) => ({ ...item, x: item.x + offsetX }))
+  }
+
+  return placed
+}
+
 export function layoutAgentArtifacts({
   artifacts,
   sourceBounds,
   viewportBounds,
+  occupiedBounds = [],
   gap = DEFAULT_GAP,
   videoSize = DEFAULT_VIDEO_SIZE,
 }: LayoutAgentArtifactsInput): ArtifactLayout[] {
@@ -93,6 +148,21 @@ export function layoutAgentArtifacts({
     size: artifactSize(artifact, sourceBounds, videoSize),
   }))
   const rows = chunk(sizedArtifacts, columns)
+  const columnWidths = Array.from({ length: columns }, (_, columnIndex) =>
+    Math.max(
+      ...sizedArtifacts
+        .filter((_, index) => index % columns === columnIndex)
+        .map(({ size }) => size.width)
+    )
+  )
+  const columnOffsets = columnWidths.map((_, columnIndex) =>
+    columnWidths
+      .slice(0, columnIndex)
+      .reduce((total, width) => total + width + gap, 0)
+  )
+  const gridWidth =
+    columnWidths.reduce((total, width) => total + width, 0) +
+    gap * Math.max(0, columns - 1)
   const rowHeights = rows.map((row) =>
     Math.max(...row.map(({ size }) => size.height))
   )
@@ -106,32 +176,36 @@ export function layoutAgentArtifacts({
     ? sourceBounds.x + sourceBounds.w + gap
     : undefined
 
+  const gridX =
+    sourceRight ??
+    viewportBounds.x + Math.max(0, (viewportBounds.w - gridWidth) / 2)
   let rowY = startY
-  return rows.flatMap((row, rowIndex) => {
-    const rowWidth =
-      row.reduce((total, { size }) => total + size.width, 0) +
-      gap * Math.max(0, row.length - 1)
-    let itemX =
-      sourceRight ??
-      viewportBounds.x + Math.max(0, (viewportBounds.w - rowWidth) / 2)
-
-    const results = row.map(({ artifact, size }) => {
-      const result = {
+  const layouts = rows.flatMap((row, rowIndex) => {
+    const results = row.map(({ artifact, size }, columnIndex) => {
+      return {
         artifact,
         bounds: {
-          x: itemX,
+          x: gridX + columnOffsets[columnIndex],
           y: rowY,
           w: size.width,
           h: size.height,
         },
       }
-      itemX += size.width + gap
-      return result
     })
 
     rowY += rowHeights[rowIndex] + gap
     return results
   })
+  const placedBounds = offsetBoundsGroupToAvoidOverlaps(
+    layouts.map(({ bounds }) => bounds),
+    occupiedBounds,
+    gap
+  )
+
+  return layouts.map((layout, index) => ({
+    ...layout,
+    bounds: placedBounds[index],
+  }))
 }
 
 function nodeRefFor(artifact: AgentArtifact) {
@@ -150,14 +224,15 @@ function threePreviewBounds(
   layouts: ArtifactLayout[],
   sourceBounds: CanvasCommandBounds | undefined,
   viewportBounds: ViewportBounds,
-  gap: number
+  gap: number,
+  occupiedBounds: CanvasOccupiedBounds[]
 ) {
   const bottom = layouts.reduce(
     (value, layout) =>
       Math.max(value, layout.bounds.y + layout.bounds.h),
     sourceBounds?.y ?? viewportBounds.y
   )
-  return {
+  const initialBounds = {
     x: sourceBounds
       ? sourceBounds.x + sourceBounds.w + gap
       : viewportBounds.x +
@@ -166,12 +241,21 @@ function threePreviewBounds(
     w: DEFAULT_3D_PREVIEW_SIZE.width,
     h: DEFAULT_3D_PREVIEW_SIZE.height,
   }
+  return offsetBoundsGroupToAvoidOverlaps(
+    [initialBounds],
+    [
+      ...occupiedBounds,
+      ...layouts.map(({ bounds }) => bounds),
+    ],
+    gap
+  )[0]
 }
 
 export function buildAgentCanvasCommandBatch({
   task,
   sourceBounds,
   viewportBounds,
+  occupiedBounds = [],
   gap,
 }: BuildCommandBatchInput): AgentCanvasCommandBatch {
   const artifacts = flattenAgentTaskArtifacts(task)
@@ -179,6 +263,7 @@ export function buildAgentCanvasCommandBatch({
     artifacts,
     sourceBounds,
     viewportBounds,
+    occupiedBounds,
     gap,
   })
   const commands: AgentCanvasCommand[] = []
@@ -229,7 +314,8 @@ export function buildAgentCanvasCommandBatch({
         layouts,
         sourceBounds,
         viewportBounds,
-        resolvedGap
+        resolvedGap,
+        occupiedBounds
       ),
     })
     if (task.selectedCanvasId) {

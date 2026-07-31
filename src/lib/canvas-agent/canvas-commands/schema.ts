@@ -126,6 +126,9 @@ export const agentCanvasCommandAcknowledgementSchema = z
   .strict()
 
 export type CanvasCommandBounds = z.infer<typeof canvasCommandBoundsSchema>
+export type CanvasOccupiedBounds = CanvasCommandBounds & {
+  taskId?: string
+}
 export type AgentCanvasCommand = z.infer<typeof agentCanvasCommandSchema>
 export type AgentCanvasCommandBatch = z.infer<
   typeof agentCanvasCommandBatchSchema

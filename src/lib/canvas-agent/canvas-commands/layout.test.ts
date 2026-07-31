@@ -116,7 +116,7 @@ describe("layoutAgentArtifacts", () => {
 
     expect(results.map((result) => result.bounds)).toEqual([
       { x: 680, y: 80, w: 300, h: 500 },
-      { x: 1060, y: 80, w: 640, h: 360 },
+      { x: 1160, y: 80, w: 640, h: 360 },
       { x: 680, y: 660, w: 400, h: 400 },
     ])
   })
@@ -139,6 +139,53 @@ describe("layoutAgentArtifacts", () => {
         bounds: { x: 660, y: 350, w: 320, h: 180 },
       },
     ])
+  })
+
+  it("moves the whole aligned grid past occupied canvases", () => {
+    const results = layoutAgentArtifacts({
+      artifacts: [
+        image("portrait", 300, 500),
+        image("landscape", 640, 360),
+        image("square", 400, 400),
+        image("small", 240, 240),
+      ],
+      sourceBounds: { x: 100, y: 80, w: 500, h: 500 },
+      viewportBounds: { x: 0, y: 0, w: 1600, h: 900 },
+      occupiedBounds: [
+        { x: 100, y: 80, w: 500, h: 500 },
+        { x: 650, y: 40, w: 700, h: 1100 },
+      ],
+      gap: 80,
+    })
+
+    expect(results.map(({ bounds }) => bounds)).toEqual([
+      { x: 1430, y: 80, w: 300, h: 500 },
+      { x: 1910, y: 80, w: 640, h: 360 },
+      { x: 1430, y: 660, w: 400, h: 400 },
+      { x: 1910, y: 660, w: 240, h: 240 },
+    ])
+    expect(results[0]?.bounds.x).toBe(results[2]?.bounds.x)
+    expect(results[1]?.bounds.x).toBe(results[3]?.bounds.x)
+  })
+
+  it("reserves the complete grid rectangle instead of filling its visual gaps", () => {
+    const results = layoutAgentArtifacts({
+      artifacts: [
+        image("portrait", 300, 500),
+        image("landscape", 640, 360),
+        image("square", 400, 400),
+        image("small", 240, 240),
+      ],
+      sourceBounds: { x: 100, y: 80, w: 500, h: 500 },
+      viewportBounds: { x: 0, y: 0, w: 1600, h: 900 },
+      occupiedBounds: [{ x: 1300, y: 540, w: 100, h: 10 }],
+      gap: 80,
+    })
+
+    expect(results[0]?.bounds.x).toBe(1480)
+    expect(results[1]?.bounds.x).toBe(1960)
+    expect(results[2]?.bounds.x).toBe(1480)
+    expect(results[3]?.bounds.x).toBe(1960)
   })
 })
 

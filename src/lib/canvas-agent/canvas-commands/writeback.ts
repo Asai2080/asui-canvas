@@ -1,5 +1,8 @@
 import type { AgentTask } from "../task-schema"
-import type { CanvasCommandBounds } from "./schema"
+import type {
+  CanvasCommandBounds,
+  CanvasOccupiedBounds,
+} from "./schema"
 import type { CanvasCommandBridge } from "./bridge"
 import { canvasCommandBridge } from "./bridge"
 import { buildAgentCanvasCommandBatch } from "./layout"
@@ -8,6 +11,7 @@ type WriteAgentTaskToCanvasInput = {
   task: AgentTask
   sourceBounds?: CanvasCommandBounds
   viewportBounds: CanvasCommandBounds
+  occupiedBounds?: CanvasOccupiedBounds[]
 }
 
 type WriteAgentTaskToCanvasDependencies = {
@@ -16,7 +20,12 @@ type WriteAgentTaskToCanvasDependencies = {
 }
 
 export async function writeAgentTaskToCanvas(
-  { task, sourceBounds, viewportBounds }: WriteAgentTaskToCanvasInput,
+  {
+    task,
+    sourceBounds,
+    viewportBounds,
+    occupiedBounds,
+  }: WriteAgentTaskToCanvasInput,
   dependencies: WriteAgentTaskToCanvasDependencies = {}
 ) {
   if (task.status !== "writing-canvas") {
@@ -29,6 +38,7 @@ export async function writeAgentTaskToCanvas(
     task,
     sourceBounds,
     viewportBounds,
+    occupiedBounds,
   })
   const acknowledgement = await (
     dependencies.publish ?? canvasCommandBridge.publish

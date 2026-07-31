@@ -2008,6 +2008,25 @@ export function AiCanvas() {
     const selections = getAgentSelections(editor)
     const snapshot = exportAgentCanvasContextSnapshot(editor, { selections })
     const viewportBounds = toBounds(editor.getViewportPageBounds())
+    const occupiedBounds = editor.getCurrentPageShapes().flatMap((shape) => {
+      const parentId = String(shape.parentId)
+      if (parentId.startsWith("shape:")) return []
+      if (
+        shape.type !== "frame" &&
+        shape.type !== "image" &&
+        shape.type !== "video"
+      ) {
+        return []
+      }
+      const pageBounds = editor.getShapePageBounds(shape.id)
+      if (!pageBounds) return []
+      return [
+        {
+          ...toBounds(pageBounds),
+          taskId: getStringMetaValue(shapeMeta(shape), "agentTaskId"),
+        },
+      ]
+    })
     const selectedNodeIds = snapshot.selectedNodeIds ?? []
     const selectionByNodeId = new Map<string, CanvasSelection>()
     for (const selection of selections) {
@@ -2048,6 +2067,7 @@ export function AiCanvas() {
       snapshot,
       sourceBounds: snapshot.sourceNode?.bounds,
       viewportBounds,
+      occupiedBounds,
       selectionPreviews,
     }
   }, [])

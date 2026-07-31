@@ -5,7 +5,10 @@ import type { AppendMessage } from "@assistant-ui/react"
 
 import { writeAgentPromptToCanvas } from "@/lib/canvas-agent/canvas-commands/prompt-writeback"
 import { writeAgentTaskToCanvas } from "@/lib/canvas-agent/canvas-commands/writeback"
-import type { CanvasCommandBounds } from "@/lib/canvas-agent/canvas-commands/schema"
+import type {
+  CanvasCommandBounds,
+  CanvasOccupiedBounds,
+} from "@/lib/canvas-agent/canvas-commands/schema"
 import type { CanvasContextSnapshot } from "@/lib/canvas-agent/context/schema"
 import type {
   AgentExecutionMode,
@@ -22,6 +25,7 @@ export type AgentCanvasContext = {
   snapshot: CanvasContextSnapshot
   sourceBounds?: CanvasCommandBounds
   viewportBounds: CanvasCommandBounds
+  occupiedBounds: CanvasOccupiedBounds[]
   selectionPreviews: AgentCanvasSelectionPreview[]
 }
 
@@ -78,7 +82,10 @@ export function useAgentTasks({
   const boundsByTaskRef = useRef(
     new Map<
       string,
-      Pick<AgentCanvasContext, "sourceBounds" | "viewportBounds">
+      Pick<
+        AgentCanvasContext,
+        "sourceBounds" | "viewportBounds" | "occupiedBounds"
+      >
     >()
   )
   const writebackRevisionRef = useRef("")
@@ -146,6 +153,8 @@ export function useAgentTasks({
           task: promptTask,
           sourceBounds: bounds?.sourceBounds ?? fallback.sourceBounds,
           viewportBounds: bounds?.viewportBounds ?? fallback.viewportBounds,
+          occupiedBounds:
+            bounds?.occupiedBounds ?? fallback.occupiedBounds,
         })
       } catch (reason) {
         promptWritebackTaskIdsRef.current.delete(promptTask.id)
@@ -182,6 +191,7 @@ export function useAgentTasks({
             task: foregroundTask,
             sourceBounds: bounds?.sourceBounds ?? fallback.sourceBounds,
             viewportBounds: bounds?.viewportBounds ?? fallback.viewportBounds,
+            occupiedBounds: fallback.occupiedBounds,
           })
           if (!cancelled) upsertTask(next)
           return
@@ -270,6 +280,7 @@ export function useAgentTasks({
       boundsByTaskRef.current.set(created.id, {
         sourceBounds: context.sourceBounds,
         viewportBounds: context.viewportBounds,
+        occupiedBounds: context.occupiedBounds,
       })
       const textModel = selectedTextModel?.trim()
       if (textModel) textModelByTaskRef.current.set(created.id, textModel)
