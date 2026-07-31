@@ -109,6 +109,19 @@ export function Canvas3dPreview({
             alt={VIEW_LABELS[index] ?? `参考视角 ${index + 1}`}
             data-active={index === activeIndex}
             draggable={false}
+            style={{
+              position: "absolute",
+              zIndex: 1,
+              width: "84%",
+              height: "84%",
+              objectFit: "contain",
+              opacity: index === activeIndex ? 1 : 0,
+              pointerEvents: index === activeIndex ? "auto" : "none",
+              transform:
+                index === activeIndex
+                  ? "translateX(0) scale(1)"
+                  : "translateX(18px) scale(0.985)",
+            }}
             onLoad={() => {
               setLoadedSourceIds((current) => {
                 if (current.has(source.shapeId)) return current
