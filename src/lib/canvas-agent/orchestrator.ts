@@ -143,6 +143,22 @@ function hasTextModelCredentials(credentials?: TextModelCredentials) {
   )
 }
 
+function hasImageGenerationCredentials(
+  credentials?: ImageGenerationCredentials
+) {
+  return Boolean(credentials?.baseUrl?.trim() && credentials.apiKey?.trim())
+}
+
+function hasVideoGenerationCredentials(
+  credentials?: VideoGenerationCredentials
+) {
+  return Boolean(
+    credentials?.videoBaseUrl?.trim() &&
+      credentials.videoApiKey?.trim() &&
+      credentials.videoModel?.trim()
+  )
+}
+
 function creativeContextForTask(context?: CanvasContextSnapshot) {
   if (!context) return context
   const source = context.sourceNode
@@ -171,6 +187,16 @@ async function understandTask(
     context: creativeContext,
     skill,
     conversationHistory: dependencies.conversationHistory,
+    generationCapabilities: {
+      image: Boolean(
+        dependencies.imageAdapter ||
+          hasImageGenerationCredentials(dependencies.imageCredentials)
+      ),
+      video: Boolean(
+        dependencies.videoAdapter ||
+          hasVideoGenerationCredentials(dependencies.videoCredentials)
+      ),
+    },
   })
   if (intake.clarification) return intake.clarification
   const input = {
@@ -193,7 +219,7 @@ async function understandTask(
   try {
     const interpreted = await (
       dependencies.textAdapter ?? createTextModelAdapter()
-    ).interpret(input, dependencies.textCredentials ?? {})
+    ).interpret(resolvedInput, dependencies.textCredentials ?? {})
     const creativeIntent =
       interpreted.intent === "image" || interpreted.intent === "video"
         ? interpreted.intent

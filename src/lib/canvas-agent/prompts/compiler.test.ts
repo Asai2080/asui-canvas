@@ -380,6 +380,64 @@ describe("compileGenerationPrompt", () => {
     )
   })
 
+  it("maps selected cover references to explicit visual roles", () => {
+    const context: CanvasContextSnapshot = {
+      id: "context-cover-assets",
+      createdAt,
+      scope: "selection",
+      selectedNodeId: "cover-person",
+      sourceNode: {
+        id: "cover-person",
+        kind: "image",
+        bounds: { x: 0, y: 0, w: 800, h: 1000 },
+        referenceIds: ["cover-product"],
+        media: {
+          referenceType: "url",
+          mediaType: "image",
+          src: "https://example.com/person.png",
+          width: 800,
+          height: 1000,
+        },
+      },
+      annotations: [],
+      connectedNodes: [],
+      references: [{
+        id: "cover-product",
+        kind: "image",
+        bounds: { x: 900, y: 0, w: 800, h: 1000 },
+        referenceIds: [],
+        media: {
+          referenceType: "url",
+          mediaType: "image",
+          src: "https://example.com/product.png",
+          width: 800,
+          height: 1000,
+        },
+      }],
+    }
+    const skill: SkillSnapshot = {
+      id: "skill-snapshot-cover-assets",
+      skillId: "builtin-cover-design",
+      name: "封面 Skill",
+      description: "公众号和小红书封面设计",
+      contentHash: "1".repeat(64),
+      instructions: "先确认素材角色。",
+      risks: [],
+      createdAt,
+    }
+
+    const compiled = compileGenerationPrompt({
+      taskId: "task-cover-assets",
+      userInstruction: "为新品发布做封面，主标题：轻装上新",
+      context,
+      skill,
+    })
+
+    expect(compiled.outputs[0].prompt).toContain("作为图 1")
+    expect(compiled.outputs[0].prompt).toContain("其余 1 张选中图片")
+    expect(compiled.outputs[0].prompt).toContain("不得取代图 1 的主体身份")
+  })
+
   it("compiles image-to-3D into four independent reference views", () => {
     const context: CanvasContextSnapshot = {
       id: "context-product-3d",
@@ -526,6 +584,9 @@ describe("compileGenerationPrompt", () => {
     expect(compiled.outputs[1].prompt).toContain("缓慢 dolly-in")
     expect(compiled.negativeConstraints).toContain(
       "当前阶段只交付场景图与分段视频，不宣称已经完成视频合并或滚动网页预览"
+    )
+    expect(compiled.sharedConstraints).toContain(
+      "本次执行共调用 3 次图片生成和 3 次视频生成；确认即代表同意消耗对应模型额度"
     )
 
     const locked = compileGenerationPrompt({

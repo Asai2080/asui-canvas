@@ -2750,7 +2750,14 @@ export function AiCanvas() {
 
           if (command.type === "connect-nodes") {
             const target = createdNodes.get(command.targetNodeRef)
-            const source = editor.getShape(command.sourceNodeId as TLShapeId)
+            const createdSource = command.sourceNodeRef
+              ? createdNodes.get(command.sourceNodeRef)
+              : undefined
+            const sourceId =
+              createdSource?.connectionId ?? command.sourceNodeId
+            const source = sourceId
+              ? editor.getShape(sourceId as TLShapeId)
+              : null
             const connectionTarget = target
               ? editor.getShape(target.connectionId)
               : null

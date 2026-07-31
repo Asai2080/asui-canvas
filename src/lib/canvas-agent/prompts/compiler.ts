@@ -714,7 +714,7 @@ function compileImageTo3dPrompt({
   }
 
   const referenceRule =
-    "把当前选中的图片画布及其引用图片作为本次任务唯一的视觉身份依据；不得继承先前分镜、封面或其他 Skill 的提示词和输出规则。"
+    "只把当前选中的图片画布作为本次任务唯一的视觉身份依据；不读取其他选中图片作为辅助素材，也不得继承先前分镜、封面或其他 Skill 的提示词和输出规则。"
   const reconstructionRules = [
     referenceRule,
     "先拆分主体的主次体块、比例、轮廓、连接、开口、对称轴、可动结构和地面接触，再处理材质与表面细节。",
@@ -1055,6 +1055,7 @@ function compileWorldPrompt({
     sharedConstraints: [
       `${sceneCount} 张独立场景图`,
       `${sceneCount} 段 ${durationSeconds} 秒 ${resolution} 运镜视频`,
+      `本次执行共调用 ${sceneCount} 次图片生成和 ${sceneCount} 次视频生成；确认即代表同意消耗对应模型额度`,
       `场景图尺寸 ${width} × ${height}`,
       `画幅比例 ${requestedRatio[0]}:${requestedRatio[1]}`,
       ...continuityRules,
@@ -1137,11 +1138,23 @@ function compileCoverPrompt({
       : "社交媒体内容封面"
   const composition = coverComposition(creativeGoal)
   const hasReference = context?.sourceNode?.media?.mediaType === "image"
+  const auxiliaryReferenceCount =
+    context?.references.filter(
+      (reference) =>
+        reference.media?.mediaType === "image" &&
+        reference.media.referenceType === "url"
+    ).length ?? 0
   const titleRule = title
     ? `主标题原文：“${title}”。必须逐字保留，不改写、不增删、不拆散为无意义字符。`
     : "本轮没有确认主标题，不在图片中生成任何文字；只保留清楚、可后期排版的标题安全区。"
   const referenceRule = hasReference
-    ? "把当前选中的图片画布作为图 1 和核心视觉身份依据，保持人物、产品、品牌、界面或物体的外观与结构一致；不得虚构看不清的品牌文字。"
+    ? [
+        "把当前选中的图片画布作为图 1 和核心视觉身份依据，保持人物、产品、品牌、界面或物体的外观与结构一致。",
+        auxiliaryReferenceCount > 0
+          ? `其余 ${auxiliaryReferenceCount} 张选中图片按画布选择顺序作为图 2 起的辅助素材，只用于产品、UI、品牌或环境信息；不得取代图 1 的主体身份。`
+          : "本次没有额外辅助图片，不得从旧任务或历史 Skill 中补入人物、产品、UI 或品牌素材。",
+        "不得虚构看不清的品牌文字，也不得把不同参考图中的人物身份或产品结构混合。",
+      ].join(" ")
     : "没有引用图片时，根据封面主题创建一个单一、明确、可立即识别的核心视觉；不虚构真实人物身份、品牌 Logo 或产品信息。"
   const prompt = [
     "【专业封面设计任务】",

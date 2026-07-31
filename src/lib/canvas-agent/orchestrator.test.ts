@@ -386,6 +386,48 @@ describe("runAgentTaskTick", () => {
     )
   })
 
+  it("sends merged same-Skill answers to the text model", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: "主题是独立设计师的春季新品",
+        executionMode: "confirm",
+        skillId: "builtin-cover-design",
+      },
+      { id: "task-cover-text-model-history", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const interpret = vi.fn(async (input: TextModelInterpretationInput) => ({
+      message: "封面信息已齐全。",
+      summary: "春季新品封面",
+      normalizedInstruction: input.userInstruction,
+      intent: "image" as const,
+      target: { mediaType: "image" as const },
+    }))
+    const deps = {
+      ...dependencies(root),
+      textAdapter: { interpret },
+      conversationHistory: [
+        { role: "user" as const, content: "用封面 Skill 帮我生成" },
+        { role: "assistant" as const, content: "请告诉我主题和主标题。" },
+        { role: "user" as const, content: "主标题：春日新章" },
+      ],
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
+
+    expect(interpret).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userInstruction: expect.stringContaining("主标题：春日新章"),
+      }),
+      {}
+    )
+    expect(interpret.mock.calls[0]?.[0].userInstruction).toContain(
+      "独立设计师的春季新品"
+    )
+  })
+
   it("asks for an image before starting the built-in four-view Skill", async () => {
     const root = await createRoot()
     const task = createAgentTask(

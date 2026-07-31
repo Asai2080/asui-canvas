@@ -55,6 +55,13 @@ function sourceStepIdForVideo(
   return sourceIndex >= 0 ? `generate-${sourceIndex + 1}` : undefined
 }
 
+function imageReferencePolicy(
+  output: CompiledPrompt["outputs"][number]
+) {
+  if (output.variantKey?.startsWith("three-")) return "source-only" as const
+  return "all" as const
+}
+
 export function createAgentPlan({
   taskId,
   compiledPrompt,
@@ -174,6 +181,7 @@ export function createAgentPlan({
         width: output.width ?? 1024,
         height: output.height ?? 1024,
         count: 1,
+        referencePolicy: imageReferencePolicy(output),
       })
     })
 

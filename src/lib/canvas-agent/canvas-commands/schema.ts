@@ -79,10 +79,16 @@ const create3dModelNodeCommandSchema = z
 const connectNodesCommandSchema = z
   .object({
     type: z.literal("connect-nodes"),
-    sourceNodeId: z.string().trim().min(1),
+    sourceNodeId: z.string().trim().min(1).optional(),
+    sourceNodeRef: nodeRefSchema.optional(),
     targetNodeRef: nodeRefSchema,
   })
   .strict()
+  .refine(
+    (command) =>
+      Boolean(command.sourceNodeId) !== Boolean(command.sourceNodeRef),
+    { message: "连接命令必须且只能指定一个来源节点" }
+  )
 
 const setRecommendedResultCommandSchema = z
   .object({

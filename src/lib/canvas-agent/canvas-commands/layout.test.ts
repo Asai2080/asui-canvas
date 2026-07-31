@@ -367,6 +367,82 @@ describe("buildAgentCanvasCommandBatch", () => {
     })
   })
 
+  it("links each world video to its generated scene image on the canvas", () => {
+    const source = task({
+      "generate-1": [image("world-image-1", 1024, 576)],
+      "generate-2": [video("world-video-1")],
+      "generate-3": [image("world-image-2", 1024, 576)],
+      "generate-4": [video("world-video-2")],
+    })
+    source.executionPlan = {
+      version: 1,
+      taskId: source.id,
+      summary: "世界 Skill",
+      maxParallelism: 2,
+      maxGeneratedNodes: 4,
+      steps: [1, 2, 3, 4].map((index) => ({
+        id: `generate-${index}`,
+        title: `生成 ${index}`,
+        tool: index % 2 === 0 ? "generate_video" as const : "generate_image" as const,
+        dependsOn: [],
+        status: "completed" as const,
+        attempts: 1,
+        input: {},
+        outputRefs: [],
+      })),
+    }
+    source.compiledPrompt = {
+      originalGoal: "创建连续世界",
+      summary: "世界 Skill：2 个连续场景",
+      sharedConstraints: [],
+      outputs: [1, 2].flatMap((scene) => {
+        const number = String(scene).padStart(2, "0")
+        return [
+          {
+            id: `world-image-output-${scene}`,
+            mediaType: "image" as const,
+            operation: "create" as const,
+            prompt: `场景 ${scene}`,
+            variantKey: `world-scene-${number}-image`,
+            width: 1024,
+            height: 576,
+          },
+          {
+            id: `world-video-output-${scene}`,
+            mediaType: "video" as const,
+            operation: "animate" as const,
+            prompt: `运镜 ${scene}`,
+            variantKey: `world-scene-${number}-video`,
+            durationSeconds: 5,
+            resolution: "720p",
+          },
+        ]
+      }),
+    }
+
+    const batch = buildAgentCanvasCommandBatch({
+      task: source,
+      sourceBounds: { x: 0, y: 0, w: 480, h: 270 },
+      viewportBounds: { x: 0, y: 0, w: 1440, h: 900 },
+    })
+
+    expect(batch.commands).toContainEqual({
+      type: "connect-nodes",
+      sourceNodeRef: "result-world-image-1",
+      targetNodeRef: "result-world-video-1",
+    })
+    expect(batch.commands).toContainEqual({
+      type: "connect-nodes",
+      sourceNodeRef: "result-world-image-2",
+      targetNodeRef: "result-world-video-2",
+    })
+    expect(batch.commands).not.toContainEqual({
+      type: "connect-nodes",
+      sourceNodeId: "shape-source",
+      targetNodeRef: "result-world-video-1",
+    })
+  })
+
   it("writes a real model artifact with a dedicated 3D command", () => {
     const source = task({ "generate-model": [model3d("model-1")] })
     const batch = buildAgentCanvasCommandBatch({

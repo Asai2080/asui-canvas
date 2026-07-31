@@ -119,4 +119,27 @@ describe("resolveBuiltinSkillIntake", () => {
 
     expect(intake.clarification).toBeUndefined()
   })
+
+  it("stops before confirmation when a built-in Skill lacks its generator", () => {
+    const cover = resolveBuiltinSkillIntake({
+      userInstruction: "做一张独立设计师春季新品封面，主标题：春日新章",
+      skill: skill("封面 Skill"),
+      generationCapabilities: { image: false, video: false },
+    })
+    expect(cover.clarification).toMatchObject({
+      summary: "图片生成能力待配置",
+    })
+    expect(cover.clarification?.message).toContain("Base URL")
+
+    const world = resolveBuiltinSkillIntake({
+      userInstruction: "做一个春日园林世界，采用平视漫游运镜",
+      skill: skill("世界 Skill"),
+      generationCapabilities: { image: true, video: false },
+    })
+    expect(world.clarification).toMatchObject({
+      summary: "世界生成能力待配置",
+    })
+    expect(world.clarification?.message).toContain("视频模型")
+    expect(world.clarification?.message).toContain("不会先生成一半")
+  })
 })

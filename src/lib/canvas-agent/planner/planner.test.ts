@@ -218,4 +218,20 @@ describe("createAgentPlan", () => {
       input: { sourceStepId: "generate-5" },
     })
   })
+
+  it("isolates four-view generation from unrelated selected references", () => {
+    const compiled = imagePrompt(1)
+    compiled.outputs[0].variantKey = "three-front-three-quarter"
+    compiled.outputs[0].sourceContextSnapshotId = "context-source"
+
+    const plan = createAgentPlan({
+      taskId: "task-four-view-reference-policy",
+      compiledPrompt: compiled,
+      contextSnapshotId: "context-source",
+    })
+
+    expect(plan.steps.find((step) => step.id === "generate-1")?.input).toMatchObject({
+      referencePolicy: "source-only",
+    })
+  })
 })

@@ -13,6 +13,10 @@ type ResolveBuiltinSkillIntakeInput = {
   skill?: SkillSnapshot
   context?: CanvasContextSnapshot
   conversationHistory?: TextModelConversationMessage[]
+  generationCapabilities?: {
+    image: boolean
+    video: boolean
+  }
 }
 
 export type BuiltinSkillIntake = {
@@ -153,32 +157,85 @@ function worldClarification(instruction: string) {
   )
 }
 
+function capabilityClarification(
+  skillName: string | undefined,
+  instruction: string,
+  capabilities?: ResolveBuiltinSkillIntakeInput["generationCapabilities"]
+) {
+  if (!capabilities) return undefined
+  if (isWorldSkillName(skillName)) {
+    const missing = [
+      !capabilities.image ? "图片模型" : "",
+      !capabilities.video ? "视频模型" : "",
+    ].filter(Boolean)
+    if (missing.length === 0) return undefined
+    return clarification(
+      `世界 Skill 需要同时生成场景图和分段视频。请先在设置中完成${missing.join("和")}的 API 配置，再重新发送这次任务；我不会先生成一半后再报错。`,
+      "世界生成能力待配置",
+      instruction
+    )
+  }
+  if (
+    (isCoverSkillName(skillName) || isImageTo3dSkillName(skillName)) &&
+    !capabilities.image
+  ) {
+    return clarification(
+      "这个 Skill 需要调用图片模型。请先在设置中完成图片模型的 Base URL、API Key 和模型配置，再重新发送这次任务。",
+      "图片生成能力待配置",
+      instruction
+    )
+  }
+  return undefined
+}
+
 export function resolveBuiltinSkillIntake({
   userInstruction,
   skill,
   context,
   conversationHistory,
+  generationCapabilities,
 }: ResolveBuiltinSkillIntakeInput): BuiltinSkillIntake {
   const resolvedInstruction = combinedInstruction(
     userInstruction,
     conversationHistory
   )
   if (isCoverSkillName(skill?.name)) {
+    const details = coverClarification(resolvedInstruction)
     return {
       resolvedInstruction,
-      clarification: coverClarification(resolvedInstruction),
+      clarification:
+        details ??
+        capabilityClarification(
+          skill?.name,
+          resolvedInstruction,
+          generationCapabilities
+        ),
     }
   }
   if (isImageTo3dSkillName(skill?.name)) {
+    const details = imageTo3dClarification(resolvedInstruction, context)
     return {
       resolvedInstruction,
-      clarification: imageTo3dClarification(resolvedInstruction, context),
+      clarification:
+        details ??
+        capabilityClarification(
+          skill?.name,
+          resolvedInstruction,
+          generationCapabilities
+        ),
     }
   }
   if (isWorldSkillName(skill?.name)) {
+    const details = worldClarification(resolvedInstruction)
     return {
       resolvedInstruction,
-      clarification: worldClarification(resolvedInstruction),
+      clarification:
+        details ??
+        capabilityClarification(
+          skill?.name,
+          resolvedInstruction,
+          generationCapabilities
+        ),
     }
   }
   return { resolvedInstruction: userInstruction.trim() }

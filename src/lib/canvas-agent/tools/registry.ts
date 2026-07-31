@@ -60,6 +60,7 @@ export const registeredAgentTools = {
       width: z.number().int().positive(),
       height: z.number().int().positive(),
       count: z.literal(1),
+      referencePolicy: z.enum(["all", "source-only", "none"]).optional(),
     })
     .strict(),
   edit_image: z

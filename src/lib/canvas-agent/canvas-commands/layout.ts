@@ -214,6 +214,20 @@ function nodeRefFor(artifact: AgentArtifact) {
   return `result-${artifact.id}`
 }
 
+function variantKeyForArtifact(task: AgentTask, artifact: AgentArtifact) {
+  const stepId = Object.entries(task.artifacts ?? {}).find(([, artifacts]) =>
+    artifacts.some((candidate) => candidate.id === artifact.id)
+  )?.[0]
+  const generationIndex = stepId?.match(/^generate-(\d+)$/)?.[1]
+  if (!generationIndex) return undefined
+  return task.compiledPrompt?.outputs[Number(generationIndex) - 1]?.variantKey
+}
+
+function matchingWorldImageVariant(variantKey?: string) {
+  const scene = variantKey?.match(/^world-scene-(\d{2})-video$/)?.[1]
+  return scene ? `world-scene-${scene}-image` : undefined
+}
+
 export function buildAgentCanvasCommandBatch({
   task,
   sourceBounds,
@@ -231,9 +245,16 @@ export function buildAgentCanvasCommandBatch({
   })
   const commands: AgentCanvasCommand[] = []
   const resultRefs: string[] = []
+  const resultRefByVariant = new Map<string, string>()
+
+  for (const { artifact } of layouts) {
+    const variantKey = variantKeyForArtifact(task, artifact)
+    if (variantKey) resultRefByVariant.set(variantKey, nodeRefFor(artifact))
+  }
 
   for (const { artifact, bounds } of layouts) {
     const nodeRef = nodeRefFor(artifact)
+    const variantKey = variantKeyForArtifact(task, artifact)
     resultRefs.push(nodeRef)
 
     if (artifact.kind === "image") {
@@ -260,7 +281,17 @@ export function buildAgentCanvasCommandBatch({
       })
     }
 
-    if (task.selectedCanvasId) {
+    const worldImageVariant = matchingWorldImageVariant(variantKey)
+    const worldImageRef = worldImageVariant
+      ? resultRefByVariant.get(worldImageVariant)
+      : undefined
+    if (worldImageRef) {
+      commands.push({
+        type: "connect-nodes",
+        sourceNodeRef: worldImageRef,
+        targetNodeRef: nodeRef,
+      })
+    } else if (task.selectedCanvasId) {
       commands.push({
         type: "connect-nodes",
         sourceNodeId: task.selectedCanvasId,

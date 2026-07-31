@@ -339,6 +339,71 @@ describe("executeAgentTask", () => {
     }), {})
   })
 
+  it("uses only the current source image for four-view generation", async () => {
+    const root = await createRoot()
+    await createStoredCanvasContextSnapshot({
+      id: "context-four-view-source-only",
+      createdAt: now,
+      scope: "selection",
+      selectedNodeId: "source-image",
+      sourceNode: {
+        id: "source-image",
+        kind: "image",
+        bounds: { x: 0, y: 0, w: 1024, h: 768 },
+        referenceIds: [],
+        media: {
+          referenceType: "url",
+          mediaType: "image",
+          src: "https://example.test/source.png",
+          width: 1024,
+          height: 768,
+        },
+      },
+      annotations: [],
+      connectedNodes: [],
+      references: [{
+        id: "unrelated-old-storyboard",
+        kind: "image",
+        bounds: { x: 1200, y: 0, w: 1024, h: 768 },
+        referenceIds: [],
+        media: {
+          referenceType: "url",
+          mediaType: "image",
+          src: "https://example.test/old-storyboard.png",
+          width: 1024,
+          height: 768,
+        },
+      }],
+    }, root)
+    const plan = imagePlan("task-four-view-source-only")
+    plan.steps[0].input.contextSnapshotId = "context-four-view-source-only"
+    plan.steps[0].input.referencePolicy = "source-only"
+    const task = executingTask("task-four-view-source-only", plan)
+    await createStoredAgentTask(task, root)
+    const generate = vi.fn(async () => [{
+      kind: "image" as const,
+      versionId: "version-four-view",
+      src: "https://example.test/result.png",
+      prompt: "四视角",
+      width: 1024,
+      height: 1024,
+      createdAt: now,
+    }])
+
+    await executeAgentTask(task.id, {
+      root,
+      now: () => now,
+      createId: () => "artifact-four-view",
+      imageAdapter: { generate },
+      videoAdapter: { create: vi.fn(), poll: vi.fn() },
+    })
+
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({
+      sourceImageSrc: "https://example.test/source.png",
+      referenceImageSrcs: [],
+    }), {})
+  })
+
   it("creates a model3d artifact without calling image or video generation", async () => {
     const root = await createRoot()
     await createStoredCanvasContextSnapshot({

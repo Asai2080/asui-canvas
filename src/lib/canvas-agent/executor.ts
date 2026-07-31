@@ -203,9 +203,14 @@ async function imageInputForStep(
       width: input.width,
       height: input.height,
       count: 1,
-      sourceImageSrc: sourceImageSrc(context),
+      sourceImageSrc:
+        input.referencePolicy === "none" ? undefined : sourceImageSrc(context),
       parentVersionId: context?.snapshot.sourceNode?.versionId,
-      referenceImageSrcs: referenceImageSrcs(context),
+      referenceImageSrcs:
+        input.referencePolicy === "source-only" ||
+        input.referencePolicy === "none"
+          ? []
+          : referenceImageSrcs(context),
     }
   }
 
