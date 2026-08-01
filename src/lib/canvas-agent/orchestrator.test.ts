@@ -557,6 +557,44 @@ describe("runAgentTaskTick", () => {
     )
   })
 
+  it("replaces a long but generic model brief with concrete scene expansion", async () => {
+    const root = await createRoot()
+    const userInstruction =
+      "帮我生成一个皮格斯风格的图片，场景是一个小男孩在草坪上踢足球，旁边有条小狗"
+    const task = createAgentTask(
+      { userInstruction, executionMode: "confirm" },
+      { id: "task-concrete-scene-expansion", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      textAdapter: {
+        interpret: vi.fn(async () => ({
+          message: "我会整理专业提示词。",
+          summary: "男孩、足球与小狗的动画场景",
+          normalizedInstruction: [
+            "【专业创作目标】完整保留用户原始要求，并发展为高完成度视觉成片。",
+            "【主体与动作】主体明确，明确面部朝向、视线落点、手部动作和身体重心，使用自然动作表达情绪。",
+            "【构图与叙事】视觉层级清晰，画面焦点集中，构图完整并可直接交付。",
+            "【质量要求】光影自然，色彩协调，材质真实，细节丰富。",
+          ].join("\n"),
+          intent: "image" as const,
+          target: { mediaType: "image" as const },
+        })),
+      },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const understood = await runAgentTaskTick(task.id, deps)
+    const brief = understood.interpretation?.normalizedInstruction ?? ""
+
+    expect(brief).toContain("【画面内容扩写】")
+    expect(brief).toContain("脚内侧刚触球")
+    expect(brief).toContain("小狗位于人物侧后方")
+    expect(brief).toContain("眼睛追随球路")
+    expect(brief).not.toContain("【专业创作目标】")
+  })
+
   it("advances preparation one recoverable status at a time", async () => {
     const root = await createRoot()
     const task = createAgentTask(

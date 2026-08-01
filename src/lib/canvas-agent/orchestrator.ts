@@ -123,6 +123,54 @@ function localInterpretation(
   }
 }
 
+function isGenericCreativeBrief(
+  sourceInstruction: string,
+  normalizedInstruction: string
+) {
+  const scenarioChecks = [
+    {
+      active: /足球|踢球|射门/i.test(sourceInstruction),
+      markers: [
+        /支撑脚|重心/,
+        /触球|摆腿|球路|射门/,
+        /草叶|草屑|草坪/,
+        /追球|前爪|耳朵|尾巴/,
+        /专注|兴奋|笑意|视线.*球/,
+      ],
+    },
+    {
+      active: /做饭|烹饪|炒菜|厨房|备菜|下厨/i.test(sourceInstruction),
+      markers: [
+        /切配|下锅|装盘|翻炒/,
+        /蒸汽|油光|食材/,
+        /砧板|厨刀|炒锅/,
+        /手部|视线|重心/,
+      ],
+    },
+  ]
+  const lacksScenarioDetail = scenarioChecks.some(
+    ({ active, markers }) =>
+      active && markers.filter((marker) => marker.test(normalizedInstruction)).length < 3
+  )
+  const genericPhrases = [
+    /完整保留用户原始要求/,
+    /主体明确/,
+    /视觉层级清晰/,
+    /高完成度/,
+    /可直接交付/,
+    /明确面部朝向/,
+    /自然动作/,
+  ].filter((phrase) => phrase.test(normalizedInstruction)).length
+  const concreteEvidence = [
+    /刚刚|刚要|即将|短暂|瞬间/,
+    /支撑脚|重心转移|手指|脚内侧|前爪/,
+    /追随|锁定|回望|凝视/,
+    /压弯|扬起|飞溅|飘动|反射/,
+    /侧后方|三角动线|前景.+中景|中景.+远景/,
+  ].filter((marker) => marker.test(normalizedInstruction)).length
+  return lacksScenarioDetail || (genericPhrases >= 3 && concreteEvidence < 2)
+}
+
 function needsProfessionalExpansion(
   sourceInstruction: string,
   normalizedInstruction: string
@@ -131,7 +179,8 @@ function needsProfessionalExpansion(
   const normalized = normalizedInstruction.replace(/\s+/g, "").trim()
   return (
     normalized.length < 180 ||
-    normalized.length < Math.max(180, source.length * 2)
+    normalized.length < Math.max(180, source.length * 2) ||
+    isGenericCreativeBrief(sourceInstruction, normalizedInstruction)
   )
 }
 
@@ -224,6 +273,12 @@ async function understandTask(
       interpreted.intent === "image" || interpreted.intent === "video"
         ? interpreted.intent
         : undefined
+    const modelBriefIsGeneric =
+      creativeIntent &&
+      isGenericCreativeBrief(
+        intake.resolvedInstruction,
+        interpreted.normalizedInstruction
+      )
     const normalizedInstruction =
       creativeIntent &&
       needsProfessionalExpansion(
@@ -231,14 +286,14 @@ async function understandTask(
         interpreted.normalizedInstruction
       )
         ? [
-            interpreted.normalizedInstruction.trim(),
+            ...(modelBriefIsGeneric
+              ? []
+              : [interpreted.normalizedInstruction.trim()]),
             buildProfessionalCreativeBrief(
               intake.resolvedInstruction,
               creativeIntent
             ),
-          ]
-            .filter(Boolean)
-            .join("\n\n")
+          ].join("\n\n")
         : interpreted.normalizedInstruction
 
     return {

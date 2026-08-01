@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest"
 
 import type { CanvasContextSnapshot } from "../context/schema"
 import type { SkillSnapshot } from "../skills/schema"
-import { compileGenerationPrompt } from "./compiler"
+import {
+  buildProfessionalCreativeBrief,
+  compileGenerationPrompt,
+} from "./compiler"
 
 const createdAt = "2026-07-25T02:00:00.000Z"
 
@@ -48,6 +51,28 @@ describe("compileGenerationPrompt", () => {
     expect(compiled.outputs[0].prompt).not.toContain(
       "主体明确，视觉层级清楚，画面焦点集中"
     )
+  })
+
+  it("expands a short scene into concrete subject, action, relationship, and environment details", () => {
+    const sourceInstruction =
+      "帮我生成一个皮格斯风格的图片，场景是一个小男孩在草坪上踢足球，旁边有条小狗"
+    const professionalBrief = buildProfessionalCreativeBrief(sourceInstruction)
+    const compiled = compileGenerationPrompt({
+      taskId: "task-football-scene",
+      userInstruction: professionalBrief,
+      sourceInstruction,
+    })
+    const prompt = compiled.outputs[0].prompt
+
+    expect(professionalBrief).toContain("【画面内容扩写】")
+    expect(prompt).toContain("支撑脚稳稳踩入草地")
+    expect(prompt).toContain("脚内侧刚触球")
+    expect(prompt).toContain("眼睛追随球路")
+    expect(prompt).toContain("小狗位于人物侧后方")
+    expect(prompt).toContain("前爪短暂离地")
+    expect(prompt).toContain("被鞋底压弯的方向")
+    expect(prompt).toContain("电影级 3D 动画长片")
+    expect(prompt).not.toContain("将其发展为可直接交付的高完成度视觉成片")
   })
 
   it("preserves unclassified visual styles as first-class constraints", () => {

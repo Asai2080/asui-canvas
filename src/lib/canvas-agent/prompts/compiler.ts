@@ -48,7 +48,7 @@ const STYLE_PRESERVATION_RULE =
   "严格保留用户目标中出现的全部风格、媒介、年代、流派、地域文化、艺术家式审美和渲染方式；任何未被预设识别的风格词都视为最高优先级视觉约束，不得替换、弱化或混成通用风格。"
 
 function imageCreativeDirection(instruction: string): ImageCreativeDirection {
-  if (/皮克斯|3D\s*动画|三维动画|动画电影|卡通渲染/i.test(instruction)) {
+  if (/皮克斯|皮格斯|pixar|3D\s*动画|三维动画|动画电影|卡通渲染/i.test(instruction)) {
     return {
       subject:
         "以一位原创动画角色作为清晰主体，设计具有鲜明轮廓、可信结构和富有感染力的表情姿态；环境中加入少量能说明时间、地点与角色关系的叙事道具，形成一个一眼可读的故事瞬间。",
@@ -177,6 +177,28 @@ function imageCreativeDirection(instruction: string): ImageCreativeDirection {
 }
 
 function sceneSpecificDirection(instruction: string) {
+  if (/足球|踢球|射门/i.test(instruction)) {
+    const hasChild = /小男孩|男孩|小女孩|女孩|儿童|孩子/i.test(instruction)
+    const hasDog = /小狗|狗狗|犬/i.test(instruction)
+    return {
+      subject: [
+        hasChild
+          ? "以用户指定的孩子为叙事主角：身体微微前倾，支撑脚稳稳踩入草地，踢球腿从后侧自然摆向足球，双臂展开保持平衡；服装和鞋子的设计简洁、适合户外运动，不抢夺面部与动作焦点。"
+          : "以正在踢球的人物为叙事主角：身体微微前倾，支撑脚稳稳踩入草地，踢球腿从后侧自然摆向足球，双臂展开保持平衡，肢体结构与发力方向准确。",
+        hasDog
+          ? "小狗位于人物侧后方并沿足球运动方向追赶：前爪短暂离地、耳朵和尾巴随奔跑产生自然惯性，视线紧盯足球；它与人物共享同一事件，而不是无关地站在旁边。"
+          : "足球与人物脚部保持可信的距离和接触关系，球的运动方向能够从摆腿、身体重心和草地反馈中被清楚读出。",
+      ].join(" "),
+      environment: [
+        "场景设在有真实生活感的开阔草坪：近处草叶具有被鞋底压弯的方向和少量扬起的草屑，中景保留球的运动空间，远处用树木、步道和柔和天空交代公园尺度。",
+        hasDog
+          ? "所有影子方向一致，人物、足球和小狗都真实接触地面。"
+          : "所有影子方向一致，人物与足球都真实接触地面。",
+      ].join(" "),
+      moment:
+        "捕捉脚内侧刚触球、足球开始向前滚动或腾起的决定性瞬间：人物眼睛追随球路，眉眼专注又兴奋，嘴角带自然笑意；小狗正准备改变方向追球，动作、表情、球路和环境反馈共同形成清楚的故事闭环。",
+    }
+  }
   if (/做饭|烹饪|炒菜|厨房|备菜|下厨/i.test(instruction)) {
     return {
       subject:
@@ -233,10 +255,10 @@ export function buildProfessionalCreativeBrief(
   const scene = sceneSpecificDirection(instruction)
   const direction = imageCreativeDirection(instruction)
   return [
-    "【专业创作目标】",
-    `在完整保留用户原始要求“${instruction}”的前提下，将其发展为可直接交付的${intent === "video" ? "导演级动态镜头" : "高完成度视觉成片"}。`,
+    "【用户原始目标】",
+    instruction,
     "",
-    "【主体与动作】",
+    "【画面内容扩写】",
     scene.subject,
     scene.moment,
     "",

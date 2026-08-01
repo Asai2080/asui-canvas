@@ -15,6 +15,15 @@ describe("text model adapter", () => {
         "Do not use generic filler"
       )
       expect(requestBody.messages[0].content).toContain(
+        "first expand WHAT IS VISIBLY HAPPENING"
+      )
+      expect(requestBody.messages[0].content).toContain(
+        "支撑脚压住草叶"
+      )
+      expect(requestBody.messages[0].content).toContain(
+        "not merely a list of quality constraints"
+      )
+      expect(requestBody.messages[0].content).toContain(
         "shot movement, subject motion, timing, continuity, and ending frame"
       )
       expect(requestBody.messages[0].content).toContain(
