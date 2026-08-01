@@ -236,11 +236,21 @@ export function buildAgentCanvasCommandBatch({
   gap,
 }: BuildCommandBatchInput): AgentCanvasCommandBatch {
   const artifacts = flattenAgentTaskArtifacts(task)
+  const taskPromptBounds = occupiedBounds.filter(
+    (bounds) => bounds.taskId === task.id
+  )
+  const placementAnchor =
+    taskPromptBounds.length > 0
+      ? enclosingBounds(taskPromptBounds)
+      : sourceBounds
+  const otherOccupiedBounds = occupiedBounds.filter(
+    (bounds) => bounds.taskId !== task.id
+  )
   const layouts = layoutAgentArtifacts({
     artifacts,
-    sourceBounds,
+    sourceBounds: placementAnchor,
     viewportBounds,
-    occupiedBounds,
+    occupiedBounds: otherOccupiedBounds,
     gap,
   })
   const commands: AgentCanvasCommand[] = []

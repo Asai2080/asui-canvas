@@ -2799,8 +2799,27 @@ export function AiCanvas() {
           if (focusIds.length === 0) {
             throw new Error("找不到需要聚焦的生成结果")
           }
+          const promptIds = editor
+            .getCurrentPageShapes()
+            .filter(
+              (shape): shape is TLFrameShape =>
+                shape.type === "frame" &&
+                isAgentPromptShape(shape) &&
+                getStringMetaValue(shapeMeta(shape), "agentTaskId") ===
+                  batch.taskId
+            )
+            .map((shape) => shape.id)
+          editor.select(...new Set([...promptIds, ...focusIds]))
+          const taskBounds = editor.getSelectionPageBounds()
           editor.select(...focusIds)
-          editor.zoomToSelection({ animation: { duration: 240 } })
+          if (taskBounds) {
+            editor.zoomToBounds(taskBounds, {
+              inset: 64,
+              animation: { duration: 240 },
+            })
+          } else {
+            editor.zoomToSelection({ animation: { duration: 240 } })
+          }
         } catch (error) {
           errors.push({
             commandIndex,

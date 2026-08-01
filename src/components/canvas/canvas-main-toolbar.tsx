@@ -4,7 +4,6 @@ import { createContext, useCallback, useContext, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   AiChat01Icon,
-  ArtboardToolIcon,
   ColorsIcon,
   CursorPointer01Icon,
   HandIcon,
@@ -252,12 +251,6 @@ export function CanvasMainToolbar() {
           label="画笔"
           active={currentToolId === "draw"}
           onClick={() => selectTool("draw")}
-        />
-        <ToolButton
-          icon={ArtboardToolIcon}
-          label="画板"
-          active={currentToolId === "frame"}
-          onClick={() => selectTool("frame")}
         />
         <ToolButton
           icon={ColorsIcon}

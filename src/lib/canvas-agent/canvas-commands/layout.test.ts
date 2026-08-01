@@ -225,6 +225,35 @@ describe("layoutAgentArtifacts", () => {
 })
 
 describe("buildAgentCanvasCommandBatch", () => {
+  it("places generated media directly beside its task prompt canvas", () => {
+    const source = task({
+      "step-a": [image("image-a", 300, 400)],
+    })
+    const batch = buildAgentCanvasCommandBatch({
+      task: source,
+      sourceBounds: { x: 0, y: 0, w: 480, h: 270 },
+      viewportBounds: { x: 0, y: 0, w: 1440, h: 900 },
+      occupiedBounds: [
+        { x: 0, y: 0, w: 480, h: 270 },
+        {
+          x: 560,
+          y: 40,
+          w: 440,
+          h: 760,
+          taskId: source.id,
+        },
+      ],
+    })
+
+    const imageCommand = batch.commands.find(
+      (command) => command.type === "create-image-node"
+    )
+    expect(imageCommand).toMatchObject({
+      type: "create-image-node",
+      bounds: { x: 1064, y: 40, w: 300, h: 400 },
+    })
+  })
+
   it("creates typed nodes, links them to the source, recommends and focuses", () => {
     const source = task({
       "step-a": [image("image-a", 300, 400)],
