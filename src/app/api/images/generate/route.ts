@@ -318,12 +318,17 @@ async function sourceImageToModelUrl(sourceImageSrc?: string) {
   if (sourceImageSrc.startsWith("data:image/")) return sourceImageSrc
   if (/^https?:\/\//.test(sourceImageSrc)) return sourceImageSrc
 
-  if (!sourceImageSrc.startsWith("/canvas-assets/")) return null
+  const publicAssetDirectory = sourceImageSrc.startsWith("/canvas-assets/")
+    ? "canvas-assets"
+    : sourceImageSrc.startsWith("/builtin-skill-assets/")
+      ? "builtin-skill-assets"
+      : null
+  if (!publicAssetDirectory) return null
 
-  const fileName = sourceImageSrc.slice("/canvas-assets/".length)
+  const fileName = sourceImageSrc.slice(`/${publicAssetDirectory}/`.length)
   if (!fileName || fileName.includes("/") || fileName.includes("..")) return null
 
-  const filePath = join(process.cwd(), "public", "canvas-assets", fileName)
+  const filePath = join(process.cwd(), "public", publicAssetDirectory, fileName)
   const buffer = await readFile(filePath)
   return `data:${mimeTypeForPath(fileName)};base64,${buffer.toString("base64")}`
 }
@@ -594,6 +599,10 @@ function bodyForProvider({
   sourceImageSrc?: string | null
   referenceImageSrcs?: string[]
 }) {
+  const requiresTransparentBackground =
+    /真实\s*RGBA\s*透明通道|true\s+alpha|transparent\s+(?:png|background)/i.test(
+      composedPrompt
+    )
   const inputReferences = [sourceImageSrc, ...(referenceImageSrcs ?? [])]
     .filter((src): src is string => Boolean(src))
     .slice(0, 20)
@@ -619,6 +628,9 @@ function bodyForProvider({
     prompt: composedPrompt,
     n: 1,
     size: openAiCompatibleSizeFor(model, width, height),
+    ...(requiresTransparentBackground
+      ? { background: "transparent", output_format: "png" }
+      : {}),
   }
 }
 

@@ -1,11 +1,20 @@
 import type { CanvasContextSnapshot } from "../context/schema"
 import type { SkillSnapshot } from "../skills/schema"
 import {
+  isCanvas3dStickerSkillName,
   isCoverSkillName,
+  isHanddrawnVideoSkillName,
   isImageTo3dSkillName,
+  isIanXiaoheiSkillName,
+  isPortraitSkillName,
+  isSocialCardSkillName,
   isStoryboardSkillName,
   isWorldSkillName,
 } from "../skills/identifiers"
+import {
+  extractCoverMainTitle,
+  extractCoverSmallCopy,
+} from "../skills/cover-copy"
 import {
   compiledPromptSchema,
   type CompiledPrompt,
@@ -48,6 +57,31 @@ const STYLE_PRESERVATION_RULE =
   "严格保留用户目标中出现的全部风格、媒介、年代、流派、地域文化、艺术家式审美和渲染方式；任何未被预设识别的风格词都视为最高优先级视觉约束，不得替换、弱化或混成通用风格。"
 
 function imageCreativeDirection(instruction: string): ImageCreativeDirection {
+  if (
+    /APP\s*首页|应用首页|首页(?:界面|设计|页面)?|UI|UX|界面|页面|网页|落地页|启动页|弹窗|信息卡片|仪表盘|dashboard|小程序/i.test(
+      instruction
+    )
+  ) {
+    return {
+      subject:
+        "将用户目标转译为一张完整、可实现的高保真产品界面：明确产品名称与当前页面任务，首页首屏必须直接呈现最重要状态、一个清晰主操作和支持决策的次级信息，不用装饰插画代替真实功能。",
+      style:
+        "成熟的移动端产品 UI 设计，兼顾品牌辨识度、功能效率与长期使用的克制感；遵循统一设计系统，组件尺寸、图标笔画、圆角、间距与状态语言一致。",
+      composition:
+        "按真实移动端屏幕组织自上而下的信息架构：顶部状态与页面标题、核心数据或任务区、主操作区、近期记录或辅助模块、底部导航；使用 8pt 间距体系和清晰栅格，首屏不截断关键操作。",
+      lighting:
+        "界面本身不使用摄影棚光效；以背景、表面层级、细边框和克制阴影建立组件深度，确保文本、按钮和状态在深浅背景上均有足够对比度。",
+      color:
+        "建立中性色背景、品牌主色和语义状态色三层色彩系统；主色只强调关键操作与选中状态，成功、警告和错误颜色用途明确，不使用大面积炫光或无意义渐变。",
+      material:
+        "卡片、输入框、按钮、图表、列表、标签和导航均采用可开发落地的标准组件形态；触控目标、字号、行高和留白适合手机阅读与单手操作。",
+      quality:
+        "交付一张完整独立的高保真界面效果图，文字层级清楚、图标统一、数据对齐、组件状态完整；优先展示真实产品流程与内容密度，避免营销落地页式空洞构图。",
+      negative:
+        "不要手机外壳样机、透视展示、多屏拼图、漂浮卡片、巨型装饰标题、伪文字、乱码、功能缺失、按钮不可辨识、过度圆角、霓虹光晕、水印或与任务无关的插画。",
+    }
+  }
+
   if (/皮克斯|皮格斯|pixar|3D\s*动画|三维动画|动画电影|卡通渲染/i.test(instruction)) {
     return {
       subject:
@@ -177,6 +211,23 @@ function imageCreativeDirection(instruction: string): ImageCreativeDirection {
 }
 
 function sceneSpecificDirection(instruction: string) {
+  if (
+    /APP\s*首页|应用首页|首页(?:界面|设计|页面)?|UI|UX|界面|页面|网页|落地页|启动页|弹窗|信息卡片|仪表盘|dashboard|小程序/i.test(
+      instruction
+    )
+  ) {
+    const bowelTracker = /拉屎|排便|便便|肠道/i.test(instruction)
+    return {
+      subject: bowelTracker
+        ? "设计一张生活化、无羞耻感的排便记录 APP 首页：顶部显示日期与轻量问候，中部以“记录一次”为唯一主操作，同时呈现今日是否已记录、连续记录天数和最近一次状态；下方用简洁列表或趋势摘要展示近期频次、时间与便便状态，底部导航包含首页、记录、趋势和我的。"
+        : `把“${instruction}”梳理为真实产品首页，首屏明确产品当前状态、一个最高优先级操作、与任务直接相关的摘要信息和可继续进入的功能入口。`,
+      environment:
+        "输出为正视、无设备外壳的完整移动端界面画面，所有模块位于统一屏幕栅格内；页面上下关系、滚动起点、底部安全区和导航位置符合真实应用使用习惯。",
+      moment:
+        "呈现用户刚打开首页、可以在三秒内理解当前状态并完成首要操作的默认状态；关键按钮具备清晰可点击感，次级模块不抢夺主任务注意力。",
+    }
+  }
+
   if (/足球|踢球|射门/i.test(instruction)) {
     const hasChild = /小男孩|男孩|小女孩|女孩|儿童|孩子/i.test(instruction)
     const hasDog = /小狗|狗狗|犬/i.test(instruction)
@@ -807,6 +858,425 @@ function compileImageTo3dPrompt({
   })
 }
 
+function canvas3dStickerMode(instruction: string) {
+  if (
+    /微缩|沙盘|场景|环境|景观|城市|街区|建筑群|房间|室内|岛屿|地形|diorama/i.test(
+      instruction
+    )
+  ) {
+    return {
+      key: "diorama",
+      label: "微缩场景",
+      camera:
+        "使用正交或近正交等距视角，从上方约 30 至 45 度观察；保留属于该微缩环境的平台、道路、水体、植被与地形，删除平台之外的外部背景。",
+    }
+  }
+  if (/组合|成组|一组|多个主体|多人|全家|搭档|套装|group/i.test(instruction)) {
+    return {
+      key: "group",
+      label: "组合资产",
+      camera:
+        "使用轻柔三分之四视角，为多个逻辑相关主体建立清楚的前后重叠层级和统一地面接触，不添加矩形背景板。",
+    }
+  }
+  return {
+    key: "single",
+    label: "单体资产",
+    camera:
+      "使用正面或轻柔三分之四视角，保持眼平或略微俯视并控制透视变形，让主体轮廓在画布缩放后仍立即可读。",
+  }
+}
+
+function compileCanvas3dStickerPrompt({
+  taskId,
+  originalGoal,
+  context,
+  skill,
+}: {
+  taskId: string
+  originalGoal: string
+  context?: CanvasContextSnapshot
+  skill: SkillSnapshot
+}): CompiledPrompt {
+  const referenced =
+    context?.sourceNode?.media?.mediaType === "image" &&
+    context.sourceNode.media.referenceType === "url" &&
+    Boolean(context.sourceNode.media.src.trim())
+  if (!referenced || !context?.id) {
+    throw new Error("画布 3D 贴纸风格转换需要先选中一个图片画布")
+  }
+
+  const mode = canvas3dStickerMode(originalGoal)
+  const preserveText = /保留.{0,8}(?:文字|文案|标题|logo|标志)|文字.{0,8}(?:不变|保留)/i.test(
+    originalGoal
+  )
+  const semanticBoundary =
+    mode.key === "single"
+      ? [
+          "单体模式只保留主要主体，以及与主体身份不可分割的穿戴、安装或明确手持物。桌面、椅子、杯子、纸张、书本、餐具、地面、墙面和其他环境物件即使与主体接触也必须去除，除非用户明确要求把它们作为主体的一部分。",
+          "若外部物件遮挡主体，移除该物件后应依据可见身份、姿态和结构保守补全被遮挡轮廓；不得保留半透明桌面、模糊残片或环境投影。",
+        ]
+      : mode.key === "group"
+        ? [
+            "组合模式只保留用户指定且彼此构成一组的主体；用于承托、拍摄或装饰的桌椅、地面、墙面和背景道具不属于组合，除非用户明确要求保留。",
+          ]
+        : [
+            "微缩场景模式只保留构成该场景叙事所必需的平台、地形、建筑、道路、水体、植被、人物和道具；删除平台之外的摄影背景、房间、桌面和画布界面。",
+          ]
+  const contentLock = [
+    "当前选中的图片是本次任务唯一的内容与身份依据；保留主体身份、数量、姿态、朝向、关键比例、外轮廓、配色、标记和功能部件。",
+    "保留附着、穿戴、手持、安装或功能必要的组成部分；删除只属于外部环境的背景内容，不把源图中的选择框、批注、按钮或画布界面带入结果。",
+    ...semanticBoundary,
+    "真正开放的孔洞和内部负空间保持透明；发丝、触角、辐条、绑带、叶片、线缆、工具柄等细结构完整且无白边污染。",
+    preserveText
+      ? "用户明确要求保留的文字与标志必须逐字、逐形保持，不得改写或生成伪文字。"
+      : "除非是身份识别不可分割的标志，否则把细小难辨文字简化为干净材质细节，不生成乱码或额外文案。",
+  ]
+  const styleLock = [
+    "转换为精致、友好、适合高级策略、收藏或模拟游戏的 3D 卡通资产：圆润而清楚的建模、略微夸张但立即可读的轮廓、简化次要几何并保留身份和功能细节。",
+    "材质为平滑绘制表面，具有克制的粗糙度变化和有限高光；金属保持适度光泽，玻璃使用浅色透明与清楚高光带，织物用柔和褶皱暗示纹理，木石使用宽阔低噪声纹理，毛发和植被组织为清楚体块。",
+    "使用左前上方柔和棚拍主光、自然补光、轻微环境遮蔽和资产内部的柔和接触阴影；颜色明快但受控，高光温暖，阴影中性或微冷，中等对比。",
+    mode.camera,
+    "生成阶段不要绘制白色贴纸描边、双重描边、投影或外发光；只生成边缘清楚的孤立主体，连续暖白描边会在透明蒙版稳定后统一后处理。",
+  ]
+  const negativePrompt = [
+    "不要改变主体身份、结构、部件数量、姿态、朝向、关键比例、标记或配色",
+    "不要复制内置风格参考中的人物、建筑、服装、道具、文字、黑色界面、卡片、按钮或版式",
+    "不要写实摄影、电影写实、平面矢量、水彩、厚涂、日漫赛璐璐、体素、低多边形、充气、黏土、软糖、廉价塑料、镜面铬或黑色漫画描边",
+    "不要背景风景、矩形底板、棋盘格像素、残留蒙版、模型生成的白边、双重描边、裁切轮廓、额外部件、重复主体、伪文字、水印或边框",
+    "不要把选择高亮、投影、缩放控制点、旋转控件或碰撞边界烘焙进图片",
+  ].join("；")
+  const prompt = [
+    "【任务】",
+    `把当前选中的源图片转换为 ${mode.label} 形式的透明 3D 卡通游戏贴纸资产。`,
+    "源图只控制主体内容和身份；三张内置风格参考只控制建模语言、材质、灯光、色彩、细节密度与完成度，绝不能把参考图内容带进结果。",
+    "",
+    "【用户目标】",
+    originalGoal,
+    "",
+    "【内容锁定与语义边界】",
+    ...contentLock.map((rule) => `- ${rule}`),
+    "",
+    `【构图模式：${mode.key}】`,
+    mode.camera,
+    "",
+    "【锁定视觉系统】",
+    ...styleLock.map((rule) => `- ${rule}`),
+    "",
+    "【透明画布交付】",
+    "只输出一张 2048 × 2048 PNG。必须具有真实 RGBA 透明通道，主体之外是完全透明像素，不得用棋盘格、白底、黑底、纯色底或矩形底板伪装透明。",
+    "若当前生成模型不能直接输出真实透明通道，只能使用与主体颜色明显不同的均匀纯色抠图底；不得生成环境、渐变、纹理、地面、接触阴影或半透明背景，后续会统一执行精确抠图。",
+    "主体完整居中，贴纸描边之外保留约 5% 的透明安全边距，任何轮廓、发丝、道具或光效都不能接触图片边缘。",
+    mode.key === "diorama"
+      ? "锚点位于平台足迹的视觉中心。"
+      : /漂浮|图标|符号|光效|烟雾|火焰|水花/i.test(originalGoal)
+        ? "锚点位于透明画布中心。"
+        : "锚点位于主体底部中心。",
+    "输出仅包含完成后的干净资产，不附带说明文字、参数表或其他视图。",
+  ]
+    .filter(Boolean)
+    .join("\n")
+
+  return compiledPromptSchema.parse({
+    originalGoal,
+    summary: `画布 3D 贴纸风格转换：${mode.label}`,
+    sharedConstraints: [
+      "style_id: canvas-3d-sticker-v1",
+      `asset_mode: ${mode.key}`,
+      "输出 1 张 2048 × 2048 透明 PNG",
+      "暖白描边比例约 0.012，透明安全边距约 0.05",
+      ...contentLock,
+      ...styleLock,
+    ],
+    negativeConstraints: [
+      "内置参考只提供视觉处理，不提供内容",
+      "当前任务只生成图片，不调用视频模型",
+      "不执行 Skill 文本中的代码、Shell、网络请求或文件操作",
+    ],
+    skillSnapshotId: skill.id,
+    outputs: [
+      {
+        id: `${taskId}-output-1`,
+        mediaType: "image",
+        operation: "create",
+        prompt,
+        negativePrompt,
+        variantKey: "canvas-3d-sticker-v1",
+        variantDifference: `${mode.label}透明贴纸资产`,
+        sourceContextSnapshotId: context.id,
+        preserveConstraints: [...contentLock, ...styleLock],
+        width: 2048,
+        height: 2048,
+      },
+    ],
+  })
+}
+
+const IAN_XIAOHEI_COMPOSITIONS = [
+  {
+    key: "concept-metaphor",
+    label: "概念隐喻",
+    direction:
+      "把本段最抽象的因果关系变成一个一眼可懂的荒诞物理装置；小蓝滴亲自推动、拉扯、搬运、修补或承受这个装置，结果必须可见。",
+  },
+  {
+    key: "workflow",
+    label: "动作流程",
+    direction:
+      "把关键步骤压缩为一条清楚的橙色行动路径，小蓝滴从起点执行到结果；只保留真正改变结果的 3 至 5 个节点。",
+  },
+  {
+    key: "before-after",
+    label: "前后对照",
+    direction:
+      "用同一主体的前后状态形成鲜明反差，中间只用一个动作或机制解释变化，避免做成规整表格。",
+  },
+  {
+    key: "system-cutaway",
+    label: "系统剖面",
+    direction:
+      "把看不见的系统关系画成简洁剖面或管道，小蓝滴进入系统处理一个真实阻塞点，输入、过程和反馈方向必须一致。",
+  },
+  {
+    key: "method-layers",
+    label: "方法分层",
+    direction:
+      "把方法拆成由下到上的少量层级，小蓝滴正在搭建、攀爬或校准关键一层；层级由具体动作区分，不靠大段文字解释。",
+  },
+  {
+    key: "map-route",
+    label: "地图路径",
+    direction:
+      "把决策过程画成具有障碍、岔路和终点的极简路线，小蓝滴正做出一个关键选择；路径遵循单一阅读方向。",
+  },
+  {
+    key: "character-states",
+    label: "角色状态",
+    direction:
+      "用 2 至 4 个连续状态表现认知或行为变化，保持同一小蓝滴身份与动作连续，不做表情包九宫格。",
+  },
+  {
+    key: "mini-comic",
+    label: "迷你漫画",
+    direction:
+      "用最多三拍的连续动作建立、反转并落到结论；分隔依靠留白和动作方向，不画正式分镜边框。",
+  },
+  {
+    key: "tension-balance",
+    label: "张力平衡",
+    direction:
+      "把相互冲突的目标变成跷跷板、绳结、弹簧、阀门或承重结构，小蓝滴正努力维持或打破平衡，危险点用少量红色强调。",
+  },
+] as const
+
+function isIanXiaoheiRevision(instruction: string) {
+  return /(?:这张|当前|选中|原图|图片|配图).{0,12}(?:修改|调整|重画|去掉|删除|移除|增强|加强|优化)|(?:去掉|删除|移除).{0,10}(?:标题|文字)|(?:增强|加强).{0,8}(?:荒诞|动作|小蓝滴)/i.test(
+    instruction
+  )
+}
+
+function explicitIanCount(instruction: string) {
+  const arabic = instruction.match(/(\d{1,2})\s*张/)
+  if (arabic) return Number(arabic[1])
+  const chinese: Record<string, number> = {
+    一: 1,
+    二: 2,
+    两: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+  }
+  const matched = instruction.match(/([一二两三四五六七八九])\s*张/)
+  return matched ? chinese[matched[1]] : undefined
+}
+
+function defaultIanCount(content: string) {
+  if (content.length >= 1_200) return 6
+  if (content.length >= 500) return 4
+  if (content.length >= 180) return 3
+  if (content.length >= 90) return 2
+  return 1
+}
+
+function ianSemanticBrief(professionalBrief?: string) {
+  if (!professionalBrief) return undefined
+  const semantic = professionalBrief.split(/\n\n【用户原始目标】/)[0]?.trim()
+  return semantic && !semantic.startsWith("【用户原始目标】")
+    ? semantic
+    : undefined
+}
+
+function ianVisualScenario(instruction: string, index: number) {
+  const scenarios = /自动化|工具|输入|反馈|流程|agent|模型|ai/i.test(instruction)
+    ? [
+        "一条过长的黑色流水线把模糊输入方块越滚越大，小蓝滴站在最前端用筛网拦下混乱输入；末端红色错误块即将压垮出口，动作受力和错误放大过程清楚可见。",
+        "小蓝滴剪断一根绕满整张画面的长反馈电缆，把两端重新接成一个短小橙色闭环；旧线路上堆积着延迟和返工，新回路立刻亮起蓝色反馈点。",
+        "一座由大量工具箱堆成的高塔看似壮观，底部却被一个写着短语义标注的歪斜输入漏斗卡住；小蓝滴没有继续搬工具，而是在校准漏斗入口。",
+        "小蓝滴沿流程设置三个可验证关卡，每通过一关就把一个黑色问号翻成蓝色确认点；最后一个未验证的大步骤被红色弹簧弹回起点。",
+      ]
+    : /团队|协作|沟通|组织|会议/i.test(instruction)
+      ? [
+          "几只手从不同方向拉扯同一张皱折蓝图，小蓝滴站在中央用两枚清楚锚点把蓝图钉回同一方向；错误理解以红色断线表现。",
+          "一条消息在多人之间传递时逐渐变形成沉重包裹，小蓝滴把传话链折叠成面对面的短桥，桥两端出现同一蓝色确认符号。",
+          "团队成员推着不同尺寸的齿轮却无法啮合，小蓝滴先校准共同轴心，再让橙色动力路径贯通，避免画成正式工程图。",
+        ]
+      : /学习|成长|知识|能力|训练/i.test(instruction)
+        ? [
+            "小蓝滴背着过大的知识书堆无法前进，转而把书页折成一段段可踩的台阶；每一步都有动作反馈，终点只保留一个明确结果。",
+            "一条学习路径被遗忘漏洞切断，小蓝滴一边前进一边用短反馈绳结把路径缝合，旧知识以淡黑线、新掌握以少量蓝色点表示。",
+            "小蓝滴面对高耸目标没有直接攀爬，而是先搭建三个可验证的小平台；错误平台用红色裂缝提醒，整体保持大量纯白留白。",
+          ]
+        : /选择|决策|方向|机会|风险|取舍/i.test(instruction)
+          ? [
+              "小蓝滴站在极简岔路中央，不靠路牌堆字，而是用一盏橙色探灯照出每条路的真实代价；危险路段只出现一个红色断桥。",
+              "两个相互冲突的目标压在跷跷板两端，小蓝滴移动唯一砝码寻找可持续平衡，动作前后状态和结果清楚可见。",
+              "小蓝滴把一团纠缠的选择绳结拆成一条单向橙色路径，保留一个必须由用户决定的岔口，不替用户编造结论。",
+            ]
+          : [
+              "把当前内容最重要的因果冲突变成一台极简荒诞机械：小蓝滴亲手操作关键杠杆，输入、阻力、动作和结果分处前中后景，读者无需长文也能理解。",
+              "把当前观点画成一条具有明确起点、障碍和结果的橙色路径；小蓝滴正跨越唯一关键障碍，环境对动作产生可见反馈，其他元素全部删减。",
+              "把问题状态与目标状态放在同一连续空间，小蓝滴用一个具体动作完成转变；前后差异来自原文逻辑，不使用通用灯泡、齿轮或数据面板。",
+              "把原文中的隐性系统画成一个可进入的简洁剖面，小蓝滴在最关键的阻塞点修补或校准，红色只标失败后果，蓝色只标反馈。",
+            ]
+  return scenarios[index % scenarios.length]
+}
+
+function compileIanXiaoheiPrompt({
+  taskId,
+  originalGoal,
+  professionalBrief,
+  context,
+  skill,
+  target,
+}: {
+  taskId: string
+  originalGoal: string
+  professionalBrief?: string
+  context?: CanvasContextSnapshot
+  skill: SkillSnapshot
+  target?: CompileGenerationPromptInput["target"]
+}): CompiledPrompt {
+  const revision = isIanXiaoheiRevision(originalGoal)
+  const hasSelectedImage = Boolean(
+    context?.sourceNode?.media?.mediaType === "image" &&
+      context.sourceNode.media.referenceType === "url" &&
+      context.sourceNode.media.src.trim()
+  )
+  if (revision && (!hasSelectedImage || !context?.id)) {
+    throw new Error("小蓝滴图片修改需要先选中一个有效图片画布")
+  }
+
+  const requestedCount = revision
+    ? 1
+    : target?.count ?? explicitIanCount(originalGoal) ?? defaultIanCount(originalGoal)
+  if (requestedCount > 9) throw new Error("小蓝滴正文配图最多生成 9 张")
+  const count = Math.max(1, requestedCount)
+  const semanticBrief = ianSemanticBrief(professionalBrief)
+  const commonStyle = [
+    "纯白背景，极简黑色手绘抖动线条，画面呼吸感强；主体占画面约 40% 至 60%，至少保留 35% 空白。",
+    "核心角色固定为天蓝色毛绒水滴小蓝滴：黑色点状眼睛、小嘴、短手短脚，严肃、冷淡而略显荒诞；不卖萌、不幼儿化。",
+    "小蓝滴必须亲自执行核心概念动作，身体重心、手脚接触、道具受力和结果反馈清楚，不能站在旁边充当装饰。",
+    "中文手写注释最多 5 至 8 处，每处尽量 2 至 8 个字；红色只标警告、关键结果或危险，橙色只画主路径与箭头，蓝色只作少量系统反馈。",
+    "只表达一个认知锚点。图像在没有解释文字时也应能读懂，标注用于点题而不是承担主要叙事。",
+  ]
+  const negativePrompt = [
+    "左上角结构标题、页眉、PPT、正式流程图、UI 截图、信息密集架构图",
+    "儿童卡通、萌系吉祥物、商业矢量插画、3D 渲染、写实摄影、日漫、渐变、厚重阴影、纸张纹理",
+    "拼图、九宫格、规则卡片边框、大段正文、乱码、伪文字、英文占位符、水印、Logo、装饰性小蓝滴",
+    "复制旧示例的构图、道具或文案；与当前内容无关的通用箭头、齿轮、灯泡和数据面板",
+  ].join("；")
+
+  const outputs = Array.from({ length: count }, (_, index) => {
+    const composition = IAN_XIAOHEI_COMPOSITIONS[index]
+    const prompt = revision
+      ? [
+          "【任务：修改当前选中的小蓝滴配图】",
+          originalGoal,
+          "当前选中的图片是唯一视觉依据。保留未被明确要求修改的主体身份、画幅、构图、线条位置、颜色、留白、标注和所有细节，不重新设计整张图。",
+          /去掉|删除|移除/.test(originalGoal)
+            ? "精确移除用户指定的标题或文字，并用纯白背景和连续手绘线条自然补齐原区域；其他像素级内容尽量保持不变。"
+            : "只增强用户点名的荒诞感、动作或局部关系；小蓝滴仍是核心行动者，画面含义和阅读顺序不变。",
+          ...commonStyle,
+          "输出一张 1024 × 576 的完整独立图片，不附带说明。",
+        ].join("\n")
+      : [
+          `【任务：Ian 小蓝滴正文配图 ${index + 1}/${count}】`,
+          "先理解下方内容，不要复述原句。提炼一个与其他输出不重复的认知锚点、因果关系或决策冲突，再把它转译为具体、可画、具有动作结果的原创视觉隐喻。",
+          "",
+          "【用户内容】",
+          originalGoal,
+          semanticBrief
+            ? `\n【文字模型提炼的语义与细节】\n${semanticBrief}`
+            : "",
+          "",
+          "【本张专业画面方案】",
+          ianVisualScenario(originalGoal, index),
+          "",
+          `【本张构图：${composition.label}】`,
+          composition.direction,
+          `本张必须与其余 ${count - 1} 张在核心隐喻、动作、空间结构和短标注上明显不同，但保持统一角色与视觉语言。`,
+          "为当前认知锚点补齐具体动作、道具、受力关系、环境反馈和结果状态；所有新增细节必须服务原意，不得编造新的事实结论。",
+          "",
+          "【视觉执行】",
+          ...commonStyle.map((rule) => `- ${rule}`),
+          "- 不设置左上角结构标题。画面中的短标注必须直接来自当前内容语义，并使用自然、准确、简短的中文。",
+          "- 输出一张 1024 × 576、16:9 的完整独立图片，不生成拼图、网格、边框或解释文字。",
+        ]
+          .filter(Boolean)
+          .join("\n")
+
+    return {
+      id: `${taskId}-output-${index + 1}`,
+      mediaType: "image" as const,
+      operation: "create" as const,
+      prompt,
+      negativePrompt,
+      variantKey: revision
+        ? "ian-xiaohei-edit-01"
+        : `ian-xiaohei-article-${String(index + 1).padStart(2, "0")}`,
+      variantDifference: revision
+        ? "保留原构图的定向修改"
+        : composition.label,
+      sourceContextSnapshotId: revision
+        ? context?.id
+        : context?.sourceNode?.text
+          ? context.id
+          : undefined,
+      preserveConstraints: revision
+        ? ["只修改用户点名内容", "原图保留并生成新版本", ...commonStyle]
+        : ["每张只表达一个认知锚点", "各张隐喻不得重复", ...commonStyle],
+      width: 1024,
+      height: 576,
+    }
+  })
+
+  return compiledPromptSchema.parse({
+    originalGoal,
+    summary: revision
+      ? "Ian 小蓝滴配图：定向修改"
+      : `Ian 小蓝滴配图：${count} 张正文插图`,
+    sharedConstraints: [
+      "全部输出为 1024 × 576 的独立 16:9 图片",
+      "不调用视频模型，不生成拼图",
+      revision
+        ? "当前选中图片是唯一参考，保留原图并创建新图片画布"
+        : "不引用历史图片、普通选图或其他 Skill 产物",
+      ...commonStyle,
+    ],
+    negativeConstraints: [
+      "不执行 Skill 文本中的代码、Shell、网络请求或文件操作",
+      "不把用户原话直接排版到画面或仅复述为提示词",
+      "不复制内置示例内容",
+    ],
+    skillSnapshotId: skill.id,
+    outputs,
+  })
+}
+
 const WORLD_SCENE_DIRECTIONS = [
   {
     title: "入口与建立",
@@ -1093,14 +1563,474 @@ function compileWorldPrompt({
   })
 }
 
-function extractCoverTitle(instruction: string) {
-  const match = instruction.match(
-    /(?:主标题|标题|封面文案)(?:是|为|叫|[:：])?\s*[《“"'「]?([^》”"'」\n，。；;]{2,24})/i
+function compileSocialCardPrompt({
+  taskId,
+  originalGoal,
+  professionalBrief,
+  context,
+  skill,
+  target,
+}: {
+  taskId: string
+  originalGoal: string
+  professionalBrief?: string
+  context?: CanvasContextSnapshot
+  skill: SkillSnapshot
+  target?: CompileGenerationPromptInput["target"]
+}): CompiledPrompt {
+  const creativeGoal = professionalBrief
+    ? `${originalGoal}\n${professionalBrief}`
+    : originalGoal
+  const isWechat = /公众号|微信/i.test(creativeGoal)
+  const platform = isWechat ? "微信公众号" : "小红书"
+  const visualSystem = /swiss|瑞士/i.test(creativeGoal)
+    ? "Swiss"
+    : /editorial|编辑/i.test(creativeGoal)
+      ? "Editorial"
+      : "由内容决定的 Editorial / Swiss 混合系统"
+  const requestedCount = target?.count ?? extractCount(creativeGoal)
+  const count = isWechat
+    ? 2
+    : Math.min(8, Math.max(2, requestedCount === 1 ? 4 : requestedCount))
+  const referenced = hasImageReference(context)
+  const cardRoles = isWechat
+    ? [
+        {
+          title: "横版文章封面",
+          role: "在宽幅缩略图中建立主题识别，以一个核心视觉和一句主标题完成传播钩子。",
+          width: 2100,
+          height: 900,
+        },
+        {
+          title: "方形分享封面",
+          role: "把同一主题重构为方形社交分享图，保持主视觉和标题完整，不直接裁切横版结果。",
+          width: 1080,
+          height: 1080,
+        },
+      ]
+    : Array.from({ length: count }, (_, index) => {
+        const roles = [
+          "封面钩子：用明确标题、核心视觉和内容收益让读者立刻理解主题。",
+          "问题展开：呈现读者当前困境、背景或关键矛盾，建立阅读动机。",
+          "方法与证据：把最重要的方法、步骤、对比或事实变成可扫描的信息结构。",
+          "结论与行动：收束核心观点，给出可执行下一步或记忆点。",
+        ]
+        return {
+          title: `卡片 ${index + 1}`,
+          role:
+            roles[index] ??
+            `内容展开 ${index + 1}：承接前一张卡片并推进一个新的关键信息点。`,
+          width: 1080,
+          height: 1440,
+        }
+      })
+  const referenceRule = referenced
+    ? "优先使用当前选中的图片画布及其引用素材，保持人物、产品、品牌和原有文字信息准确；只在排版所需范围内裁切，不改变素材身份。"
+    : "没有引用图片时，根据内容创建原创摄影、插画或图形元素，不伪造真实人物、品牌、数据或出处。"
+  const groupRules = [
+    `${platform}原生尺寸与阅读节奏`,
+    `${visualSystem} 视觉系统`,
+    "全组共享同一网格、字体、页边距、色彩、图形语法和页码位置",
+    "每张只承担一个信息任务，文案短、具体、可扫描",
+    referenceRule,
+  ]
+  const outputs = cardRoles.map((card, index) => ({
+    id: `${taskId}-output-${index + 1}`,
+    mediaType: "image" as const,
+    operation: "create" as const,
+    prompt: [
+      `【${platform}社交卡 · ${card.title}】`,
+      isWechat ? "" : `卡片 ${index + 1}/${cardRoles.length}`,
+      "",
+      "【内容目标】",
+      creativeGoal,
+      "",
+      "【本张信息任务】",
+      card.role,
+      "先从内容中提炼一个具体标题、一个核心论点和最多三条必要信息；不得把整篇内容缩小塞入画面，也不得只复述用户操作指令。",
+      "",
+      "【视觉系统与版式】",
+      `${visualSystem} 视觉系统。Editorial 强调杂志式图文节奏与有张力的标题关系；Swiss 强调严格网格、无衬线字体、功能性对齐和克制色彩。`,
+      "建立清楚的标题、数字或关键词、正文和视觉素材层级；使用稳定网格、连续留白和手机端可读字号，元素之间保持明确对齐。",
+      referenceRule,
+      "",
+      "【跨卡一致性】",
+      ...groupRules.map((rule) => `- ${rule}`),
+      "",
+      "【交付】",
+      `只生成一张 ${card.width} × ${card.height} 独立社交卡图片；文字准确、边缘完整、缩略图可读，不生成 HTML、网页、拼图、错误 Logo、水印或解释文字。`,
+    ].join("\n"),
+    negativePrompt:
+      "整篇文章塞入一张卡、标题层级不清、字号过小、元素无序、网格失衡、乱码、伪数据、错误 Logo、低清素材、水印、边框、拼图",
+    variantKey: `social-card-${String(index + 1).padStart(2, "0")}`,
+    variantDifference: card.role,
+    sourceContextSnapshotId: referenced ? context?.id : undefined,
+    preserveConstraints: groupRules,
+    width: card.width,
+    height: card.height,
+  }))
+
+  return compiledPromptSchema.parse({
+    originalGoal,
+    summary: `${platform}社交卡：${outputs.length} 张`,
+    sharedConstraints: groupRules,
+    negativeConstraints: [
+      "不执行上游 HTML、浏览器截图、Shell、Python、网络搜索或文件写入",
+      "所有图片只通过当前工具配置的图片模型生成",
+      "不从旧任务或其他 Skill 继承内容与素材",
+    ],
+    skillSnapshotId: skill.id,
+    outputs,
+  })
+}
+
+const PORTRAIT_VARIANTS = [
+  {
+    title: "环境叙事中景",
+    camera: "使用 50mm 镜头、平视中景，保留人物与场景的真实互动关系。",
+    action:
+      "身体重心自然落在一侧，肩胯形成轻微反向关系；双手承担一个与场景有关的具体动作，视线略离镜头，表情处于刚被环境触发的松弛瞬间。",
+  },
+  {
+    title: "情绪近景",
+    camera: "使用 85mm 镜头、眼平近景，压缩背景并把注意力集中到眼神、肤质和微表情。",
+    action:
+      "人物微微转肩，头部回向镜头方向，嘴角和眼神保持克制变化；手部轻触衣领、头发或随身物件，动作自然且不遮挡面部。",
+  },
+  {
+    title: "动态全身",
+    camera: "使用 35mm 镜头、轻微低机位全身构图，让环境引导线和人物运动方向一致。",
+    action:
+      "人物处于一步刚落地或转身将完成的瞬间，摆臂、衣摆和发丝形成同向动势；脚底与地面接触可信，视线回应前进方向。",
+  },
+  {
+    title: "留白杂志构图",
+    camera: "使用 65mm 镜头、三分法半身构图，在视线前方保留干净负空间，画面具有编辑感。",
+    action:
+      "人物倚靠、坐下或停留在环境结构旁，手臂与身体形成清楚轮廓；表情安静、自信，不僵硬摆拍。",
+  },
+] as const
+
+function portraitUserDirection(goal: string) {
+  const directions: string[] = []
+  if (/证件照|形象照|简历照/i.test(goal)) {
+    directions.push(
+      "按正式人物形象照用途控制画面：背景简洁均匀，人物姿态端正但不僵硬，肩线、颈部和面部轮廓清楚，五官与肤色真实，避免夸张修饰。"
+    )
+  }
+  if (/远景|全景|全身/i.test(goal)) {
+    directions.push(
+      "尊重用户指定的远景景别，完整交代人物全身与环境关系；人物仍需保持足够像素和清晰面部，头顶、四肢、裙摆与脚部不被画面边缘截断。"
+    )
+  } else if (/近景|特写/i.test(goal)) {
+    directions.push(
+      "采用用户指定的近景或特写，重点呈现眼神、微表情、发丝边缘和真实肤质，同时保留肩颈关系，避免大头畸变。"
+    )
+  }
+  if (/裙/i.test(goal)) {
+    directions.push(
+      "服装明确使用裙装，根据拍摄用途设计克制而利落的廓形、垂坠和褶皱，材质受光真实，裙摆与身体动作保持自然关系。"
+    )
+  }
+  if (/丸子头/i.test(goal)) {
+    directions.push(
+      "发型明确为丸子头，发髻结构、发际线与鬓角碎发自然可信，轮廓干净且不遮挡五官。"
+    )
+  }
+  if (/微笑|笑容/i.test(goal)) {
+    directions.push(
+      "表情为自然微笑：嘴角轻微上扬，眼轮匝肌产生柔和回应，视线稳定有亲和力，不做僵硬假笑或夸张露齿。"
+    )
+  }
+  return directions
+}
+
+function compilePortraitPrompt({
+  taskId,
+  originalGoal,
+  professionalBrief,
+  context,
+  skill,
+  target,
+}: {
+  taskId: string
+  originalGoal: string
+  professionalBrief?: string
+  context?: CanvasContextSnapshot
+  skill: SkillSnapshot
+  target?: CompileGenerationPromptInput["target"]
+}): CompiledPrompt {
+  const creativeGoal = professionalBrief
+    ? `${originalGoal}\n${professionalBrief}`
+    : originalGoal
+  const requestedCount = target?.count ?? extractCount(creativeGoal)
+  const count = Math.min(4, Math.max(1, requestedCount))
+  const ratio = extractAspectRatio(creativeGoal) ?? [3, 4]
+  const size = dimensionsForRatio(ratio)
+  const referenced = hasImageReference(context)
+  const userDirections = portraitUserDirection(creativeGoal)
+  const identityRule = referenced
+    ? "把当前选中的图片作为已获授权的人物身份参考，严格保持脸部身份、肤色、年龄特征、体型和关键造型；不得美化成另一个人。"
+    : "创建一位明确成年、身份一致的原创人物；不模仿或冒用真实公众人物。"
+  const shared = [
+    identityRule,
+    "人物明确成年，造型、动作与镜头表达健康、尊重且符合写真语境",
+    "整组共享人物身份、服装体系、妆发、场景、色彩与光线方向",
+    `画幅比例 ${ratio[0]}:${ratio[1]}`,
+  ]
+  const outputs = PORTRAIT_VARIANTS.slice(0, count).map((variant, index) => ({
+    id: `${taskId}-output-${index + 1}`,
+    mediaType: "image" as const,
+    operation: "create" as const,
+    prompt: [
+      `【人物写真导演方案 ${index + 1}/${count} · ${variant.title}】`,
+      "",
+      "【创作目标】",
+      creativeGoal,
+      "人物必须明确成年。把用户的一句话扩展为可直接拍摄的场景、动作、表情、造型、镜头和灯光方案，不只复述原句。",
+      "",
+      ...(userDirections.length > 0
+        ? [
+            "【用户要求的导演化扩写】",
+            ...userDirections.map((direction) => `- ${direction}`),
+            "",
+          ]
+        : []),
+      "【身份与造型】",
+      identityRule,
+      "根据主题设计与场景匹配的服装廓形、材质、配饰、妆容与发型；层次克制，穿着自然，避免无目的装饰和过度性感化。",
+      "",
+      "【人物调度】",
+      variant.action,
+      "明确手部位置、身体重心、肩胯关系、视线落点和面部微表情，让动作像真实事件中的瞬间而不是僵硬摆拍。",
+      "",
+      "【摄影与构图】",
+      variant.camera,
+      "背景具有前中后景层次，人物轮廓与背景分离，关节、手指和发丝保持完整自然。",
+      "",
+      "【灯光与色彩】",
+      "根据场景使用方向明确的自然主光或大面积柔光，辅以低强度环境补光和克制轮廓光；保留真实肤色、皮肤纹理、眼睛湿润高光和衣料质感。",
+      "综合色彩统一，背景色服务于人物情绪，不使用廉价滤镜、过曝轮廓或塑料磨皮。",
+      "",
+      "【交付】",
+      `只生成一张 ${size.width} × ${size.height} 独立高清写真；不生成拼图、模特表、联系方式、错误文字、水印或边框。`,
+    ].join("\n"),
+    negativePrompt:
+      "未成年人、幼态性感化、换脸、身份漂移、塑料皮肤、过度磨皮、僵硬摆拍、空洞表情、肢体畸形、多余手指、服装穿插、错误文字、水印、边框、拼图",
+    variantKey: `portrait-${String(index + 1).padStart(2, "0")}`,
+    variantDifference: `${variant.title}：${variant.action}`,
+    sourceContextSnapshotId: referenced ? context?.id : undefined,
+    preserveConstraints: shared,
+    width: target?.width ?? size.width,
+    height: target?.height ?? size.height,
+  }))
+
+  return compiledPromptSchema.parse({
+    originalGoal,
+    summary: `人物写真：${count} 个导演版本`,
+    sharedConstraints: shared,
+    negativeConstraints: [
+      "仅处理明确成年人物和用户有权使用的参考图",
+      "只调用当前工具配置的图片模型",
+      "不执行上游脚本、网络请求或文件操作",
+    ],
+    skillSnapshotId: skill.id,
+    outputs,
+  })
+}
+
+const HANDDRAWN_BEATS = [
+  { title: "建立", role: "交代人物、地点和此刻最重要的目标，让观众迅速进入故事。" },
+  { title: "发展", role: "通过一个具体动作推进目标，并让环境或道具产生可见反馈。" },
+  { title: "转折", role: "让人物遇到变化、发现或情绪波动，形成故事的记忆点。" },
+  { title: "收束", role: "用一个安静而明确的动作回应开场，留下完整情绪落点。" },
+  { title: "余韵", role: "补充一个不重复主结局的细节，让人物关系或主题继续回响。" },
+  { title: "结束页", role: "以稳定构图结束旅程，并保留适合停留的最终画面。" },
+] as const
+
+function compileHanddrawnVideoPrompt({
+  taskId,
+  originalGoal,
+  professionalBrief,
+  context,
+  skill,
+  target,
+}: {
+  taskId: string
+  originalGoal: string
+  professionalBrief?: string
+  context?: CanvasContextSnapshot
+  skill: SkillSnapshot
+  target?: CompileGenerationPromptInput["target"]
+}): CompiledPrompt {
+  const creativeGoal = professionalBrief
+    ? `${originalGoal}\n${professionalBrief}`
+    : originalGoal
+  const explicitBeatCount = Number(
+    creativeGoal.match(/([2-6])\s*(?:段|幕|页|个镜头)/)?.[1] ?? 0
   )
-  return match?.[1].trim()
+  const beatCount = Math.min(
+    6,
+    Math.max(2, target?.count ?? (explicitBeatCount || 4))
+  )
+  const formal = /正式|高清|1080p/i.test(creativeGoal) || target?.resolution === "1080p"
+  const width = target?.width ?? (formal ? 1080 : 720)
+  const height = target?.height ?? (formal ? 1440 : 960)
+  const resolution = target?.resolution ?? (formal ? "1080p" : "720p")
+  const durationSeconds = Math.min(15, Math.max(3, target?.durationSeconds ?? 5))
+  const referenced = hasImageReference(context)
+  const identityRule = referenced
+    ? "按画布选择顺序使用当前图片作为人物、场景和事件依据，保持人物身份、服装、道具、地点和时间连续。"
+    : "根据故事建立一套原创且一致的角色、服装、道具与场景设计，后续段落不得改变身份。"
+  const continuity = [
+    identityRule,
+    "全片使用同一手绘日记漫画语言、纸张底色、线条粗细、上色笔触与综合色彩",
+    "每段只使用一句简短准确的故事文字和一个清楚动作瞬间",
+    "每段视频必须使用对应生成图片作为唯一首帧，不读取旧任务图片",
+  ]
+  const outputs = HANDDRAWN_BEATS.slice(0, beatCount).flatMap((beat, index) => {
+    const number = String(index + 1).padStart(2, "0")
+    const imagePrompt = [
+      `【手绘故事画面 ${number}/${beatCount} · ${beat.title}】`,
+      "",
+      "【完整故事】",
+      creativeGoal,
+      "",
+      "【本段叙事任务】",
+      beat.role,
+      "从完整故事中提炼一句简短、准确、适合画面出现的文字，并设计一个能承载这句话的具体动作瞬间；不得只复述“帮我生成视频”等操作指令。",
+      "",
+      "【画面设计】",
+      identityRule,
+      "使用 3:4 竖版手绘日记漫画构图，建立清楚主体、必要环境和真实道具关系；保留适量纸张留白，让一句短文字与插画互不遮挡。",
+      "先以清楚的单色线稿定义人物、表情、手部、道具和空间，再使用克制的彩铅、水彩或马克笔质感完成上色；纸张纤维和手工笔触自然可见。",
+      "",
+      "【跨段连续性】",
+      ...continuity.map((rule) => `- ${rule}`),
+      "",
+      "【交付】",
+      `只生成一张 ${width} × ${height} 独立竖版成片，不生成拼图、页框、水印、错误文字或额外说明。`,
+    ].join("\n")
+    const videoPrompt = [
+      `【手绘揭示动画 ${number}/${beatCount} · ${beat.title}】`,
+      "严格使用刚生成的对应手绘图片作为唯一首帧和最终画面依据，不重绘人物，不改变构图、文字、道具或色彩。",
+      "",
+      "【动画节奏】",
+      `0.0–${(durationSeconds * 0.18).toFixed(1)} 秒：一句短文字出现，像铅笔或墨线自然写入，位置与最终画面一致。`,
+      `${(durationSeconds * 0.18).toFixed(1)}–${(durationSeconds * 0.62).toFixed(1)} 秒：单色线稿按合理绘制顺序显现，从主体轮廓到表情、手部、道具和环境细节。`,
+      `${(durationSeconds * 0.62).toFixed(1)}–${durationSeconds.toFixed(1)} 秒：颜色从局部到整体逐步上色，保留纸张纹理和自然笔触，最后稳定停在对应成片。`,
+      "",
+      "【模型与交付】",
+      `只使用本工具当前配置的视频模型生成 ${durationSeconds} 秒 ${resolution} 单镜头动画；不调用 Remotion、FFmpeg、Chrome、Codex Image2 或任何独立外部模型。`,
+      "镜头固定或只有极轻微纸面呼吸，不推拉、不环绕、不改变画面内容；当前只交付独立分段视频，不声称已经合并、配音或配乐。",
+    ].join("\n")
+    return [
+      {
+        id: `${taskId}-output-${index * 2 + 1}`,
+        mediaType: "image" as const,
+        operation: "create" as const,
+        prompt: imagePrompt,
+        negativePrompt:
+          "数字矢量感、统一电脑笔刷、角色漂移、线条脏乱、错误文字、乱码、边框、拼图、水印、肢体畸形、多余手指",
+        variantKey: `handdrawn-scene-${number}-image`,
+        variantDifference: `${beat.title}手绘成片`,
+        sourceContextSnapshotId: referenced ? context?.id : undefined,
+        preserveConstraints: continuity,
+        width,
+        height,
+      },
+      {
+        id: `${taskId}-output-${index * 2 + 2}`,
+        mediaType: "video" as const,
+        operation: "animate" as const,
+        prompt: videoPrompt,
+        negativePrompt:
+          "人物重绘、身份漂移、构图变化、文字变化、跳帧、线条闪烁、随机新增物体、镜头推拉环绕、边框、水印",
+        variantKey: `handdrawn-scene-${number}-video`,
+        variantDifference: `${beat.title}线稿到上色动画`,
+        preserveConstraints: continuity,
+        durationSeconds,
+        resolution,
+      },
+    ]
+  })
+
+  return compiledPromptSchema.parse({
+    originalGoal,
+    summary: `手绘故事视频：${beatCount} 个叙事段落`,
+    sharedConstraints: [
+      `${beatCount} 张手绘成片与 ${beatCount} 段对应动画`,
+      `图片尺寸 ${width} × ${height}，视频 ${resolution}`,
+      ...continuity,
+    ],
+    negativeConstraints: [
+      "全部生成使用当前工具设置中的文字、图片与视频模型",
+      "不执行 Remotion、Node、Python、FFmpeg、Chrome 或外部 API",
+      "当前阶段不宣称已经完成最终视频合并、配音或配乐",
+    ],
+    skillSnapshotId: skill.id,
+    outputs,
+  })
 }
 
 function coverComposition(instruction: string) {
+  const explicitCompositions = [
+    {
+      name: "深色渐变风",
+      layout:
+        "人物或核心主体居中，大字在主体后方与周围建立层叠；使用深色渐变背景和高明度对比，标题不得压住五官与关键识别面。",
+    },
+    {
+      name: "纯色扁平风",
+      layout:
+        "主体使用干净完整的抠图轮廓，搭配单一纯色背景和少量功能图形；信息层级简洁，禁止复杂纹理与无目的装饰。",
+    },
+    {
+      name: "产品主视觉风",
+      layout:
+        "产品、界面或品牌核心视觉占画面 52% 至 62%，放在中下部视觉黄金区；标题位于上部安全区，人物如出现只承担视线与手势引导，不遮挡产品识别面。",
+    },
+    {
+      name: "对比卡片风",
+      layout:
+        "使用一主一辅的两级卡片建立明确对比，主方案面积至少是次方案的 1.5 倍；标题独立占据顶部安全区，卡片边缘、投影和间距遵循同一网格。",
+    },
+    {
+      name: "极简留白风",
+      layout:
+        "以一个可立即识别的核心视觉符号为主角，占画面 38% 至 50%；使用稳定网格和大面积连续浅色留白，把标题放在上部或左上安全区。",
+    },
+    {
+      name: "海报拼贴风",
+      layout:
+        "围绕一个核心视觉建立清楚的前中后景，辅助素材不超过三组，统一裁切、颗粒和投影方向；主标题始终保持最高信息优先级。",
+    },
+    {
+      name: "人物侧置留白风",
+      layout:
+        "人物位于画面左侧或右侧三分之一，面部与手部完整，视线指向标题区；另一侧保留连续干净的浅色标题安全区。",
+    },
+    {
+      name: "背影构图风",
+      layout:
+        "人物背对镜头，完整保留头肩、身体方向与环境关系；用观看方向、前景路径和远处视觉焦点制造代入感，标题不遮挡主体轮廓。",
+    },
+    {
+      name: "局部出镜风",
+      layout:
+        "人物只呈现手部、半脸或侧脸，让产品、界面或标题成为绝对主角；局部裁切必须有明确动机并保持关键结构完整。",
+    },
+    {
+      name: "正面对视风",
+      layout:
+        "人物正面对视镜头，眼神接触是第一视觉焦点；面部位于画面中上部，标题环绕脸部安全区排布，五官、发型和手部完整清楚。",
+    },
+  ]
+  const explicit = explicitCompositions.find(({ name }) =>
+    instruction.includes(name)
+  )
+  if (explicit) return explicit
+
   if (/产品|商品|UI|界面|软件|应用|品牌|发布|功能/i.test(instruction)) {
     return {
       name: "产品主视觉风",
@@ -1136,6 +2066,23 @@ function coverComposition(instruction: string) {
   }
 }
 
+function coverNumberedChoice(
+  instruction: string,
+  label: string,
+  options: readonly string[],
+  fallback: string
+) {
+  const value = instruction.match(
+    new RegExp(`(?:^|\\n)${label}[:：]\\s*([^\\n]+)`, "i")
+  )?.[1]
+  if (!value) return fallback
+  const number = Number(value.match(/\d+/)?.[0])
+  if (Number.isInteger(number) && number >= 1 && number <= options.length) {
+    return options[number - 1]!
+  }
+  return value.trim()
+}
+
 function compileCoverPrompt({
   taskId,
   originalGoal,
@@ -1152,13 +2099,62 @@ function compileCoverPrompt({
   const creativeGoal = professionalBrief
     ? `${originalGoal}\n${professionalBrief}`
     : originalGoal
-  const title = extractCoverTitle(creativeGoal)
+  const title = extractCoverMainTitle(creativeGoal)
+  const smallCopy = extractCoverSmallCopy(creativeGoal)
   const platform = /小红书/i.test(creativeGoal)
     ? "小红书内容封面"
     : /公众号|微信/i.test(creativeGoal)
       ? "微信公众号文章封面"
       : "社交媒体内容封面"
   const composition = coverComposition(creativeGoal)
+  const expression = coverNumberedChoice(
+    creativeGoal,
+    "人物表情",
+    [
+      "捂嘴惊讶",
+      "张嘴震惊",
+      "开心大笑",
+      "兴奋雀跃",
+      "自信得意",
+      "托腮思考",
+      "推荐种草感",
+      "交给模型决定",
+    ],
+    "根据主题与构图自然决定"
+  )
+  const background = coverNumberedChoice(
+    creativeGoal,
+    "背景",
+    [
+      "浅色系",
+      "深色系",
+      "暖色调",
+      "冷色调",
+      "高饱和撞色",
+      "交给模型决定",
+    ],
+    "根据构图风格统一决定"
+  )
+  const font = coverNumberedChoice(
+    creativeGoal,
+    "字体",
+    [
+      "超粗黑体",
+      "柔和圆体",
+      "手写涂鸦体",
+      "极简无衬线",
+      "复古宋体",
+      "狗哥风格字体",
+      "交给模型决定",
+    ],
+    "现代中文无衬线字体"
+  )
+  const textEffect = coverNumberedChoice(
+    creativeGoal,
+    "文字效果",
+    ["纯白", "纯黑", "渐变色", "描边效果", "交给模型决定"],
+    "根据背景明度决定"
+  )
   const hasReference = context?.sourceNode?.media?.mediaType === "image"
   const auxiliaryReferenceCount =
     context?.references.filter(
@@ -1169,6 +2165,9 @@ function compileCoverPrompt({
   const titleRule = title
     ? `主标题原文：“${title}”。必须逐字保留，不改写、不增删、不拆散为无意义字符。`
     : "本轮没有确认主标题，不在图片中生成任何文字；只保留清楚、可后期排版的标题安全区。"
+  const smallCopyRule = smallCopy
+    ? `副标题原文：“${smallCopy}”。把它作为低于主标题一级的辅助信息逐字保留，不改写、不增删。`
+    : "本轮没有确认副标题，不生成日期、账号、无关小字、伪文字或错误字符。"
   const referenceRule = hasReference
     ? [
         "把当前选中的图片画布作为图 1 和核心视觉身份依据，保持人物、产品、品牌、界面或物体的外观与结构一致。",
@@ -1186,10 +2185,10 @@ function compileCoverPrompt({
     "",
     "【标题与文字系统】",
     titleRule,
+    smallCopyRule,
     title
-      ? "使用现代中文无衬线字体气质，中粗至粗体，字形端正，主标题不超过三行；标题与背景保持至少 4.5:1 的明度对比，可使用克制的纯色底、细描边或短距离柔和投影增强可读性。"
+      ? `字体使用${font}；文字效果使用${textEffect}。字形端正，主标题不超过三行；标题与背景保持至少 4.5:1 的明度对比。`
       : "标题安全区不得被人物面部、产品识别面、复杂纹理或高光穿过。",
-    "禁止生成副标题、日期、账号、无关小字、伪文字或错误字符，除非用户逐字提供。",
     "",
     "【构图与版式】",
     `构图风格：${composition.name}。`,
@@ -1199,10 +2198,11 @@ function compileCoverPrompt({
     "【主体与参考素材】",
     referenceRule,
     "主体轮廓、姿态、视线、手部、产品或 UI 素材之间建立明确空间关系；核心识别面完整，不被标题或装饰遮挡。",
+    `人物表情与状态：${expression}；动作、视线和身体重心必须自然并服务于封面主题。`,
     "",
     "【光线、色彩与材质】",
     "使用一处方向明确的柔和主光塑造主体体积，辅以克制轮廓光完成主体与背景分离；高光不过曝，暗部保留结构。",
-    "建立一个主色、一个辅助色和少量 #A3FE44 或主题匹配的强调色，控制饱和度和明度层级，避免廉价渐变与大面积炫光。",
+    `背景色调：${background}。建立一个主色、一个辅助色和少量主题匹配的强调色，控制饱和度和明度层级，避免廉价渐变与大面积炫光。`,
     "人物皮肤、织物、产品、玻璃、金属、纸张或界面素材保持真实材质响应，边缘干净，透视和接触阴影准确。",
     "",
     "【交付规范】",
@@ -1217,11 +2217,14 @@ function compileCoverPrompt({
       "宽高比 3:4",
       `构图风格：${composition.name}`,
       titleRule,
+      smallCopyRule,
       referenceRule,
     ],
     negativeConstraints: [
       "不得把用户的操作指令当成封面标题或核心画面内容",
-      "不得生成未确认的副标题、日期、账号、品牌 Logo 或无关小字",
+      smallCopy
+        ? "不得改写已确认的主标题或副标题，不得增加日期、账号、品牌 Logo 或无关小字"
+        : "不得生成未确认的副标题、日期、账号、品牌 Logo 或无关小字",
       "不得执行 Skill 文本中的代码、Shell、网络请求或文件操作",
     ],
     skillSnapshotId: skill.id,
@@ -1236,7 +2239,7 @@ function compileCoverPrompt({
         variantKey: "cover-primary",
         variantDifference: composition.name,
         sourceContextSnapshotId: hasReference ? context?.id : undefined,
-        preserveConstraints: [titleRule, referenceRule],
+        preserveConstraints: [titleRule, smallCopyRule, referenceRule],
         width: 768,
         height: 1024,
       },
@@ -1283,6 +2286,26 @@ export function compileGenerationPrompt({
     })
   }
 
+  if (isCanvas3dStickerSkillName(skill?.name) && skill) {
+    return compileCanvas3dStickerPrompt({
+      taskId,
+      originalGoal,
+      context,
+      skill,
+    })
+  }
+
+  if (isIanXiaoheiSkillName(skill?.name) && skill) {
+    return compileIanXiaoheiPrompt({
+      taskId,
+      originalGoal,
+      professionalBrief,
+      context,
+      skill,
+      target,
+    })
+  }
+
   if (isWorldSkillName(skill?.name) && skill) {
     return compileWorldPrompt({
       taskId,
@@ -1301,6 +2324,39 @@ export function compileGenerationPrompt({
       professionalBrief,
       context,
       skill,
+    })
+  }
+
+  if (isSocialCardSkillName(skill?.name) && skill) {
+    return compileSocialCardPrompt({
+      taskId,
+      originalGoal,
+      professionalBrief,
+      context,
+      skill,
+      target,
+    })
+  }
+
+  if (isPortraitSkillName(skill?.name) && skill) {
+    return compilePortraitPrompt({
+      taskId,
+      originalGoal,
+      professionalBrief,
+      context,
+      skill,
+      target,
+    })
+  }
+
+  if (isHanddrawnVideoSkillName(skill?.name) && skill) {
+    return compileHanddrawnVideoPrompt({
+      taskId,
+      originalGoal,
+      professionalBrief,
+      context,
+      skill,
+      target,
     })
   }
 

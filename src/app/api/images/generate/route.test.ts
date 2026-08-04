@@ -352,6 +352,79 @@ describe("image generation route", () => {
     ])
   })
 
+  it("loads bundled Skill references as model-ready image data", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                images: [
+                  { image_url: { url: "https://example.test/sticker.png" } },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200 }
+      )
+    )
+
+    const response = await POST(
+      createRequest({
+        baseUrl: "https://openrouter.ai",
+        apiKey: "sk-test",
+        model: "openai/gpt-5.4-image-2-20260421",
+        prompt: "convert the source into a transparent sticker",
+        sourceImageSrc: "https://example.test/source.png",
+        referenceImageSrcs: [
+          "/builtin-skill-assets/canvas-3d-sticker-characters-chibi.png",
+        ],
+      })
+    )
+    const body = JSON.parse(
+      String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)
+    ) as {
+      input_references: Array<{ image_url: { url: string } }>
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.input_references).toHaveLength(2)
+    expect(body.input_references[0].image_url.url).toBe(
+      "https://example.test/source.png"
+    )
+    expect(body.input_references[1].image_url.url).toMatch(
+      /^data:image\/png;base64,/
+    )
+  })
+
+  it("requests a transparent PNG when the prompt requires a true alpha channel", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ data: [{ b64_json: Buffer.from("png").toString("base64") }] }),
+        { status: 200 }
+      )
+    )
+
+    const response = await POST(
+      createRequest({
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "sk-test",
+        model: "gpt-image-2",
+        prompt: "必须具有真实 RGBA 透明通道",
+      })
+    )
+    const body = JSON.parse(
+      String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)
+    ) as { background?: string; output_format?: string }
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      background: "transparent",
+      output_format: "png",
+    })
+  })
+
   it("classifies mixed reference assets and only sends images to the image model", async () => {
     vi.spyOn(console, "info").mockImplementation(() => undefined)
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(

@@ -28,6 +28,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "shadcn": "^4.11.0",
+    "sharp": "^0.34.5",
     "tailwind-merge": "^3.6.0",
     "thinking-orbs": "^0.1.1",
     "three": "^0.185.1",

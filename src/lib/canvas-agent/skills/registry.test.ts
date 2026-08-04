@@ -165,5 +165,42 @@ describe("Canvas Agent personal Skill registry", () => {
         key: "world",
       },
     })
+
+    expect(skills.find((skill) => skill.id === "builtin-social-card")).toMatchObject({
+      name: "guizang-social-card-skill",
+      available: true,
+      description: expect.stringContaining("小红书"),
+      source: { type: "builtin", key: "social-card" },
+    })
+    expect(skills.find((skill) => skill.id === "builtin-portrait")).toMatchObject({
+      name: "人物写真 Skill",
+      available: true,
+      description: expect.stringContaining("人物写真"),
+      source: { type: "builtin", key: "portrait" },
+    })
+    expect(
+      skills.find((skill) => skill.id === "builtin-handdrawn-video")
+    ).toMatchObject({
+      name: "story-to-handdrawn-video",
+      available: true,
+      description: expect.stringContaining("手绘"),
+      source: { type: "builtin", key: "handdrawn-video" },
+    })
+    expect(
+      skills.find((skill) => skill.id === "builtin-canvas-3d-sticker")
+    ).toMatchObject({
+      name: "canvas-3d-sticker-stylizer",
+      available: true,
+      description: expect.stringContaining("透明底"),
+      source: { type: "builtin", key: "canvas-3d-sticker" },
+    })
+    expect(
+      skills.find((skill) => skill.id === "builtin-ian-xiaohei")
+    ).toMatchObject({
+      name: "ian-xiaohei-illustrations",
+      available: true,
+      description: expect.stringContaining("中文正文配图"),
+      source: { type: "builtin", key: "ian-xiaohei-illustrations" },
+    })
   })
 })

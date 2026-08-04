@@ -13,6 +13,7 @@ import { Image01Icon, Video01Icon } from "@hugeicons/core-free-icons"
 import type { OrbState } from "thinking-orbs"
 import {
   AssetRecordType,
+  createShapesForAssets,
   createShapeId,
   Editor,
   FrameShapeUtil,
@@ -22,6 +23,7 @@ import {
   Rectangle2d,
   SnapIndicatorOverlayUtil,
   Tldraw,
+  type TLAsset,
   TLAssetId,
   TLFrameShape,
   TLImageShape,
@@ -73,7 +75,10 @@ import {
 } from "@/lib/canvas/annotations"
 import { readApiConfigFromSession } from "@/lib/canvas/api-config"
 import { expandBounds, findClearPlacement, intersects, normalizeBounds } from "@/lib/canvas/geometry"
-import { insetCanvasMediaBounds } from "@/lib/canvas/media-layout"
+import {
+  fitImportedImageCanvasSize,
+  insetCanvasMediaBounds,
+} from "@/lib/canvas/media-layout"
 import { CANVAS_PERSISTENCE_KEY, IMAGE_VERSION_STORAGE_KEY } from "@/lib/canvas/persistence"
 import { generatePoster } from "@/lib/canvas/poster-generator"
 import { resolveCanvasSizePreset, type CanvasSizePresetId } from "@/lib/canvas/size-presets"
@@ -1507,6 +1512,223 @@ async function persistImageVersion(version: ImageVersion) {
   return payload.version
 }
 
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error(`无法读取图片：${file.name}`))
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error(`无法读取图片：${file.name}`))
+        return
+      }
+      resolve(reader.result)
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+function readImageDimensions(src: string) {
+  return new Promise<{ width: number; height: number }>((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => {
+      resolve({
+        width: Math.max(1, image.naturalWidth),
+        height: Math.max(1, image.naturalHeight),
+      })
+    }
+    image.onerror = () => reject(new Error("无法识别图片尺寸"))
+    image.src = src
+  })
+}
+
+async function createImportedImageVersion(file: File): Promise<ImageVersion> {
+  const src = await readFileAsDataUrl(file)
+  const dimensions = await readImageDimensions(src)
+  const version: ImageVersion = {
+    versionId: `imported-${crypto.randomUUID()}`,
+    prompt: file.name ? `导入图片：${file.name}` : "导入图片",
+    src,
+    width: dimensions.width,
+    height: dimensions.height,
+    createdAt: new Date().toISOString(),
+  }
+
+  try {
+    return await persistImageVersion(version)
+  } catch {
+    return version
+  }
+}
+
+function rootCanvasObstacles(editor: Editor) {
+  return editor.getCurrentPageShapes().flatMap((shape) => {
+    if (String(shape.parentId).startsWith("shape:")) return []
+    const bounds = editor.getShapePageBounds(shape.id)
+    return bounds ? [toBounds(bounds)] : []
+  })
+}
+
+async function importImageFilesIntoCanvas(
+  editor: Editor,
+  files: File[],
+  point?: { x: number; y: number }
+) {
+  const anchorPoint = point ?? editor.getViewportPageBounds().center
+  const obstacles = rootCanvasObstacles(editor)
+  const holderIds: TLShapeId[] = []
+  const versions: ImageVersion[] = []
+
+  for (const [index, file] of files.entries()) {
+    const version = await createImportedImageVersion(file)
+    const canvasSize = fitImportedImageCanvasSize({
+      width: version.width,
+      height: version.height,
+    })
+    const desiredBounds: Bounds = {
+      x: anchorPoint.x - canvasSize.width / 2 + index * 28,
+      y: anchorPoint.y - canvasSize.height / 2 + index * 28,
+      w: canvasSize.width,
+      h: canvasSize.height,
+    }
+    const hasCollision = obstacles.some((obstacle) =>
+      intersects(expandBounds(desiredBounds, 20), obstacle)
+    )
+    const bounds = hasCollision
+      ? findClearPlacement({
+          anchor: desiredBounds,
+          width: desiredBounds.w,
+          height: desiredBounds.h,
+          obstacles,
+          margin: 40,
+        })
+      : desiredBounds
+    const { holderId } = createImageHolderWithImage(editor, version, bounds)
+    holderIds.push(holderId)
+    versions.push(version)
+    obstacles.push(bounds)
+  }
+
+  if (holderIds.length > 0) editor.select(...holderIds)
+  return versions
+}
+
+function wrapLooseImageInCanvas(editor: Editor, imageShape: TLImageShape) {
+  const pageBounds = editor.getShapePageBounds(imageShape.id)
+  if (!pageBounds) return null
+  const bounds = toBounds(pageBounds)
+  const holderId = createShapeId()
+
+  editor.createShape({
+    id: holderId,
+    type: "frame",
+    x: bounds.x,
+    y: bounds.y,
+    props: {
+      w: bounds.w,
+      h: bounds.h,
+      name: IMAGE_CANVAS_NAME,
+      color: "blue",
+    },
+    meta: {
+      kind: "image-holder",
+      asuiNode: "image-holder",
+      asuiMetaVersion: ASUI_META_VERSION,
+      size: { width: Math.round(bounds.w), height: Math.round(bounds.h) },
+      sizePreset: "custom",
+      layoutMode: "manual",
+      latestVersionId: getCanvasImageVersionId(imageShape),
+      latestImageShapeId: imageShape.id,
+    },
+  })
+  editor.reparentShapes([imageShape.id], holderId)
+  const mediaBounds = insetCanvasMediaBounds({ x: 0, y: 0, w: bounds.w, h: bounds.h })
+  editor.updateShape({
+    id: imageShape.id,
+    type: "image",
+    x: mediaBounds.x,
+    y: mediaBounds.y,
+    props: {
+      w: mediaBounds.w,
+      h: mediaBounds.h,
+    },
+    meta: {
+      ...imageShape.meta,
+      kind: "generated-image",
+      asuiNode: "generated-image",
+      asuiMetaVersion: ASUI_META_VERSION,
+      versionId: getCanvasImageVersionId(imageShape),
+    },
+  })
+  return holderId
+}
+
+async function persistLooseImageAsset(editor: Editor, imageShape: TLImageShape) {
+  const assetId = imageShape.props.assetId
+  if (!assetId) return
+  const asset = editor.getAsset(assetId)
+  if (asset?.type !== "image") return
+  const currentSrc = asset.props.src
+  if (!currentSrc || /^https?:\/\//.test(currentSrc) || currentSrc.startsWith("/canvas-assets/")) {
+    return
+  }
+
+  const resolvedSrc = await editor.resolveAssetUrl(assetId, {
+    shouldResolveToOriginal: true,
+  })
+  if (!resolvedSrc) return
+  const response = await fetch(resolvedSrc)
+  if (!response.ok) return
+  const blob = await response.blob()
+  const dataSrc = await readFileAsDataUrl(
+    new File([blob], asset.props.name || "imported-image", {
+      type: blob.type || asset.props.mimeType || undefined,
+    })
+  )
+  const localVersion: ImageVersion = {
+    versionId: getCanvasImageVersionId(imageShape),
+    prompt: imageShape.props.altText || asset.props.name || "导入图片",
+    src: dataSrc,
+    width: asset.props.w,
+    height: asset.props.h,
+    createdAt: new Date().toISOString(),
+  }
+  let version = localVersion
+  try {
+    version = await persistImageVersion(localVersion)
+  } catch {
+    // Keep a browser-readable source even when local asset persistence is unavailable.
+  }
+  editor.updateAssets([
+    {
+      ...asset,
+      props: { ...asset.props, src: version.src },
+      meta: {
+        ...asset.meta,
+        asuiNode: "image-asset",
+        asuiMetaVersion: ASUI_META_VERSION,
+        versionId: version.versionId,
+      },
+    },
+  ])
+}
+
+function migrateLooseImportedImages(editor: Editor) {
+  const looseImages = editor.getCurrentPageShapes().filter(
+    (shape): shape is TLImageShape => {
+      if (shape.type !== "image" || String(shape.parentId).startsWith("shape:")) {
+        return false
+      }
+      const meta = shapeMeta(shape)
+      return meta.kind !== "generated-image" && meta.asuiNode !== "generated-image"
+    }
+  )
+
+  for (const imageShape of looseImages) {
+    wrapLooseImageInCanvas(editor, imageShape)
+    void persistLooseImageAsset(editor, imageShape)
+  }
+}
+
 async function generateImageVersion({
   prompt,
   feedback,
@@ -1873,6 +2095,21 @@ function getAgentContextNodeId(editor: Editor, selection: CanvasSelection) {
   return selectedShape.id
 }
 
+function getAgentSelectionContextKey(editor: Editor) {
+  return getAgentSelections(editor)
+    .map((selection) => {
+      const nodeId = getAgentContextNodeId(editor, selection)
+      if (!nodeId) return selection.shapeId
+      const shape = editor.getShape(nodeId as TLShapeId)
+      const bounds = shape ? editor.getShapePageBounds(shape.id) : null
+      const media = shape && bounds
+        ? getContextNodeMedia(editor, shape, toBounds(bounds))
+        : undefined
+      return `${selection.shapeId}:${nodeId}:${media?.src ?? ""}`
+    })
+    .join("|")
+}
+
 export function exportAgentCanvasContextSnapshot(
   editor: Editor,
   options: ExportAgentCanvasContextOptions = {}
@@ -2008,6 +2245,7 @@ export function AiCanvas() {
   const [holderSize, setHolderSize] = useState<CanvasSize>(DEFAULT_HOLDER_SIZE)
   const [floatingSize, setFloatingSize] = useState<CanvasSize>(DEFAULT_HOLDER_SIZE)
   const [selectedShapeIds, setSelectedShapeIds] = useState<string[]>([])
+  const [agentSelectionContextKey, setAgentSelectionContextKey] = useState("")
   const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<string[]>([])
   const [selectedHolderHasImage, setSelectedHolderHasImage] = useState(false)
   const [isCodexTaskOpen, setIsCodexTaskOpen] = useState(false)
@@ -2155,6 +2393,7 @@ export function AiCanvas() {
     setVideoNodeLinks(getVideoNodeLinks(editor))
     setVersionNodeLinks(getVersionNodeLinks(editor))
     setSelectedShapeIds(nextSelectedShapeIds)
+    setAgentSelectionContextKey(getAgentSelectionContextKey(editor))
     setSelectedAnnotationIds(
       nextSelectedShapeIds.filter((id) => {
         const shape = editor.getShape(id)
@@ -2878,6 +3117,41 @@ export function AiCanvas() {
       })
       migrateVersionLinkArrows(editor)
       syncAllGeneratedMediaToCanvasFrames(editor)
+      migrateLooseImportedImages(editor)
+      editor.registerExternalContentHandler("files", async (content) => {
+        const imageFiles = content.files.filter((file) =>
+          file.type.toLowerCase().startsWith("image/")
+        )
+        const remainingFiles = content.files.filter(
+          (file) => !file.type.toLowerCase().startsWith("image/")
+        )
+
+        if (imageFiles.length > 0) {
+          editor.markHistoryStoppingPoint("import-images")
+          try {
+            const importedVersions = await importImageFilesIntoCanvas(
+              editor,
+              imageFiles,
+              content.point
+            )
+            setVersions((current) => [...current, ...importedVersions])
+          } catch (reason) {
+            setToastMessage(errorMessage(reason, "图片导入失败"))
+          }
+        }
+
+        if (remainingFiles.length > 0) {
+          const assets = (
+            await Promise.all(
+              remainingFiles.map((file) =>
+                editor.getAssetForExternalContent({ type: "file", file })
+              )
+            )
+          ).filter((asset): asset is TLAsset => Boolean(asset))
+          const position = content.point ?? editor.getViewportPageBounds().center
+          await createShapesForAssets(editor, assets, position)
+        }
+      })
       const canvasNameUpdates = editor
         .getCurrentPageShapes()
         .filter(
@@ -4490,7 +4764,7 @@ export function AiCanvas() {
         <CanvasAgentShell
           open={isCanvasAgentOpen}
           storyboardRequestKey={storyboardRequestKey}
-          selectionKey={selectedShapeIds.join("|")}
+          selectionKey={agentSelectionContextKey}
           getCanvasContext={getAgentCanvasContext}
           onClearCanvasContext={(selectionId) => {
             const editor = editorRef.current
@@ -4503,6 +4777,17 @@ export function AiCanvas() {
             } else {
               editor.selectNone()
             }
+          }}
+          onImportImages={async (files) => {
+            const editor = editorRef.current
+            if (!editor) throw new Error("画布尚未准备完成")
+            editor.markHistoryStoppingPoint("agent-import-images")
+            const importedVersions = await importImageFilesIntoCanvas(
+              editor,
+              files
+            )
+            setVersions((current) => [...current, ...importedVersions])
+            syncSelection(editor)
           }}
           onBusyChange={setIsCanvasAgentBusy}
           onForegroundTaskChange={setForegroundAgentTask}

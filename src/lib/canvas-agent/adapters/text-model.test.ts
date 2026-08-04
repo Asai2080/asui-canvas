@@ -118,12 +118,37 @@ describe("text model adapter", () => {
     })
   })
 
-  it("accepts fenced JSON and omits media URLs from text-model context", async () => {
+  it("attaches the selected image as visual input without mixing its URL into the text context", async () => {
     const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const requestBody = String(init?.body)
-      expect(requestBody).not.toContain("data:image/png;base64")
-      expect(requestBody).not.toContain("private-source.png")
-      expect(requestBody).toContain("替换标题")
+      const requestBody = JSON.parse(String(init?.body)) as {
+        messages: Array<{
+          role: string
+          content:
+            | string
+            | Array<{
+                type: string
+                text?: string
+                image_url?: { url: string; detail: string }
+              }>
+        }>
+      }
+      const userMessage = requestBody.messages.at(-1)
+      expect(Array.isArray(userMessage?.content)).toBe(true)
+      const parts = userMessage?.content as Array<{
+        type: string
+        text?: string
+        image_url?: { url: string; detail: string }
+      }>
+      const textPart = parts.find((part) => part.type === "text")?.text ?? ""
+      expect(textPart).toContain("替换标题")
+      expect(textPart).not.toContain("private-source.png")
+      expect(parts).toContainEqual({
+        type: "image_url",
+        image_url: {
+          url: "https://example.test/private-source.png",
+          detail: "low",
+        },
+      })
       return Response.json({
         choices: [
           {
@@ -176,6 +201,80 @@ describe("text model adapter", () => {
     )
 
     expect(result.intent).toBe("image")
+  })
+
+  it("resolves a persisted local canvas image before sending it to the text model", async () => {
+    const resolveImageUrl = vi.fn(async () => "data:image/png;base64,visible-image")
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const requestBody = JSON.parse(String(init?.body)) as {
+        messages: Array<{
+          content: string | Array<{
+            type: string
+            image_url?: { url: string; detail: string }
+          }>
+        }>
+      }
+      const content = requestBody.messages.at(-1)?.content
+      expect(content).toEqual(expect.arrayContaining([
+        {
+          type: "image_url",
+          image_url: {
+            url: "data:image/png;base64,visible-image",
+            detail: "low",
+          },
+        },
+      ]))
+      return Response.json({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              message: "我已经识别到当前图片。",
+              summary: "基于当前图片继续创作",
+              normalizedInstruction: "保留当前图片中的主体和构图继续创作。",
+              intent: "image",
+            }),
+          },
+        }],
+      })
+    })
+    const adapter = createTextModelAdapter({ fetchImpl, resolveImageUrl })
+
+    await adapter.interpret(
+      {
+        userInstruction: "基于这张图生成封面",
+        context: {
+          id: "context-local-image",
+          createdAt: "2026-08-01T08:00:00.000Z",
+          scope: "selection",
+          selectedNodeId: "image-local",
+          sourceNode: {
+            id: "image-local",
+            kind: "image",
+            bounds: { x: 0, y: 0, w: 360, h: 480 },
+            media: {
+              referenceType: "url",
+              mediaType: "image",
+              src: "/canvas-assets/imported-image.png",
+              mimeType: "image/png",
+            },
+            referenceIds: [],
+          },
+          annotations: [],
+          connectedNodes: [],
+          references: [],
+        },
+      },
+      {
+        baseUrl: "https://text.example.com/v1",
+        apiKey: "text-secret",
+        model: "text-model",
+      }
+    )
+
+    expect(resolveImageUrl).toHaveBeenCalledWith({
+      src: "/canvas-assets/imported-image.png",
+      mimeType: "image/png",
+    })
   })
 
   it("does not expose the API key when the provider fails", async () => {

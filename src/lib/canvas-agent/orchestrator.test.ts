@@ -318,6 +318,46 @@ describe("runAgentTaskTick", () => {
     expect(answered.compiledPrompt).toBeUndefined()
   })
 
+  it("corrects a model conversation misclassification for an app home screen request", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: "帮我生成一个APP首页，首页内容是记录拉屎",
+        executionMode: "confirm",
+      },
+      { id: "task-default-ui-image", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      textAdapter: {
+        interpret: vi.fn(async () => ({
+          message: "有什么可以帮助你的？",
+          summary: "普通对话",
+          normalizedInstruction: "帮我生成一个APP首页，首页内容是记录拉屎",
+          intent: "conversation" as const,
+        })),
+      },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const understood = await runAgentTaskTick(task.id, deps)
+
+    expect(understood.status).toBe("compiling-prompt")
+    expect(understood.interpretation).toMatchObject({
+      intent: "image",
+      summary: "理解图片创作目标并等待提示词确认",
+      target: { mediaType: "image" },
+    })
+    expect(understood.interpretation?.message).toContain("视觉设计任务")
+    expect(understood.interpretation?.normalizedInstruction).toContain(
+      "记录一次"
+    )
+    expect(understood.interpretation?.normalizedInstruction).toContain(
+      "底部导航"
+    )
+  })
+
   it("asks for the missing topic and title before running the cover Skill", async () => {
     const root = await createRoot()
     const task = createAgentTask(
@@ -355,7 +395,7 @@ describe("runAgentTaskTick", () => {
     const root = await createRoot()
     const task = createAgentTask(
       {
-        userInstruction: "主题是独立设计师的春季新品",
+        userInstruction: "6 / 4 / 1 / 4",
         executionMode: "confirm",
         skillId: "builtin-cover-design",
       },
@@ -366,8 +406,24 @@ describe("runAgentTaskTick", () => {
       ...dependencies(root),
       conversationHistory: [
         { role: "user" as const, content: "用这个 Skill 帮我生成封面" },
-        { role: "assistant" as const, content: "请告诉我主题和主标题。" },
-        { role: "user" as const, content: "主标题：春日新章" },
+        {
+          role: "assistant" as const,
+          content: "【封面 Skill · 第 1 轮 / 3】请告诉我主题和主标题。",
+        },
+        {
+          role: "user" as const,
+          content:
+            "主题是独立设计师的春季新品，10 正面对视风，主标题：春日新章",
+        },
+        {
+          role: "assistant" as const,
+          content: "【封面 Skill · 第 2 轮 / 3】请确认参考素材。",
+        },
+        { role: "user" as const, content: "不使用人物，没有其他素材" },
+        {
+          role: "assistant" as const,
+          content: "【封面 Skill · 第 3 轮 / 3】请确认视觉细节。",
+        },
       ],
     }
 
@@ -384,13 +440,62 @@ describe("runAgentTaskTick", () => {
     expect(waiting.compiledPrompt?.outputs[0].prompt).toContain(
       "主标题原文：“春日新章”"
     )
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain("正面对视")
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain("托腮思考")
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain("冷色调")
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain("超粗黑体")
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain("描边效果")
+  })
+
+  it("uses a concise cover request directly as the final main title", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: "按推荐",
+        executionMode: "confirm",
+        skillId: "builtin-cover-design",
+      },
+      { id: "task-cover-concise-title", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      conversationHistory: [
+        { role: "user" as const, content: "看向窗外" },
+        {
+          role: "assistant" as const,
+          content: "【封面 Skill · 第 1 轮 / 3】请选择风格与标题。",
+        },
+        { role: "user" as const, content: "5 极简留白风" },
+        {
+          role: "assistant" as const,
+          content: "【封面 Skill · 第 2 轮 / 3】请确认参考素材。",
+        },
+        { role: "user" as const, content: "无人物，没有其他素材" },
+        {
+          role: "assistant" as const,
+          content: "【封面 Skill · 第 3 轮 / 3】请确认视觉细节。",
+        },
+      ],
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
+    const waiting = await runAgentTaskTick(task.id, deps)
+
+    expect(waiting.status).toBe("awaiting-confirmation")
+    expect(waiting.compiledPrompt?.summary).toBe("封面设计：看向窗外")
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain(
+      "主标题原文：“看向窗外”"
+    )
   })
 
   it("sends merged same-Skill answers to the text model", async () => {
     const root = await createRoot()
     const task = createAgentTask(
       {
-        userInstruction: "主题是独立设计师的春季新品",
+        userInstruction: "6 / 4 / 1 / 4",
         executionMode: "confirm",
         skillId: "builtin-cover-design",
       },
@@ -409,8 +514,24 @@ describe("runAgentTaskTick", () => {
       textAdapter: { interpret },
       conversationHistory: [
         { role: "user" as const, content: "用封面 Skill 帮我生成" },
-        { role: "assistant" as const, content: "请告诉我主题和主标题。" },
-        { role: "user" as const, content: "主标题：春日新章" },
+        {
+          role: "assistant" as const,
+          content: "【封面 Skill · 第 1 轮 / 3】请告诉我主题和主标题。",
+        },
+        {
+          role: "user" as const,
+          content:
+            "主题是独立设计师的春季新品，10 正面对视风，主标题：春日新章",
+        },
+        {
+          role: "assistant" as const,
+          content: "【封面 Skill · 第 2 轮 / 3】请确认参考素材。",
+        },
+        { role: "user" as const, content: "无人物，没有其他素材" },
+        {
+          role: "assistant" as const,
+          content: "【封面 Skill · 第 3 轮 / 3】请确认视觉细节。",
+        },
       ],
     }
 
@@ -426,6 +547,242 @@ describe("runAgentTaskTick", () => {
     expect(interpret.mock.calls[0]?.[0].userInstruction).toContain(
       "独立设计师的春季新品"
     )
+  })
+
+  it("turns portrait follow-up answers into a professional prompt instead of asking again", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: "人物为成年女性",
+        executionMode: "confirm",
+        skillId: "builtin-portrait",
+      },
+      { id: "task-portrait-multiturn", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const interpret = vi.fn(async (input: TextModelInterpretationInput) => ({
+      message: "写真要求已完整，我会整理为可直接生成的导演提示词。",
+      summary: "成年女性证件照写真",
+      normalizedInstruction: input.userInstruction,
+      intent: "image" as const,
+      target: { mediaType: "image" as const, count: 1 },
+    }))
+    const deps = {
+      ...dependencies(root),
+      textAdapter: { interpret },
+      conversationHistory: [
+        { role: "user" as const, content: "裙子、丸子头、证件照" },
+        {
+          role: "assistant" as const,
+          content: "造型和用途已经记下，只差确认人物为成年人。",
+        },
+        {
+          role: "user" as const,
+          content: "裙子、丸子头、微笑、镜头远景证件照",
+        },
+        {
+          role: "assistant" as const,
+          content: "目前仍只差年龄确认，请确认人物为成年人。",
+        },
+      ],
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
+    const waiting = await runAgentTaskTick(task.id, deps)
+
+    expect(interpret).toHaveBeenCalledTimes(1)
+    expect(interpret.mock.calls[0]?.[0].userInstruction).toContain(
+      "裙子、丸子头、微笑、镜头远景证件照"
+    )
+    expect(interpret.mock.calls[0]?.[0].userInstruction).toContain("成年女性")
+    expect(waiting.status).toBe("awaiting-confirmation")
+    expect(waiting.interpretation?.intent).toBe("image")
+    expect(waiting.compiledPrompt?.summary).toBe("人物写真：1 个导演版本")
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain("丸子头")
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain("微笑")
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain("镜头远景证件照")
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain("人物调度")
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain("灯光与色彩")
+  })
+
+  it("keeps the portrait Skill on image generation when camera wording is misclassified as video", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: "帮我生成一个女生，女生穿着西装，镜头靠近一点特写",
+        executionMode: "confirm",
+        skillId: "builtin-portrait",
+      },
+      { id: "task-portrait-image-lock", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      textAdapter: {
+        interpret: vi.fn(async () => ({
+          message: "我会整理视频镜头。",
+          summary: "理解视频创作目标并等待提示词确认",
+          normalizedInstruction: "西装女生近距离特写，镜头靠近人物。",
+          intent: "video" as const,
+          target: {
+            mediaType: "video" as const,
+            durationSeconds: 8,
+          },
+        })),
+      },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const understood = await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
+    const waiting = await runAgentTaskTick(task.id, deps)
+
+    expect(understood.interpretation).toMatchObject({
+      intent: "image",
+      summary: "理解图片创作目标并等待提示词确认",
+      target: { mediaType: "image" },
+    })
+    expect(understood.interpretation?.message).not.toContain("视频")
+    expect(understood.interpretation?.normalizedInstruction).not.toContain(
+      "0.0–"
+    )
+    expect(waiting.status).toBe("awaiting-confirmation")
+    expect(waiting.compiledPrompt?.outputs).toHaveLength(1)
+    expect(waiting.compiledPrompt?.outputs[0].mediaType).toBe("image")
+  })
+
+  it("starts Ian Xiaohei as an isolated image task even when old history and the model say video", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction:
+          "为这段观点生成 2 张配图：团队不缺工具，真正缺的是清晰输入和短反馈回路。",
+        executionMode: "confirm",
+        requestedOutputCount: 2,
+        skillId: "builtin-ian-xiaohei",
+      },
+      { id: "task-ian-isolated", eventId: "event-ian-isolated", now }
+    )
+    await createStoredAgentTask(task, root)
+    const modelInputs: TextModelInterpretationInput[] = []
+    const deps = {
+      ...dependencies(root),
+      conversationHistory: [
+        { role: "user" as const, content: "继续之前的四格分镜视频" },
+        { role: "assistant" as const, content: "我会继续生成分镜视频。" },
+      ],
+      textAdapter: {
+        interpret: vi.fn(async (input: TextModelInterpretationInput) => {
+          modelInputs.push(input)
+          return {
+            message: "继续生成分镜视频。",
+            summary: "分镜视频",
+            normalizedInstruction: "四格分镜，镜头推进。",
+            intent: "video" as const,
+            target: { mediaType: "video" as const, count: 2 },
+          }
+        }),
+      },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const understood = await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
+    const waiting = await runAgentTaskTick(task.id, deps)
+
+    expect(modelInputs[0].conversationHistory).toBeUndefined()
+    expect(understood.interpretation).toMatchObject({
+      intent: "image",
+      target: { mediaType: "image", count: 2 },
+    })
+    expect(waiting.status).toBe("awaiting-confirmation")
+    expect(waiting.compiledPrompt?.summary).toBe(
+      "Ian 小蓝滴配图：2 张正文插图"
+    )
+    expect(
+      waiting.compiledPrompt?.outputs.every(
+        (output) => output.mediaType === "image"
+      )
+    ).toBe(true)
+    expect(JSON.stringify(waiting.compiledPrompt)).not.toContain("四格分镜")
+  })
+
+  it("keeps a long Ian article intact while bounding the interpretation brief", async () => {
+    const root = await createRoot()
+    const article = [
+      "今天想说的是：工具越多，不代表创作链路越清晰。",
+      ...Array.from(
+        { length: 180 },
+        (_, index) =>
+          `第 ${index + 1} 段：当输入、执行和结果反馈被拆得过长，用户就会在重复确认中失去对目标的控制。真正重要的是缩短反馈回路，让每一次选择都有可见结果。`
+      ),
+      "文章结尾认知锚点：先把输入说清楚，再让工具变得更多。",
+    ].join("\n\n")
+    expect(article.length).toBeGreaterThan(4_000)
+
+    const task = createAgentTask(
+      {
+        userInstruction: article,
+        executionMode: "confirm",
+        requestedOutputCount: 2,
+        skillId: "builtin-ian-xiaohei",
+      },
+      { id: "task-ian-long-article", eventId: "event-ian-long", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      textAdapter: {
+        interpret: vi.fn(async () => {
+          throw new Error(
+            '[{"code":"too_big","maximum":4000,"path":["interpretation","normalizedInstruction"]}]'
+          )
+        }),
+      },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const understood = await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
+    const waiting = await runAgentTaskTick(task.id, deps)
+
+    expect(understood.status).toBe("reading-skill")
+    expect(understood.userInstruction).toBe(article)
+    expect(understood.interpretation?.source).toBe("local-rules")
+    expect(understood.interpretation?.normalizedInstruction.length).toBeLessThanOrEqual(
+      4_000
+    )
+    expect(understood.interpretation?.normalizedInstruction).not.toContain(article)
+    expect(waiting.status).toBe("awaiting-confirmation")
+    expect(waiting.compiledPrompt?.outputs).toHaveLength(2)
+    expect(waiting.compiledPrompt?.outputs[0].prompt).toContain(
+      "文章结尾认知锚点"
+    )
+  })
+
+  it("keeps the local portrait fallback on image generation", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: "成年女性穿西装，镜头靠近一点特写",
+        executionMode: "confirm",
+        skillId: "builtin-portrait",
+      },
+      { id: "task-portrait-local-image-lock", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = dependencies(root)
+
+    await runAgentTaskTick(task.id, deps)
+    const understood = await runAgentTaskTick(task.id, deps)
+
+    expect(understood.interpretation).toMatchObject({
+      intent: "image",
+      summary: "理解图片创作目标并等待提示词确认",
+      target: { mediaType: "image" },
+    })
   })
 
   it("asks for an image before starting the built-in four-view Skill", async () => {
@@ -593,6 +950,45 @@ describe("runAgentTaskTick", () => {
     expect(brief).toContain("小狗位于人物侧后方")
     expect(brief).toContain("眼睛追随球路")
     expect(brief).not.toContain("【专业创作目标】")
+  })
+
+  it("professionally deepens every creative model result even when it is already long", async () => {
+    const root = await createRoot()
+    const userInstruction = "生成一张未来香水广告，玻璃瓶悬浮在水面上"
+    const modelDirection = [
+      "【模型美术方向】透明玻璃香水瓶悬浮在浅水面上方，瓶身标签朝向镜头，水面形成同心涟漪。",
+      "使用克制的银灰与冷青色调，瓶盖金属边缘出现狭长高光，背景保持深色但保留空间层次。",
+      "摄影机采用低机位中近景，主体占据画面中央偏上位置，水面反射完整可见。",
+      "确保玻璃折射、液体体积和金属粗糙度可信，不生成文字错误、水印或额外产品。",
+    ].join("\n")
+    const task = createAgentTask(
+      { userInstruction, executionMode: "confirm" },
+      { id: "task-universal-professionalization", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      textAdapter: {
+        interpret: vi.fn(async () => ({
+          message: "香水广告提示词已整理。",
+          summary: "未来香水广告",
+          normalizedInstruction: modelDirection,
+          intent: "image" as const,
+          target: { mediaType: "image" as const },
+        })),
+      },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const understood = await runAgentTaskTick(task.id, deps)
+    const brief = understood.interpretation?.normalizedInstruction ?? ""
+
+    expect(brief).toContain("【模型美术方向】")
+    expect(brief).toContain("【画面内容扩写】")
+    expect(brief).toContain(userInstruction)
+    expect(brief).toContain("【构图与摄影】")
+    expect(brief).toContain("【光线与色彩】")
+    expect(brief).toContain("【材质与质量】")
   })
 
   it("advances preparation one recoverable status at a time", async () => {

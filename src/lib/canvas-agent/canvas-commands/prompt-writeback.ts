@@ -59,6 +59,19 @@ function isImageTo3dPrompt(compiledPrompt: CompiledPrompt) {
   )
 }
 
+function promptNodeTitle(compiledPrompt: CompiledPrompt) {
+  if (compiledPrompt.summary.startsWith("画布 3D 贴纸")) {
+    return "3D 贴纸转换规格"
+  }
+  if (compiledPrompt.summary.startsWith("Ian 小蓝滴")) {
+    return "小蓝滴配图方案"
+  }
+  if (compiledPrompt.summary.includes("社交卡")) return "社交卡编排方案"
+  if (compiledPrompt.summary.startsWith("人物写真")) return "人物写真导演方案"
+  if (compiledPrompt.summary.startsWith("手绘故事视频")) return "手绘故事分镜"
+  return "专业提示词"
+}
+
 function imageTo3dPromptContent(compiledPrompt: CompiledPrompt) {
   return [
     `# ${compiledPrompt.summary}`,
@@ -104,6 +117,25 @@ function storyboardPromptContent(
       ? `## 统一约束\n${compiledPrompt.sharedConstraints
           .map((constraint) => `- ${constraint}`)
           .join("\n")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+}
+
+function ianXiaoheiPromptContent(
+  compiledPrompt: CompiledPrompt,
+  outputIndex: number
+) {
+  const output = compiledPrompt.outputs[outputIndex]
+  return [
+    `# 小蓝滴配图方案 ${outputIndex + 1}`,
+    compiledPrompt.originalGoal
+      ? `## 用户内容\n${compiledPrompt.originalGoal}`
+      : "",
+    `## 认知锚点与生成提示词\n${output.prompt}`,
+    output.negativePrompt
+      ? `## 避免内容\n${output.negativePrompt}`
       : "",
   ]
     .filter(Boolean)
@@ -189,6 +221,47 @@ function storyboardPromptCommands(
   }))
 }
 
+function ianXiaoheiPromptCommands(
+  compiledPrompt: CompiledPrompt,
+  sourceBounds: CanvasCommandBounds | undefined,
+  viewportBounds: CanvasCommandBounds,
+  occupiedBounds: CanvasOccupiedBounds[]
+) {
+  const width = 440
+  const columnGap = 64
+  const rowGap = 64
+  const baseX = sourceBounds
+    ? sourceBounds.x + sourceBounds.w + 96
+    : viewportBounds.x + 64
+  const baseY = sourceBounds ? sourceBounds.y : viewportBounds.y + 64
+  const contents = compiledPrompt.outputs.map((_, index) =>
+    ianXiaoheiPromptContent(compiledPrompt, index)
+  )
+  const heights = contents.map(estimatedPromptHeight)
+  const uniformHeight = Math.max(...heights)
+  const promptCommands = contents.map((content, index) => ({
+    type: "create-prompt-node" as const,
+    nodeRef: `professional-prompt-${index + 1}`,
+    title: `小蓝滴配图方案 ${index + 1}`,
+    content,
+    bounds: {
+      x: baseX + (index % 2) * (width + columnGap),
+      y: baseY + Math.floor(index / 2) * (uniformHeight + rowGap),
+      w: width,
+      h: uniformHeight,
+    },
+  }))
+  const placedBounds = offsetBoundsGroupToAvoidOverlaps(
+    promptCommands.map(({ bounds }) => bounds),
+    occupiedBounds,
+    columnGap
+  )
+  return promptCommands.map((command, index) => ({
+    ...command,
+    bounds: placedBounds[index],
+  }))
+}
+
 export async function writeAgentPromptToCanvas(
   {
     task,
@@ -205,8 +278,11 @@ export async function writeAgentPromptToCanvas(
   const isStoryboard =
     task.compiledPrompt.outputs.length > 1 &&
     task.compiledPrompt.summary.includes("分镜")
+  const isIanXiaohei =
+    task.compiledPrompt.outputs.length > 1 &&
+    task.compiledPrompt.summary.startsWith("Ian 小蓝滴")
   const isImageTo3d = isImageTo3dPrompt(task.compiledPrompt)
-  const content = isStoryboard
+  const content = isStoryboard || isIanXiaohei
     ? ""
     : isImageTo3d
       ? imageTo3dPromptContent(task.compiledPrompt)
@@ -221,11 +297,20 @@ export async function writeAgentPromptToCanvas(
         viewportBounds,
         otherOccupiedBounds
       )
-    : [
+    : isIanXiaohei
+      ? ianXiaoheiPromptCommands(
+          task.compiledPrompt,
+          sourceBounds,
+          viewportBounds,
+          otherOccupiedBounds
+        )
+      : [
         {
           type: "create-prompt-node" as const,
           nodeRef: "professional-prompt",
-          title: isImageTo3d ? "图片转 3D 规格" : "专业提示词",
+          title: isImageTo3d
+            ? "图片转 3D 规格"
+            : promptNodeTitle(task.compiledPrompt),
           content,
           bounds: offsetBoundsGroupToAvoidOverlaps(
             [promptBounds(content, sourceBounds, viewportBounds)],

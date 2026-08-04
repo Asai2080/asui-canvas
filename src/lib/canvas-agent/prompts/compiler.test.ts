@@ -9,6 +9,44 @@ import {
 
 const createdAt = "2026-07-25T02:00:00.000Z"
 
+function skillSnapshot(skillId: string, name: string): SkillSnapshot {
+  return {
+    id: `snapshot-${skillId}`,
+    skillId,
+    name,
+    description: `${name} description`,
+    contentHash: "9".repeat(64),
+    instructions: `${name} instructions`,
+    risks: [],
+    createdAt,
+  }
+}
+
+function imageContextForCompiler(): CanvasContextSnapshot {
+  return {
+    id: "context-compiler-image",
+    createdAt,
+    scope: "selection",
+    selectedNodeId: "portrait-reference",
+    sourceNode: {
+      id: "portrait-reference",
+      kind: "image",
+      bounds: { x: 0, y: 0, w: 768, h: 1024 },
+      referenceIds: [],
+      media: {
+        referenceType: "url",
+        mediaType: "image",
+        src: "https://example.test/portrait-reference.png",
+        width: 768,
+        height: 1024,
+      },
+    },
+    annotations: [],
+    connectedNodes: [],
+    references: [],
+  }
+}
+
 describe("compileGenerationPrompt", () => {
   it("expands an image count and aspect ratio into differentiated outputs", () => {
     const compiled = compileGenerationPrompt({
@@ -405,6 +443,71 @@ describe("compileGenerationPrompt", () => {
     )
   })
 
+  it("honors the cover choices collected by the three-round intake", () => {
+    const skill: SkillSnapshot = {
+      id: "skill-snapshot-cover-rounds",
+      skillId: "builtin-cover-design",
+      name: "封面 Skill",
+      description: "封面设计",
+      contentHash: "c".repeat(64),
+      instructions: "严格使用用户在三轮问询中确认的选项。",
+      risks: [],
+      createdAt,
+    }
+
+    const compiled = compileGenerationPrompt({
+      taskId: "task-cover-rounds",
+      userInstruction: [
+        "封面主题：什么是 Skill",
+        "主标题：什么是 Skill",
+        "构图风格：10 正面对视风",
+        "参考素材确认：使用当前选中人物图，没有其他素材",
+        "人物表情：6",
+        "背景：4",
+        "字体：1",
+        "文字效果：4",
+      ].join("\n"),
+      skill,
+      target: { mediaType: "image" },
+    })
+
+    expect(compiled.outputs[0].prompt).toContain("构图风格：正面对视风")
+    expect(compiled.outputs[0].prompt).not.toContain("产品主视觉风")
+    expect(compiled.outputs[0].prompt).toContain("托腮思考")
+    expect(compiled.outputs[0].prompt).toContain("冷色调")
+    expect(compiled.outputs[0].prompt).toContain("超粗黑体")
+    expect(compiled.outputs[0].prompt).toContain("描边效果")
+  })
+
+  it("preserves explicitly supplied cover small copy", () => {
+    const skill: SkillSnapshot = {
+      id: "skill-snapshot-cover-copy",
+      skillId: "builtin-cover-design",
+      name: "封面 Skill",
+      description: "封面设计",
+      contentHash: "c".repeat(64),
+      instructions: "逐字保留已确认的封面文字。",
+      risks: [],
+      createdAt,
+    }
+
+    const compiled = compileGenerationPrompt({
+      taskId: "task-cover-copy",
+      userInstruction:
+        "封面主题：什么是 Skill 小子：大白话讲解，带你实操\n主标题：什么是 Skill",
+      skill,
+      target: { mediaType: "image" },
+    })
+
+    expect(compiled.outputs[0].prompt).toContain(
+      "主标题原文：“什么是 Skill”"
+    )
+    expect(compiled.outputs[0].prompt).toContain(
+      "副标题原文：“大白话讲解，带你实操”"
+    )
+    expect(compiled.outputs[0].prompt).not.toContain("禁止生成副标题")
+  })
+
   it("maps selected cover references to explicit visual roles", () => {
     const context: CanvasContextSnapshot = {
       id: "context-cover-assets",
@@ -636,5 +739,211 @@ describe("compileGenerationPrompt", () => {
     expect(walkthrough.outputs[1].prompt).toContain("沿本场景已经建立的可行走通道")
     expect(walkthrough.outputs[5].prompt).not.toContain("摇臂")
     expect(walkthrough.outputs[7].prompt).not.toContain("圆弧轨道")
+  })
+
+  it("compiles the selected image into one transparent 3D sticker asset", () => {
+    const sourceInstruction =
+      "把当前图片中的人物做成 3D 贴纸，保留衣服上的 Logo"
+    const compiled = compileGenerationPrompt({
+      taskId: "task-canvas-3d-sticker",
+      userInstruction: buildProfessionalCreativeBrief(sourceInstruction),
+      sourceInstruction,
+      context: imageContextForCompiler(),
+      skill: skillSnapshot(
+        "builtin-canvas-3d-sticker",
+        "canvas-3d-sticker-stylizer"
+      ),
+      target: { mediaType: "video", count: 4 },
+    })
+
+    expect(compiled.summary).toBe("画布 3D 贴纸风格转换：单体资产")
+    expect(compiled.outputs).toHaveLength(1)
+    expect(compiled.outputs[0]).toMatchObject({
+      mediaType: "image",
+      operation: "create",
+      variantKey: "canvas-3d-sticker-v1",
+      sourceContextSnapshotId: "context-compiler-image",
+      width: 2048,
+      height: 2048,
+    })
+    expect(compiled.outputs[0].prompt).toContain("真实 RGBA 透明通道")
+    expect(compiled.outputs[0].prompt).toContain("内置风格参考只控制")
+    expect(compiled.outputs[0].prompt).toContain("文字与标志必须逐字")
+    expect(compiled.outputs[0].prompt).toContain(
+      "桌面、椅子、杯子、纸张、书本"
+    )
+    expect(compiled.outputs[0].prompt).toContain(
+      "生成阶段不要绘制白色贴纸描边"
+    )
+    expect(compiled.outputs[0].prompt).not.toContain("【场景与叙事】")
+    expect(compiled.outputs[0].prompt).not.toContain(
+      "【文字模型整理的补充意图】"
+    )
+    expect(compiled.outputs[0].negativePrompt).toContain("棋盘格像素")
+    expect(compiled.sharedConstraints).toContain(
+      "style_id: canvas-3d-sticker-v1"
+    )
+    expect(compiled.negativeConstraints).toContain(
+      "当前任务只生成图片，不调用视频模型"
+    )
+  })
+
+  it("uses the diorama camera contract for self-contained environments", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-canvas-3d-diorama",
+      userInstruction: "把当前城市街区转换成完整微缩场景贴纸",
+      context: imageContextForCompiler(),
+      skill: skillSnapshot(
+        "builtin-canvas-3d-sticker",
+        "canvas-3d-sticker-stylizer"
+      ),
+    })
+    expect(compiled.summary).toContain("微缩场景")
+    expect(compiled.outputs[0].prompt).toContain("30 至 45 度")
+    expect(compiled.outputs[0].prompt).toContain("平台足迹的视觉中心")
+  })
+
+  it("turns article content into independent Ian Xiaohei illustrations", () => {
+    const article = "团队以为自动化能解决所有问题，但模糊输入不断进入流水线，错误在每一步被放大。真正有效的做法是先缩短反馈回路，让每一步都能被验证。".repeat(4)
+    const compiled = compileGenerationPrompt({
+      taskId: "task-ian-xiaohei",
+      userInstruction: `把这篇文章生成 4 张配图：${article}`,
+      sourceInstruction: `把这篇文章生成 4 张配图：${article}`,
+      skill: skillSnapshot("builtin-ian-xiaohei", "ian-xiaohei-illustrations"),
+      target: { mediaType: "video", count: 4 },
+      context: imageContextForCompiler(),
+    })
+
+    expect(compiled.summary).toBe("Ian 小蓝滴配图：4 张正文插图")
+    expect(compiled.outputs).toHaveLength(4)
+    expect(compiled.outputs.every((output) => output.mediaType === "image")).toBe(
+      true
+    )
+    expect(compiled.outputs[0]).toMatchObject({
+      variantKey: "ian-xiaohei-article-01",
+      width: 1024,
+      height: 576,
+      sourceContextSnapshotId: undefined,
+    })
+    expect(new Set(compiled.outputs.map((output) => output.prompt)).size).toBe(4)
+    expect(compiled.outputs[0].prompt).toContain("不要复述原句")
+    expect(compiled.outputs[0].prompt).toContain("【本张专业画面方案】")
+    expect(compiled.outputs[0].prompt).toContain("模糊输入方块越滚越大")
+    expect(compiled.outputs[0].prompt).toContain("小蓝滴必须亲自执行")
+    expect(compiled.outputs[0].prompt).toContain("至少保留 35% 空白")
+    expect(compiled.outputs[0].negativePrompt).toContain("左上角结构标题")
+    expect(compiled.sharedConstraints).toContain(
+      "不引用历史图片、普通选图或其他 Skill 产物"
+    )
+  })
+
+  it("uses only the selected source for an explicit Ian Xiaohei revision", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-ian-edit",
+      userInstruction: "把这张配图左上角标题去掉，其他内容完全不变",
+      context: imageContextForCompiler(),
+      skill: skillSnapshot("builtin-ian-xiaohei", "Ian 小蓝滴配图"),
+      target: { mediaType: "video", count: 8 },
+    })
+
+    expect(compiled.summary).toBe("Ian 小蓝滴配图：定向修改")
+    expect(compiled.outputs).toHaveLength(1)
+    expect(compiled.outputs[0]).toMatchObject({
+      mediaType: "image",
+      operation: "create",
+      variantKey: "ian-xiaohei-edit-01",
+      sourceContextSnapshotId: "context-compiler-image",
+      width: 1024,
+      height: 576,
+    })
+    expect(compiled.outputs[0].prompt).toContain("其他像素级内容尽量保持不变")
+  })
+
+  it("compiles social cards into platform-native independent images", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-social-cards",
+      userInstruction:
+        "为小红书制作 4 张关于独立开发者效率系统的卡片，使用 Swiss 视觉系统",
+      skill: skillSnapshot("builtin-social-card", "guizang-social-card-skill"),
+      target: { count: 4 },
+    })
+
+    expect(compiled.summary).toBe("小红书社交卡：4 张")
+    expect(compiled.outputs).toHaveLength(4)
+    expect(compiled.outputs[0]).toMatchObject({
+      mediaType: "image",
+      width: 1080,
+      height: 1440,
+      variantKey: "social-card-01",
+    })
+    expect(compiled.outputs[0].prompt).toContain("Swiss")
+    expect(compiled.outputs[0].prompt).toContain("卡片 1/4")
+    expect(compiled.outputs[0].prompt).not.toContain("运行 HTML")
+  })
+
+  it("compiles a directed adult portrait with reference identity protection", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-portrait",
+      userInstruction:
+        "为成年女性生成一组海边自然光杂志写真，松弛、清透，3 个版本",
+      context: imageContextForCompiler(),
+      skill: skillSnapshot("builtin-portrait", "人物写真 Skill"),
+      target: { count: 3 },
+    })
+
+    expect(compiled.summary).toBe("人物写真：3 个导演版本")
+    expect(compiled.outputs).toHaveLength(3)
+    expect(compiled.outputs[0].prompt).toContain("明确成年")
+    expect(compiled.outputs[0].prompt).toContain("当前选中的图片")
+    expect(compiled.outputs[0].prompt).toContain("人物调度")
+    expect(compiled.outputs[0].sourceContextSnapshotId).toBe(
+      "context-compiler-image"
+    )
+  })
+
+  it("expands terse portrait requirements into concrete direction", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-portrait-terse",
+      userInstruction:
+        "成年女性，裙子、丸子头、微笑、镜头远景证件照",
+      skill: skillSnapshot("builtin-portrait", "人物写真 Skill"),
+      target: { count: 1 },
+    })
+    const prompt = compiled.outputs[0].prompt
+
+    expect(prompt).toContain("用户要求的导演化扩写")
+    expect(prompt).toContain("正式人物形象照用途")
+    expect(prompt).toContain("远景景别")
+    expect(prompt).toContain("裙装")
+    expect(prompt).toContain("发型明确为丸子头")
+    expect(prompt).toContain("眼轮匝肌")
+  })
+
+  it("compiles hand-drawn story beats into paired images and source-bound videos", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-handdrawn",
+      userInstruction:
+        "把一个女孩第一次独自搬家、整理房间并给家人报平安的故事做成 3 段手绘视频",
+      skill: skillSnapshot(
+        "builtin-handdrawn-video",
+        "story-to-handdrawn-video"
+      ),
+      target: { count: 3, durationSeconds: 5, resolution: "720p" },
+    })
+
+    expect(compiled.summary).toBe("手绘故事视频：3 个叙事段落")
+    expect(compiled.outputs.map((output) => output.variantKey)).toEqual([
+      "handdrawn-scene-01-image",
+      "handdrawn-scene-01-video",
+      "handdrawn-scene-02-image",
+      "handdrawn-scene-02-video",
+      "handdrawn-scene-03-image",
+      "handdrawn-scene-03-video",
+    ])
+    expect(compiled.outputs[0]).toMatchObject({ width: 720, height: 960 })
+    expect(compiled.outputs[0].prompt).toContain("单色线稿")
+    expect(compiled.outputs[1].prompt).toContain("文字出现")
+    expect(compiled.outputs[1].prompt).toContain("逐步上色")
+    expect(compiled.outputs[1].prompt).toContain("本工具当前配置的视频模型")
   })
 })

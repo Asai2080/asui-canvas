@@ -24,7 +24,7 @@ export const skillSourceSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("builtin"),
     key: safeIdSchema,
-    homepage: z.string().url(),
+    homepage: z.string().url().optional(),
   }),
   z.object({
     type: z.literal("imported"),

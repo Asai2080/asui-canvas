@@ -1,11 +1,13 @@
 "use client"
 
 import {
+  type ChangeEvent,
   createContext,
   useContext,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react"
 import {
@@ -39,6 +41,7 @@ import { BorderBeam } from "border-beam"
 
 import { EdgeBlur } from "@/components/ui/edge-blur"
 import type {
+  AgentChoiceOption,
   AgentExecutionMode,
   AgentTask,
 } from "@/lib/canvas-agent/task-schema"
@@ -48,8 +51,11 @@ import type {
 } from "@/lib/canvas-agent/skills/schema"
 import {
   isCoverSkillName,
+  isHanddrawnVideoSkillName,
   isImageTo3dVariantKey,
   isImageTo3dSkillName,
+  isPortraitSkillName,
+  isSocialCardSkillName,
   isStoryboardSkillName,
   isWorldSkillName,
 } from "@/lib/canvas-agent/skills/identifiers"
@@ -75,6 +81,7 @@ type CanvasAgentShellProps = {
   selectionKey: string
   getCanvasContext: () => AgentCanvasContext
   onClearCanvasContext: (selectionId: string) => void
+  onImportImages: (files: File[]) => Promise<void>
   onClose: () => void
   storyboardRequestKey?: number
   onBusyChange?: (busy: boolean) => void
@@ -99,18 +106,24 @@ const STATUS_LABELS: Partial<Record<AgentTask["status"], string>> = {
 
 type AgentMessageContextValue = {
   tasksByMessageId: ReadonlyMap<string, AgentTask>
+  activeChoiceTaskId?: string
   cancelTask: (taskId: string) => Promise<void>
   confirmTask: (
     taskId: string,
     dimensions?: { width: number; height: number }
   ) => Promise<void>
   retryTask: (taskId: string) => Promise<void>
+  submitChoice: (task: AgentTask, value: string) => Promise<void>
+  openApiSettings: () => void
 }
 
 const AgentMessageContext = createContext<AgentMessageContextValue | null>(null)
 const EXECUTION_MODE_STORAGE_KEY = "asui-canvas:agent-execution-mode"
 const STORYBOARD_COUNTS = [4, 6, 8, 12] as const
 const WORLD_SCENE_COUNTS = [3, 4, 5, 6] as const
+const SOCIAL_CARD_COUNTS = [2, 4, 6, 8] as const
+const PORTRAIT_COUNTS = [1, 2, 3, 4] as const
+const HANDDRAWN_BEAT_COUNTS = [2, 3, 4, 5, 6] as const
 const IMAGE_SIZE_PRESETS = [
   { label: "1:1", width: 1024, height: 1024 },
   { label: "3:4", width: 768, height: 1024 },
@@ -195,6 +208,18 @@ function promptOutputLabel(
       worldScene[2] === "image" ? "场景图" : "运镜视频"
     }`
   }
+  const socialCard = output.variantKey?.match(/^social-card-(\d{2})$/)
+  if (socialCard) return `社交卡 ${socialCard[1]}`
+  const portrait = output.variantKey?.match(/^portrait-(\d{2})$/)
+  if (portrait) return `写真版本 ${portrait[1]}`
+  const handdrawn = output.variantKey?.match(
+    /^handdrawn-scene-(\d{2})-(image|video)$/
+  )
+  if (handdrawn) {
+    return `段落 ${handdrawn[1]} · ${
+      handdrawn[2] === "image" ? "手绘成片" : "揭示动画"
+    }`
+  }
   if (compiledPrompt.summary.includes("分镜")) {
     return `KF#${String(index + 1).padStart(2, "0")}`
   }
@@ -217,7 +242,9 @@ function AgentPromptReview({
     !readOnly && compiledPrompt?.outputs.every(
       (output) =>
         output.mediaType === "image" &&
-        (output.operation ?? "create") === "create"
+        (output.operation ?? "create") === "create" &&
+        output.width === firstOutput?.width &&
+        output.height === firstOutput?.height
     )
   )
   const isStoryboard = compiledPrompt?.summary.includes("分镜") ?? false
@@ -470,6 +497,88 @@ function AgentPromptReview({
   )
 }
 
+function AgentClarificationChoices({ task }: { task: AgentTask }) {
+  const context = useContext(AgentMessageContext)
+  const groups = task.interpretation?.choiceGroups ?? []
+  const [selections, setSelections] = useState<
+    Record<string, AgentChoiceOption>
+  >({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  if (
+    groups.length === 0 ||
+    context?.activeChoiceTaskId !== task.id
+  ) {
+    return null
+  }
+
+  const allSelected = groups.every((group) => selections[group.id])
+  const submitSelections = async () => {
+    if (!context || !allSelected || isSubmitting) return
+    const values = groups
+      .map((group) => selections[group.id]?.value)
+      .filter((value): value is string => Boolean(value))
+    if (values.length === 0) return
+    setIsSubmitting(true)
+    try {
+      await context.submitChoice(task, values.join(" / "))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="agent-clarification-choices">
+      {groups.map((group) => (
+        <fieldset key={group.id}>
+          <legend>{group.label}</legend>
+          <div className="agent-clarification-choices__options">
+            {group.options.map((option) => {
+              const selected = selections[group.id]?.id === option.id
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={selected ? "is-selected" : undefined}
+                  aria-pressed={selected}
+                  disabled={isSubmitting}
+                  onClick={() => {
+                    if (option.action === "open-settings") {
+                      context?.openApiSettings()
+                      return
+                    }
+                    setSelections((current) => ({
+                      ...current,
+                      [group.id]: option,
+                    }))
+                  }}
+                >
+                  <span>{option.label}</span>
+                  {option.description && <small>{option.description}</small>}
+                </button>
+              )
+            })}
+          </div>
+        </fieldset>
+      ))}
+      {groups.some((group) =>
+        group.options.some((option) => option.action === "submit")
+      ) && (
+        <button
+          type="button"
+          className="agent-clarification-choices__submit"
+          disabled={!allSelected || isSubmitting}
+          onClick={() => void submitSelections()}
+        >
+          {isSubmitting
+            ? "提交中"
+            : task.interpretation?.choiceSubmitLabel ?? "确认选择"}
+        </button>
+      )}
+    </div>
+  )
+}
+
 function AgentTaskBubble({
   task,
   messageKind,
@@ -513,6 +622,7 @@ function AgentTaskBubble({
       ) : (
         <p className="agent-result-copy">{resultText}</p>
       )}
+      <AgentClarificationChoices task={task} />
       <div className="agent-result-meta">
         <time dateTime={task.completedAt ?? task.updatedAt}>
           {formatTaskTime(task)}
@@ -604,6 +714,7 @@ export function CanvasAgentShell({
   selectionKey,
   getCanvasContext,
   onClearCanvasContext,
+  onImportImages,
   onClose,
   storyboardRequestKey = 0,
   onBusyChange,
@@ -616,19 +727,84 @@ export function CanvasAgentShell({
     useState<AgentExecutionMode>("confirm")
   const [storyboardCount, setStoryboardCount] = useState(6)
   const [worldSceneCount, setWorldSceneCount] = useState(4)
+  const [socialCardCount, setSocialCardCount] = useState(4)
+  const [portraitCount, setPortraitCount] = useState(1)
+  const [handdrawnBeatCount, setHanddrawnBeatCount] = useState(4)
   const [storyboardSetupError, setStoryboardSetupError] = useState("")
+  const [composerToolFeedback, setComposerToolFeedback] = useState<{
+    kind: "success" | "error"
+    message: string
+  }>()
+  const [, setSelectionRefreshKey] = useState(0)
   const [conversationStartedAt, setConversationStartedAt] = useState("")
   const [showHistory, setShowHistory] = useState(false)
+  const imageImportInputRef = useRef<HTMLInputElement>(null)
   const storyboardMode = isStoryboardSkillName(selectedSkill?.name)
   const coverMode = isCoverSkillName(selectedSkill?.name)
   const imageTo3dMode = isImageTo3dSkillName(selectedSkill?.name)
   const worldMode = isWorldSkillName(selectedSkill?.name)
+  const socialCardMode = isSocialCardSkillName(selectedSkill?.name)
+  const portraitMode = isPortraitSkillName(selectedSkill?.name)
+  const handdrawnMode = isHanddrawnVideoSkillName(selectedSkill?.name)
+  const countConfig = storyboardMode
+    ? {
+        label: "分镜张数",
+        ariaLabel: "选择分镜张数",
+        values: STORYBOARD_COUNTS as readonly number[],
+        value: storyboardCount,
+        setValue: setStoryboardCount as (value: number) => void,
+        icon: ClapperboardIcon,
+      }
+    : worldMode
+      ? {
+          label: "世界场景数",
+          ariaLabel: "选择世界场景数",
+          values: WORLD_SCENE_COUNTS as readonly number[],
+          value: worldSceneCount,
+          setValue: setWorldSceneCount as (value: number) => void,
+          icon: Globe02Icon,
+        }
+      : socialCardMode
+        ? {
+            label: "卡片张数",
+            ariaLabel: "选择卡片张数",
+            values: SOCIAL_CARD_COUNTS as readonly number[],
+            value: socialCardCount,
+            setValue: setSocialCardCount as (value: number) => void,
+            icon: Image01Icon,
+          }
+        : portraitMode
+          ? {
+              label: "写真版本",
+              ariaLabel: "选择写真版本数",
+              values: PORTRAIT_COUNTS as readonly number[],
+              value: portraitCount,
+              setValue: setPortraitCount as (value: number) => void,
+              icon: Image01Icon,
+            }
+          : handdrawnMode
+            ? {
+                label: "故事段落",
+                ariaLabel: "选择手绘故事段落数",
+                values: HANDDRAWN_BEAT_COUNTS as readonly number[],
+                value: handdrawnBeatCount,
+                setValue: setHanddrawnBeatCount as (value: number) => void,
+                icon: ClapperboardIcon,
+              }
+            : undefined
+  const openApiSettings = useCallback(() => {
+    onClose()
+    window.setTimeout(() => {
+      window.dispatchEvent(new Event("asui:open-api-config"))
+    }, 0)
+  }, [onClose])
   const {
     tasks,
     foregroundTask,
     isLoading,
     error,
     submitMessage,
+    submitChoice,
     cancelTask,
     confirmTask,
     retryTask,
@@ -636,11 +812,7 @@ export function CanvasAgentShell({
     getCanvasContext,
     selectedSkillId,
     selectedTextModel,
-    requestedOutputCount: storyboardMode
-      ? storyboardCount
-      : worldMode
-        ? worldSceneCount
-        : undefined,
+    requestedOutputCount: countConfig?.value,
     executionMode,
     conversationStartedAt,
     onBusyChange,
@@ -668,9 +840,33 @@ export function CanvasAgentShell({
       ),
     [visibleTasks]
   )
+  const activeChoiceTaskId = useMemo(() => {
+    const latestTask = [...visibleTasks].sort((left, right) =>
+      right.createdAt.localeCompare(left.createdAt)
+    )[0]
+    return latestTask?.interpretation?.choiceGroups?.length
+      ? latestTask.id
+      : undefined
+  }, [visibleTasks])
   const messageContextValue = useMemo<AgentMessageContextValue>(
-    () => ({ tasksByMessageId, cancelTask, confirmTask, retryTask }),
-    [cancelTask, confirmTask, retryTask, tasksByMessageId]
+    () => ({
+      tasksByMessageId,
+      activeChoiceTaskId,
+      cancelTask,
+      confirmTask,
+      retryTask,
+      submitChoice,
+      openApiSettings,
+    }),
+    [
+      activeChoiceTaskId,
+      cancelTask,
+      confirmTask,
+      openApiSettings,
+      retryTask,
+      submitChoice,
+      tasksByMessageId,
+    ]
   )
   const runtime = useExternalStoreRuntime({
     messages,
@@ -763,14 +959,65 @@ export function CanvasAgentShell({
     })
   }
 
-  const selectionPreviews = useMemo<AgentCanvasSelectionPreview[]>(() => {
+  const selectionPreviews: AgentCanvasSelectionPreview[] = (() => {
     if (!open || !selectionKey) return []
     try {
       return getCanvasContext().selectionPreviews
     } catch {
       return []
     }
-  }, [getCanvasContext, open, selectionKey])
+  })()
+
+  useEffect(() => {
+    if (!composerToolFeedback) return
+    const timeout = window.setTimeout(() => setComposerToolFeedback(undefined), 2600)
+    return () => window.clearTimeout(timeout)
+  }, [composerToolFeedback])
+
+  const handleImportImages = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []).filter((file) =>
+      file.type.toLowerCase().startsWith("image/")
+    )
+    event.target.value = ""
+    if (files.length === 0) return
+
+    try {
+      await onImportImages(files)
+      setSelectionRefreshKey((current) => current + 1)
+      setComposerToolFeedback({
+        kind: "success",
+        message: `已导入并引用 ${files.length} 张图片`,
+      })
+    } catch (reason) {
+      setComposerToolFeedback({
+        kind: "error",
+        message: reason instanceof Error ? reason.message : "图片导入失败",
+      })
+    }
+  }
+
+  const refreshCanvasSelection = () => {
+    try {
+      const previews = getCanvasContext().selectionPreviews
+      if (previews.length === 0) {
+        setComposerToolFeedback({
+          kind: "error",
+          message: "请先在画布中选择要引用的节点",
+        })
+        return
+      }
+      setSelectionRefreshKey((current) => current + 1)
+      setComposerToolFeedback({
+        kind: "success",
+        message: `已引用 ${previews.length} 个画布节点`,
+      })
+    } catch (reason) {
+      setComposerToolFeedback({
+        kind: "error",
+        message: reason instanceof Error ? reason.message : "无法读取当前画布选区",
+      })
+    }
+  }
 
   const startNewConversation = () => {
     setConversationStartedAt(new Date().toISOString())
@@ -778,13 +1025,6 @@ export function CanvasAgentShell({
     setSelectedSkillId("")
     setSelectedSkill(undefined)
     setSelectedTextModel("")
-  }
-
-  const openApiSettings = () => {
-    onClose()
-    window.setTimeout(() => {
-      window.dispatchEvent(new Event("asui:open-api-config"))
-    }, 0)
   }
 
   return (
@@ -853,6 +1093,14 @@ export function CanvasAgentShell({
                   {storyboardSetupError}
                 </p>
               )}
+              {composerToolFeedback && (
+                <p
+                  className={`canvas-agent-tool-feedback is-${composerToolFeedback.kind}`}
+                  role="status"
+                >
+                  {composerToolFeedback.message}
+                </p>
+              )}
               <BorderBeam
                 size="md"
                 colorVariant="colorful"
@@ -906,58 +1154,41 @@ export function CanvasAgentShell({
                             ? "输入封面主题和主标题，Enter 发送"
                             : imageTo3dMode
                               ? "选中图片后描述四视角用途，Enter 发送"
-                              : "输入消息，Enter 发送"
+                              : socialCardMode
+                                ? "输入平台、内容和视觉系统，Enter 生成卡片方案"
+                                : portraitMode
+                                  ? "描述成年人物、场景和写真情绪，Enter 发送"
+                                  : handdrawnMode
+                                    ? "输入故事或选中有序图片，Enter 生成手绘视频"
+                                    : "输入消息，Enter 发送"
                     }
                     rows={3}
                   />
-                  {(storyboardMode || worldMode) && (
+                  {countConfig && (
                     <div className="canvas-agent-storyboard-config">
                       <span>
                         <HugeiconsIcon
-                          icon={
-                            storyboardMode
-                              ? ClapperboardIcon
-                              : Globe02Icon
-                          }
+                          icon={countConfig.icon}
                           size={14}
                           strokeWidth={1.8}
                         />
-                        {storyboardMode ? "分镜张数" : "世界场景数"}
+                        {countConfig.label}
                       </span>
                       <div
                         role="group"
-                        aria-label={
-                          storyboardMode
-                            ? "选择分镜张数"
-                            : "选择世界场景数"
-                        }
+                        aria-label={countConfig.ariaLabel}
                       >
-                        {(storyboardMode
-                          ? STORYBOARD_COUNTS
-                          : WORLD_SCENE_COUNTS
-                        ).map((count) => (
+                        {countConfig.values.map((count) => (
                           <button
                             key={count}
                             type="button"
                             className={
-                              (storyboardMode
-                                ? storyboardCount
-                                : worldSceneCount) === count
+                              countConfig.value === count
                                 ? "is-active"
                                 : undefined
                             }
-                            onClick={() => {
-                              if (storyboardMode) {
-                                setStoryboardCount(count)
-                              } else {
-                                setWorldSceneCount(count)
-                              }
-                            }}
-                            aria-pressed={
-                              (storyboardMode
-                                ? storyboardCount
-                                : worldSceneCount) === count
-                            }
+                            onClick={() => countConfig.setValue(count)}
+                            aria-pressed={countConfig.value === count}
                           >
                             {count}
                           </button>
@@ -967,9 +1198,23 @@ export function CanvasAgentShell({
                   )}
                   <div className="canvas-agent-composer-footer">
                     <div className="canvas-agent-composer-tools">
-                      <span className="canvas-agent-context-button" title="自动读取当前画布选区" aria-label="自动读取当前画布选区">
+                      <input
+                        ref={imageImportInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="sr-only"
+                        onChange={(event) => void handleImportImages(event)}
+                      />
+                      <button
+                        type="button"
+                        className="canvas-agent-context-button"
+                        title="导入图片到画布并引用"
+                        aria-label="导入图片到画布并引用"
+                        onClick={() => imageImportInputRef.current?.click()}
+                      >
                         <HugeiconsIcon icon={Add01Icon} size={18} strokeWidth={1.7} />
-                      </span>
+                      </button>
                       <SkillPicker
                         compact
                         value={selectedSkillId}
@@ -1009,9 +1254,15 @@ export function CanvasAgentShell({
                             : "询问执行"}
                         </span>
                       </button>
-                      <span className="canvas-agent-canvas-button" title="当前画布" aria-label="当前画布">
+                      <button
+                        type="button"
+                        className="canvas-agent-canvas-button"
+                        title="引用当前画布选区"
+                        aria-label="引用当前画布选区"
+                        onClick={refreshCanvasSelection}
+                      >
                         <HugeiconsIcon icon={Image01Icon} size={17} strokeWidth={1.7} />
-                      </span>
+                      </button>
                     </div>
                     <ComposerPrimitive.Send className="canvas-agent-send" aria-label="发送给画布 Agent">
                       <HugeiconsIcon

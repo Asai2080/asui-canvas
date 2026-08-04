@@ -110,12 +110,28 @@ export const agentTaskErrorSchema = z.object({
   details: z.record(z.string(), z.unknown()).optional(),
 })
 
+export const agentChoiceOptionSchema = z.object({
+  id: agentTaskIdSchema,
+  label: z.string().trim().min(1).max(80),
+  value: z.string().trim().min(1).max(1_000).optional(),
+  description: z.string().trim().min(1).max(240).optional(),
+  action: z.enum(["submit", "open-settings"]).default("submit"),
+})
+
+export const agentChoiceGroupSchema = z.object({
+  id: agentTaskIdSchema,
+  label: z.string().trim().min(1).max(80),
+  options: z.array(agentChoiceOptionSchema).min(1).max(12),
+})
+
 export const agentInterpretationSchema = z.object({
   message: z.string().trim().min(1).max(2_000),
   summary: z.string().trim().min(1).max(1_000),
   normalizedInstruction: z.string().trim().min(1).max(4_000),
   intent: z.enum(["image", "video", "conversation", "unsupported"]),
   source: z.enum(["text-model", "local-rules"]),
+  choiceGroups: z.array(agentChoiceGroupSchema).min(1).max(4).optional(),
+  choiceSubmitLabel: z.string().trim().min(1).max(40).optional(),
   target: z
     .object({
       mediaType: z.enum(["image", "video"]).optional(),
@@ -203,6 +219,8 @@ export type AgentTaskHistoryEvent = z.infer<typeof agentTaskHistoryEventSchema>
 export type CompiledPrompt = z.infer<typeof compiledPromptSchema>
 export type AgentPlan = z.infer<typeof agentPlanSchema>
 export type AgentTaskError = z.infer<typeof agentTaskErrorSchema>
+export type AgentChoiceOption = z.infer<typeof agentChoiceOptionSchema>
+export type AgentChoiceGroup = z.infer<typeof agentChoiceGroupSchema>
 export type AgentInterpretation = z.infer<typeof agentInterpretationSchema>
 export type AgentImageArtifact = z.infer<typeof agentImageArtifactSchema>
 export type AgentVideoArtifact = z.infer<typeof agentVideoArtifactSchema>

@@ -8,6 +8,7 @@ import {
   isAgentCapabilityIntroduction,
   isAgentTaskTerminal,
   selectForegroundTask,
+  selectPromptWritebackTask,
   tasksToConversationHistory,
   tasksToThreadMessages,
 } from "./agent-view-model"
@@ -84,6 +85,56 @@ describe("agent view model", () => {
 
     expect(isAgentTaskTerminal(completed)).toBe(true)
     expect(selectForegroundTask([completed, queued])?.id).toBe("queued")
+  })
+
+  it("never writes historical prompt tasks into the current canvas session", () => {
+    const historicalStoryboard = {
+      ...task(
+        "historical-storyboard",
+        "awaiting-confirmation",
+        "2026-07-26T08:00:00.000Z"
+      ),
+      compiledPrompt: {
+        summary: "十二张历史分镜",
+        sharedConstraints: [],
+        outputs: Array.from({ length: 12 }, (_, index) => ({
+          id: `historical-output-${index + 1}`,
+          mediaType: "image" as const,
+          prompt: `历史分镜 ${index + 1}`,
+        })),
+      },
+    } satisfies AgentTask
+    const currentPortrait = {
+      ...task(
+        "current-portrait",
+        "awaiting-confirmation",
+        "2026-07-26T08:01:00.000Z"
+      ),
+      compiledPrompt: {
+        summary: "当前写真任务",
+        sharedConstraints: [],
+        outputs: [
+          {
+            id: "current-output",
+            mediaType: "image" as const,
+            prompt: "成年女性西装近景写真",
+          },
+        ],
+      },
+    } satisfies AgentTask
+
+    expect(
+      selectPromptWritebackTask(
+        [historicalStoryboard, currentPortrait],
+        new Set([currentPortrait.id])
+      )?.id
+    ).toBe(currentPortrait.id)
+    expect(
+      selectPromptWritebackTask(
+        [historicalStoryboard, currentPortrait],
+        new Set()
+      )
+    ).toBeUndefined()
   })
 
   it("keeps active tasks in the thinking state without an assistant result", () => {

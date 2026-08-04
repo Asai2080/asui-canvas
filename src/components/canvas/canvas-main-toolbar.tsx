@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   AiChat01Icon,
+  AlignSelectionIcon,
   ColorsIcon,
   CursorPointer01Icon,
   HandIcon,
@@ -11,7 +12,6 @@ import {
   ImageCropIcon,
   ImageDownloadIcon,
   Loading03Icon,
-  Magnet01Icon,
   PencilEdit01Icon,
   Settings01Icon,
   TextFontIcon,
@@ -137,7 +137,12 @@ export function CanvasQuickActions() {
         title={snapEnabled ? "对齐吸附：已开启" : "对齐吸附：已关闭"}
         onClick={toggleSnapMode}
       >
-        <HugeiconsIcon icon={Magnet01Icon} size={16} strokeWidth={1.7} aria-hidden="true" />
+        <HugeiconsIcon
+          icon={AlignSelectionIcon}
+          size={16}
+          strokeWidth={1.7}
+          aria-hidden="true"
+        />
       </button>
     </DefaultQuickActions>
   )

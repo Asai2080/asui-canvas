@@ -223,9 +223,11 @@ function variantKeyForArtifact(task: AgentTask, artifact: AgentArtifact) {
   return task.compiledPrompt?.outputs[Number(generationIndex) - 1]?.variantKey
 }
 
-function matchingWorldImageVariant(variantKey?: string) {
-  const scene = variantKey?.match(/^world-scene-(\d{2})-video$/)?.[1]
-  return scene ? `world-scene-${scene}-image` : undefined
+function matchingPairedImageVariant(variantKey?: string) {
+  const scene = variantKey?.match(
+    /^(world|handdrawn)-scene-(\d{2})-video$/
+  )
+  return scene ? `${scene[1]}-scene-${scene[2]}-image` : undefined
 }
 
 export function buildAgentCanvasCommandBatch({
@@ -291,14 +293,14 @@ export function buildAgentCanvasCommandBatch({
       })
     }
 
-    const worldImageVariant = matchingWorldImageVariant(variantKey)
-    const worldImageRef = worldImageVariant
-      ? resultRefByVariant.get(worldImageVariant)
+    const pairedImageVariant = matchingPairedImageVariant(variantKey)
+    const pairedImageRef = pairedImageVariant
+      ? resultRefByVariant.get(pairedImageVariant)
       : undefined
-    if (worldImageRef) {
+    if (pairedImageRef) {
       commands.push({
         type: "connect-nodes",
-        sourceNodeRef: worldImageRef,
+        sourceNodeRef: pairedImageRef,
         targetNodeRef: nodeRef,
       })
     } else if (task.selectedCanvasId) {

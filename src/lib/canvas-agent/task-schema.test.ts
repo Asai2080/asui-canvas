@@ -33,6 +33,60 @@ describe("canvas agent schemas", () => {
     expect(agentTaskSchema.parse(JSON.parse(JSON.stringify(task)))).toEqual(task)
   })
 
+  it("persists structured clarification choices across task recovery", () => {
+    const parsed = agentTaskSchema.parse({
+      id: "agent-task-choices",
+      revision: 2,
+      source: "asui-canvas-agent",
+      status: "completed",
+      userInstruction: "做一个春季封面",
+      interpretation: {
+        message: "请选择封面风格与标题",
+        summary: "封面风格待选择",
+        normalizedInstruction: "做一个春季封面",
+        intent: "conversation",
+        source: "local-rules",
+        choiceGroups: [
+          {
+            id: "cover-style",
+            label: "构图风格",
+            options: [
+              {
+                id: "cover-style-10",
+                label: "10 正面对视风",
+                value: "10",
+                action: "submit",
+              },
+            ],
+          },
+          {
+            id: "cover-title",
+            label: "主标题",
+            options: [
+              {
+                id: "cover-title-1",
+                label: "春日新章",
+                value: "主标题：春日新章",
+                action: "submit",
+              },
+            ],
+          },
+        ],
+        choiceSubmitLabel: "确认风格与标题",
+      },
+      resultNodeIds: [],
+      createdAt: "2026-07-25T01:00:00.000Z",
+      updatedAt: "2026-07-25T01:01:00.000Z",
+      history: [],
+    })
+
+    expect(parsed.interpretation?.choiceGroups).toHaveLength(2)
+    expect(parsed.interpretation?.choiceGroups?.[1]?.options[0]).toMatchObject({
+      label: "春日新章",
+      value: "主标题：春日新章",
+    })
+  })
+
   it("rejects task ids that could escape the task directory", () => {
     expect(() =>
       agentTaskSchema.parse({

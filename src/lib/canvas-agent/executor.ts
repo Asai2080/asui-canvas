@@ -15,6 +15,7 @@ import type {
   createModel3dGenerationAdapter,
 } from "./adapters/model3d-generation"
 import type { TextModelCredentials } from "./adapters/text-model"
+import type { TransparentImageProcessor } from "./adapters/transparent-image"
 import { getStoredCanvasContextSnapshot } from "./context/store"
 import type { StructuredAgentPlanStep } from "./planner/schema"
 import {
@@ -27,6 +28,7 @@ import {
   getStoredAgentTask,
   saveStoredAgentTask,
 } from "./task-store"
+import { isCanvas3dStickerVariantKey } from "./skills/identifiers"
 import { registeredAgentTools } from "./tools/registry"
 
 type ImageAdapter = {
@@ -58,8 +60,23 @@ export type ExecuteAgentTaskDependencies = {
   imageCredentials?: ImageGenerationCredentials
   videoCredentials?: VideoGenerationCredentials
   textCredentials?: TextModelCredentials
+  transparentImageProcessor?: TransparentImageProcessor
   now?: () => string
   createId?: (prefix: string) => string
+}
+
+function requiresTrueAlpha(task: AgentTask, step: StructuredAgentPlanStep) {
+  if (step.tool !== "generate_image" && step.tool !== "edit_image") {
+    return false
+  }
+  const input =
+    step.tool === "generate_image"
+      ? registeredAgentTools.generate_image.parse(step.input)
+      : registeredAgentTools.edit_image.parse(step.input)
+  const output = task.compiledPrompt?.outputs.find(
+    (candidate) => candidate.id === input.promptOutputId
+  )
+  return isCanvas3dStickerVariantKey(output?.variantKey)
 }
 
 const GENERATION_TOOLS = new Set([
@@ -68,6 +85,12 @@ const GENERATION_TOOLS = new Set([
   "generate_video",
   "generate_3d_model",
 ])
+
+const CANVAS_3D_STICKER_STYLE_REFERENCE_SRCS = [
+  "/builtin-skill-assets/canvas-3d-sticker-characters-chibi.png",
+  "/builtin-skill-assets/canvas-3d-sticker-isometric-city.png",
+  "/builtin-skill-assets/canvas-3d-sticker-characters-heroic.png",
+] as const
 
 function defaultNow() {
   return new Date().toISOString()
@@ -207,10 +230,12 @@ async function imageInputForStep(
         input.referencePolicy === "none" ? undefined : sourceImageSrc(context),
       parentVersionId: context?.snapshot.sourceNode?.versionId,
       referenceImageSrcs:
-        input.referencePolicy === "source-only" ||
-        input.referencePolicy === "none"
-          ? []
-          : referenceImageSrcs(context),
+        input.referencePolicy === "source-and-sticker-style"
+          ? [...CANVAS_3D_STICKER_STYLE_REFERENCE_SRCS]
+          : input.referencePolicy === "source-only" ||
+              input.referencePolicy === "none"
+            ? []
+            : referenceImageSrcs(context),
     }
   }
 
@@ -382,12 +407,23 @@ export async function executeAgentTask(
     generationStep.tool === "edit_image"
   ) {
     const input = await imageInputForStep(generationStep, dependencies.root)
-    const artifacts = (
-      await dependencies.imageAdapter.generate(
-        input,
-        dependencies.imageCredentials ?? {}
-      )
-    ).map((artifact) => toStoredImageArtifact(artifact, createId))
+    const generatedArtifacts = await dependencies.imageAdapter.generate(
+      input,
+      dependencies.imageCredentials ?? {}
+    )
+    const readyArtifacts = requiresTrueAlpha(task, generationStep)
+      ? await Promise.all(
+          generatedArtifacts.map(async (artifact) => {
+            if (!dependencies.transparentImageProcessor) {
+              throw new Error("画布 3D 贴纸缺少透明背景校验与抠图处理器")
+            }
+            return dependencies.transparentImageProcessor(artifact)
+          })
+        )
+      : generatedArtifacts
+    const artifacts = readyArtifacts.map((artifact) =>
+      toStoredImageArtifact(artifact, createId)
+    )
     task = await persistTask(task, dependencies.root, now, (draft) =>
       withCompletedStep(
         {

@@ -1,5 +1,9 @@
 import type { CompiledPrompt } from "../task-schema"
 import {
+  isCanvas3dStickerVariantKey,
+  isIanXiaoheiVariantKey,
+} from "../skills/identifiers"
+import {
   isAgentToolName,
   parseAgentToolInput,
   type AgentToolName,
@@ -44,13 +48,14 @@ function sourceStepIdForVideo(
 ) {
   if (output.variantKey === "three-turntable") return "generate-1"
 
-  const worldScene = output.variantKey?.match(
-    /^world-scene-(\d{2})-video$/
+  const pairedScene = output.variantKey?.match(
+    /^(world|handdrawn)-scene-(\d{2})-video$/
   )
-  if (!worldScene) return undefined
+  if (!pairedScene) return undefined
   const sourceIndex = outputs.findIndex(
     (candidate) =>
-      candidate.variantKey === `world-scene-${worldScene[1]}-image`
+      candidate.variantKey ===
+      `${pairedScene[1]}-scene-${pairedScene[2]}-image`
   )
   return sourceIndex >= 0 ? `generate-${sourceIndex + 1}` : undefined
 }
@@ -58,6 +63,14 @@ function sourceStepIdForVideo(
 function imageReferencePolicy(
   output: CompiledPrompt["outputs"][number]
 ) {
+  if (isCanvas3dStickerVariantKey(output.variantKey)) {
+    return "source-and-sticker-style" as const
+  }
+  if (isIanXiaoheiVariantKey(output.variantKey)) {
+    return output.variantKey?.startsWith("ian-xiaohei-edit-")
+      ? ("source-only" as const)
+      : ("none" as const)
+  }
   if (output.variantKey?.startsWith("three-")) return "source-only" as const
   return "all" as const
 }

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { insetCanvasMediaBounds } from "./media-layout"
+import {
+  fitImportedImageCanvasSize,
+  insetCanvasMediaBounds,
+} from "./media-layout"
 
 describe("insetCanvasMediaBounds", () => {
   it("places generated media inside the six pixel canvas frame", () => {
@@ -18,6 +21,22 @@ describe("insetCanvasMediaBounds", () => {
       y: 22.5,
       w: 1,
       h: 1,
+    })
+  })
+})
+
+describe("fitImportedImageCanvasSize", () => {
+  it("fits a portrait import into a readable canvas without changing its aspect ratio", () => {
+    expect(fitImportedImageCanvasSize({ width: 1200, height: 1800 })).toEqual({
+      width: 373,
+      height: 560,
+    })
+  })
+
+  it("keeps a landscape import within the same long-edge limit", () => {
+    expect(fitImportedImageCanvasSize({ width: 1920, height: 1080 })).toEqual({
+      width: 560,
+      height: 315,
     })
   })
 })

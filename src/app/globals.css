@@ -691,7 +691,7 @@
   }
 
   .canvas-snap-toggle {
-    @apply relative flex size-8 shrink-0 items-center justify-center border-0 bg-transparent text-[#A7A6AE] shadow-none transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/55;
+    @apply pointer-events-auto relative flex size-10 shrink-0 items-center justify-center border-0 bg-transparent text-[#A7A6AE] shadow-none transition-colors hover:text-white focus-visible:bg-white/[0.07] focus-visible:outline-none;
   }
 
   .canvas-snap-toggle.is-active {
@@ -781,7 +781,7 @@
   }
 
   .canvas-agent-shell {
-    @apply pointer-events-none my-3 flex h-[calc(100vh-24px)] w-0 shrink-0 flex-col overflow-hidden rounded-[22px] border border-transparent bg-[#151515] text-sidebar-foreground opacity-0 transition-[width,margin,opacity] duration-200;
+    @apply pointer-events-none relative z-[1000] my-3 flex h-[calc(100vh-24px)] w-0 shrink-0 flex-col overflow-hidden rounded-[22px] border border-transparent bg-[#151515] text-sidebar-foreground opacity-0 transition-[width,margin,opacity] duration-200;
   }
 
   .canvas-agent-shell.is-open {
@@ -945,6 +945,46 @@
 
   .agent-bubble--result.status-failed .agent-result-copy {
     @apply text-destructive/90;
+  }
+
+  .agent-clarification-choices {
+    @apply mt-3 flex flex-col gap-3 border-t border-white/[0.07] pt-3;
+  }
+
+  .agent-clarification-choices fieldset {
+    @apply min-w-0;
+  }
+
+  .agent-clarification-choices legend {
+    @apply mb-1.5 text-[10px] font-medium text-[#8B8B93];
+  }
+
+  .agent-clarification-choices__options {
+    @apply grid grid-cols-2 gap-1.5;
+  }
+
+  .agent-clarification-choices__options button {
+    @apply flex min-h-9 min-w-0 flex-col items-start justify-center rounded-lg border border-white/[0.08] bg-white/[0.025] px-2.5 py-2 text-left text-[#D2D2D7] transition-colors hover:border-primary/30 hover:bg-primary/[0.06] hover:text-[#F1F1F3] disabled:cursor-wait disabled:opacity-55;
+  }
+
+  .agent-clarification-choices__options button.is-selected {
+    @apply border-primary/45 bg-primary/10 text-primary;
+  }
+
+  .agent-clarification-choices__options span {
+    @apply w-full truncate text-[11px] font-medium leading-4;
+  }
+
+  .agent-clarification-choices__options small {
+    @apply mt-0.5 line-clamp-2 text-[9px] font-normal leading-3.5 text-[#777780];
+  }
+
+  .agent-clarification-choices__options button.is-selected small {
+    @apply text-primary/70;
+  }
+
+  .agent-clarification-choices__submit {
+    @apply ml-auto flex h-8 items-center justify-center rounded-full bg-primary px-3.5 text-[11px] font-semibold text-[#08060A] transition-colors hover:bg-primary/85 disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-[#696971];
   }
 
   .agent-capability-intro {
@@ -1407,6 +1447,18 @@
     @apply mb-2 text-[11px] leading-4 text-destructive;
   }
 
+  .canvas-agent-tool-feedback {
+    @apply mb-2 px-2 text-[11px] leading-4;
+  }
+
+  .canvas-agent-tool-feedback.is-success {
+    @apply text-primary;
+  }
+
+  .canvas-agent-tool-feedback.is-error {
+    @apply text-destructive;
+  }
+
   .canvas-agent-composer {
     @apply min-h-[132px] shrink-0 border border-sidebar-border bg-sidebar-accent/55 p-[10px] shadow-none;
     border-radius: 30px;
@@ -1578,7 +1630,7 @@
   }
 
   .agent-resource-option {
-    @apply flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[#B9B9C0] outline-none transition-colors hover:bg-white/[0.05] hover:text-[#ECECEF] focus-visible:ring-1 focus-visible:ring-primary/65;
+    @apply flex min-h-12 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[#B9B9C0] outline-none transition-colors hover:bg-white/[0.05] hover:text-[#ECECEF] focus-visible:ring-1 focus-visible:ring-primary/65;
   }
 
   .agent-resource-option.is-selected {
@@ -1602,7 +1654,7 @@
   }
 
   .agent-resource-option-copy small {
-    @apply line-clamp-1 text-[9px] leading-3 text-[#72727A];
+    @apply line-clamp-2 text-[9px] leading-3 text-[#72727A];
   }
 
   .agent-resource-option.is-selected .agent-resource-option-copy small {
@@ -1924,7 +1976,7 @@
   }
 
   .video-node-link-layer {
-    @apply pointer-events-none fixed inset-0 z-20 size-full overflow-visible;
+    @apply pointer-events-none absolute inset-0 z-20 size-full overflow-hidden;
   }
 
   .video-node-link-layer__base {

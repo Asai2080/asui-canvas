@@ -219,6 +219,47 @@ describe("createAgentPlan", () => {
     })
   })
 
+  it("feeds each hand-drawn scene image into its matching reveal video", () => {
+    const compiled: CompiledPrompt = {
+      originalGoal: "三个手绘故事段落",
+      summary: "手绘故事视频：3 个叙事段落",
+      sharedConstraints: [],
+      outputs: Array.from({ length: 3 }).flatMap((_, index) => {
+        const number = String(index + 1).padStart(2, "0")
+        return [
+          {
+            id: `handdrawn-image-${number}`,
+            mediaType: "image" as const,
+            operation: "create" as const,
+            prompt: `手绘画面 ${number}`,
+            width: 720,
+            height: 960,
+            variantKey: `handdrawn-scene-${number}-image`,
+          },
+          {
+            id: `handdrawn-video-${number}`,
+            mediaType: "video" as const,
+            operation: "animate" as const,
+            prompt: `绘制过程 ${number}`,
+            durationSeconds: 5,
+            resolution: "720p",
+            variantKey: `handdrawn-scene-${number}-video`,
+          },
+        ]
+      }),
+    }
+
+    const plan = createAgentPlan({ taskId: "task-handdrawn", compiledPrompt: compiled })
+    expect(plan.steps.find((step) => step.id === "generate-2")).toMatchObject({
+      dependsOn: ["generate-1"],
+      input: { sourceStepId: "generate-1" },
+    })
+    expect(plan.steps.find((step) => step.id === "generate-6")).toMatchObject({
+      dependsOn: ["generate-5"],
+      input: { sourceStepId: "generate-5" },
+    })
+  })
+
   it("isolates four-view generation from unrelated selected references", () => {
     const compiled = imagePrompt(1)
     compiled.outputs[0].variantKey = "three-front-three-quarter"
@@ -233,5 +274,31 @@ describe("createAgentPlan", () => {
     expect(plan.steps.find((step) => step.id === "generate-1")?.input).toMatchObject({
       referencePolicy: "source-only",
     })
+  })
+
+  it("isolates Ian article generation and only references the source for edits", () => {
+    const article = imagePrompt(1)
+    article.outputs[0].variantKey = "ian-xiaohei-article-01"
+    article.outputs[0].sourceContextSnapshotId = "context-text"
+    const articlePlan = createAgentPlan({
+      taskId: "task-ian-article",
+      compiledPrompt: article,
+      contextSnapshotId: "context-text",
+    })
+    expect(
+      articlePlan.steps.find((step) => step.id === "generate-1")?.input
+    ).toMatchObject({ referencePolicy: "none" })
+
+    const edit = imagePrompt(1)
+    edit.outputs[0].variantKey = "ian-xiaohei-edit-01"
+    edit.outputs[0].sourceContextSnapshotId = "context-image"
+    const editPlan = createAgentPlan({
+      taskId: "task-ian-edit",
+      compiledPrompt: edit,
+      contextSnapshotId: "context-image",
+    })
+    expect(
+      editPlan.steps.find((step) => step.id === "generate-1")?.input
+    ).toMatchObject({ referencePolicy: "source-only" })
   })
 })

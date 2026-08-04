@@ -18,8 +18,13 @@ import { readApiConfigFromSession } from "@/lib/canvas/api-config"
 
 import {
   selectForegroundTask,
+  selectPromptWritebackTask,
   tasksToConversationHistory,
 } from "./agent-view-model"
+import {
+  continuationRequestOverrides,
+  type ContinuationRequestOverrides,
+} from "./continuation-request"
 
 export type AgentCanvasContext = {
   snapshot: CanvasContextSnapshot
@@ -77,6 +82,9 @@ export function useAgentTasks({
   onForegroundTaskChange,
 }: UseAgentTasksOptions) {
   const [tasks, setTasks] = useState<AgentTask[]>([])
+  const [sessionTaskIds, setSessionTaskIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  )
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
   const boundsByTaskRef = useRef(
@@ -91,8 +99,20 @@ export function useAgentTasks({
   const writebackRevisionRef = useRef("")
   const advanceRevisionRef = useRef("")
   const promptWritebackTaskIdsRef = useRef(new Set<string>())
+  const sessionTaskIdsRef = useRef(new Set<string>())
   const textModelByTaskRef = useRef(new Map<string, string>())
-  const foregroundTask = useMemo(() => selectForegroundTask(tasks), [tasks])
+  const foregroundTask = useMemo(
+    () =>
+      selectForegroundTask(
+        tasks.filter((task) => sessionTaskIds.has(task.id))
+      ),
+    [sessionTaskIds, tasks]
+  )
+
+  const registerSessionTask = useCallback((taskId: string) => {
+    sessionTaskIdsRef.current.add(taskId)
+    setSessionTaskIds((current) => new Set([...current, taskId]))
+  }, [])
 
   const upsertTask = useCallback((task: AgentTask) => {
     setTasks((current) => [task, ...current.filter(({ id }) => id !== task.id)])
@@ -130,16 +150,11 @@ export function useAgentTasks({
   }, [foregroundTask, onBusyChange, onForegroundTaskChange])
 
   useEffect(() => {
-    const promptTask = tasks.find(
-      (task) =>
-        Boolean(task.compiledPrompt) &&
-        [
-          "awaiting-confirmation",
-          "planning",
-          "executing",
-          "writing-canvas",
-        ].includes(task.status) &&
-        !promptWritebackTaskIdsRef.current.has(task.id)
+    const promptTask = selectPromptWritebackTask(
+      tasks.filter(
+        (task) => !promptWritebackTaskIdsRef.current.has(task.id)
+      ),
+      sessionTaskIdsRef.current
     )
     if (!promptTask) return
 
@@ -258,25 +273,30 @@ export function useAgentTasks({
     upsertTask,
   ])
 
-  const submitMessage = useCallback(
-    async (message: AppendMessage) => {
-      const userInstruction = messageText(message)
-      if (!userInstruction) return
+  const submitInstruction = useCallback(
+    async (
+      userInstruction: string,
+      overrides?: ContinuationRequestOverrides
+    ) => {
+      const normalizedInstruction = userInstruction.trim()
+      if (!normalizedInstruction) return
       setError("")
       const context = getCanvasContext()
       const response = await fetch("/api/agent/tasks", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          userInstruction,
-          executionMode,
-          requestedOutputCount,
+          userInstruction: normalizedInstruction,
+          executionMode: overrides?.executionMode ?? executionMode,
+          requestedOutputCount:
+            overrides?.requestedOutputCount ?? requestedOutputCount,
           selectedCanvasId: context.snapshot.selectedNodeId,
-          skillId: selectedSkillId || undefined,
+          skillId: overrides?.skillId ?? (selectedSkillId || undefined),
           contextSnapshot: context.snapshot,
         }),
       })
       const created = await readTaskResponse(response)
+      registerSessionTask(created.id)
       boundsByTaskRef.current.set(created.id, {
         sourceBounds: context.sourceBounds,
         viewportBounds: context.viewportBounds,
@@ -290,10 +310,20 @@ export function useAgentTasks({
       executionMode,
       getCanvasContext,
       requestedOutputCount,
+      registerSessionTask,
       selectedSkillId,
       selectedTextModel,
       upsertTask,
     ]
+  )
+
+  const submitMessage = useCallback(
+    async (message: AppendMessage) => {
+      const userInstruction = messageText(message)
+      if (!userInstruction) return
+      await submitInstruction(userInstruction)
+    },
+    [submitInstruction]
   )
 
   const performTaskAction = useCallback(
@@ -303,6 +333,7 @@ export function useAgentTasks({
       input?: { width: number; height: number }
     ) => {
       setError("")
+      registerSessionTask(taskId)
       try {
         const response = await fetch(
           `/api/agent/tasks/${encodeURIComponent(taskId)}/${action}`,
@@ -320,7 +351,7 @@ export function useAgentTasks({
         throw reason
       }
     },
-    [upsertTask]
+    [registerSessionTask, upsertTask]
   )
 
   return {
@@ -330,6 +361,8 @@ export function useAgentTasks({
     error,
     clearError: () => setError(""),
     submitMessage,
+    submitChoice: (task: AgentTask, value: string) =>
+      submitInstruction(value, continuationRequestOverrides(task)),
     cancelTask: (taskId: string) => performTaskAction(taskId, "cancel"),
     confirmTask: (
       taskId: string,

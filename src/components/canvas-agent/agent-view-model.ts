@@ -61,6 +61,25 @@ export function selectForegroundTask(tasks: readonly AgentTask[]) {
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))[0]
 }
 
+export function selectPromptWritebackTask(
+  tasks: readonly AgentTask[],
+  writableTaskIds: ReadonlySet<string>
+) {
+  return tasks
+    .filter(
+      (task) =>
+        writableTaskIds.has(task.id) &&
+        Boolean(task.compiledPrompt) &&
+        [
+          "awaiting-confirmation",
+          "planning",
+          "executing",
+          "writing-canvas",
+        ].includes(task.status)
+    )
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))[0]
+}
+
 export function getAgentTaskResultText(task: AgentTask) {
   if (
     task.status === "completed" &&
