@@ -314,6 +314,7 @@ export function buildProfessionalCreativeBrief(
 ) {
   const scene = sceneSpecificDirection(instruction)
   const direction = imageCreativeDirection(instruction)
+  const isUi = selectVisualPromptTemplate(instruction).id === "ui-interface"
   return [
     "【用户原始目标】",
     instruction,
@@ -325,9 +326,11 @@ export function buildProfessionalCreativeBrief(
     "【场景与叙事】",
     scene.environment,
     "",
-    "【构图与摄影】",
+    isUi ? "【界面布局】" : "【构图与摄影】",
     direction.composition,
-    intent === "video"
+    isUi
+      ? "使用正视、无设备外壳的单屏画布组织信息，不使用摄影镜头、景深、透视样机或画布外延；先保证全部模块在安全区内完整可见。"
+      : intent === "video"
       ? "使用具有明确叙事动机的稳定摄影机运动，动作按建立、发展、落点三个阶段推进，结尾保留可读稳定帧。"
       : "使用明确焦段与机位组织视觉焦点，主体、关键动作和边缘元素完整，不使用空泛的居中陈列。",
     "",
@@ -2698,6 +2701,7 @@ export function compileGenerationPrompt({
   const annotations = annotationLines(context)
   const skillRule = skill?.instructions.trim()
   const imageDirection = imageCreativeDirection(creativeInstruction)
+  const sceneDirection = sceneSpecificDirection(creativeInstruction)
   const durationSeconds =
     effectiveTarget?.durationSeconds ??
     Number(creativeInstruction.match(/(\d{1,2})\s*秒/)?.[1] ?? 4)
@@ -2705,12 +2709,15 @@ export function compileGenerationPrompt({
     effectiveTarget?.resolution ??
     creativeInstruction.match(/(480p|720p|1080p|4k)/i)?.[1] ??
     "720p"
-  const selectedTemplate = selectVisualPromptTemplate(creativeInstruction)
+  // Route from the user's request only. A generated brief can mention examples
+  // such as "avoid landing pages" and must not change the task category.
+  const selectedTemplate = selectVisualPromptTemplate(originalGoal)
   const templateGuidance = buildTemplatePromptGuidance(
-    creativeInstruction,
+    originalGoal,
     width,
     height
   )
+  const uiInterface = selectedTemplate.id === "ui-interface"
   const videoFrameRule = requestedRatio
     ? `画幅比例 ${requestedRatio[0]}:${requestedRatio[1]}`
     : animate
@@ -2768,14 +2775,19 @@ export function compileGenerationPrompt({
       "",
       "【主体与场景】",
       imageDirection.subject,
+      sceneDirection.subject,
+      sceneDirection.environment,
+      sceneDirection.moment,
       "",
       "【风格与媒介】",
       imageDirection.style,
       STYLE_PRESERVATION_RULE,
       "",
-      "【构图与镜头】",
+      uiInterface ? "【界面布局与画幅】" : "【构图与镜头】",
       `${difference}。${imageDirection.composition}`,
-      IMAGE_CAMERA_DIRECTIONS[index % IMAGE_CAMERA_DIRECTIONS.length],
+      uiInterface
+        ? `正视、无透视的 ${width} × ${height} 单屏界面；画布边缘与界面边缘完全对齐，不使用镜头焦段、景深、倾斜展示、设备外壳或截图外框。`
+        : IMAGE_CAMERA_DIRECTIONS[index % IMAGE_CAMERA_DIRECTIONS.length],
       "",
       "【光线设计】",
       imageDirection.lighting,
@@ -2796,7 +2808,9 @@ export function compileGenerationPrompt({
         ? ["【Skill 约束】", skillRule, ""]
         : []),
       "【输出规范】",
-      `生成一张 ${width} × ${height} 的完整成片，保持主体、环境和边缘元素完整；画面内不主动生成解释文字、标注线、水印、边框或拼图。`,
+      uiInterface
+        ? `只生成一张严格为 ${width} × ${height} 的完整单屏 UI 成片。四边必须保留安全留白，所有标题、正文、图标、按钮、列表、图表与底部导航完整可见；禁止贴边、截断、遮挡、越界、画布外延、相邻页面、设备样机、解释文字、水印或拼图。`
+        : `生成一张 ${width} × ${height} 的完整成片，保持主体、环境和边缘元素完整；画面内不主动生成解释文字、标注线、水印、边框或拼图。`,
     ].join("\n")
     const videoDirectorPrompt = [
       "【导演创作简报】",
@@ -2892,7 +2906,7 @@ export function compileGenerationPrompt({
       prompt,
       negativePrompt:
         mediaType === "image" && !edit
-          ? `${imageDirection.negative}；${templateNegativePrompt(creativeInstruction)}`
+          ? `${imageDirection.negative}；${templateNegativePrompt(originalGoal)}${uiInterface ? "；元素贴边、文字截断、图标截断、导航截断、模块越界、相邻页面、摄影镜头、景深、透视、操作系统状态栏" : ""}`
           : mediaType === "video"
             ? `${animate ? "不要改变参考图中的主体身份、外观、服装、道具、环境布局、光向或核心构图；" : ""}不要镜头瞬移、无动机抖动、焦距突变、跳轴、主体漂移、身份变化、肢体畸形、材质闪烁、纹理游走、背景融化、物体穿透、违背重力和惯性的动作、首尾帧突变、字幕、水印、边框或拼图。`
             : "不要忽略用户指令，不要改变未要求修改的内容，不要输出标注线和解释文字。",

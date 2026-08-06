@@ -75,6 +75,9 @@ describe("visual prompt template routing", () => {
     ).join("\n")
 
     expect(plain).toContain("不预设毛玻璃、Bento、渐变或 3D")
+    expect(plain).toContain("严格使用 750 × 1624 竖版单屏画布")
+    expect(plain).toContain("底部导航约占 10%")
+    expect(plain).toContain("内容超量时减少条目和装饰")
     expect(plain).not.toContain("辅助效果选择毛玻璃")
     expect(plain).not.toContain("辅助效果选择 Bento Grid")
     expect(glass).toContain("辅助效果选择毛玻璃")

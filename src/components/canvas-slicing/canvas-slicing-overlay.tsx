@@ -3,6 +3,7 @@
 import { useState, type PointerEvent } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
+  CheckmarkSquare02Icon,
   Cancel01Icon,
   CheckmarkCircle02Icon,
   CursorAddSelection01Icon,
@@ -115,6 +116,7 @@ export function CanvasSlicingOverlay({
 
   const busy = phase === "detecting" || phase === "exporting"
   const selectionCount = selectedIds.size
+  const reviewCandidates = phase === "reviewing" || phase === "manual"
 
   return (
     <div className="canvas-slicing-layer" aria-label="切图模式">
@@ -151,18 +153,6 @@ export function CanvasSlicingOverlay({
               <span>{index + 1}</span>
               <small>{candidate.recommended ? "建议切出" : "建议跳过"} · {candidate.elementType}</small>
               {candidate.reason && <em>{candidate.reason}</em>}
-              <button
-                type="button"
-                className="canvas-slicing-candidate__mode"
-                aria-label={`${candidate.cropMode === "transparent" ? "保留原背景" : "去除背景"}${candidate.name}`}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onToggleCropMode(candidate.id)
-                }}
-              >
-                {candidate.cropMode === "transparent" ? "透明底" : "保留背景"}
-              </button>
             </div>
           )
         })}
@@ -173,6 +163,59 @@ export function CanvasSlicingOverlay({
           />
         )}
       </div>
+
+      {reviewCandidates && candidates.length > 0 && (
+        <section
+          className="canvas-slicing-review"
+          aria-label="切图导出设置"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <header>
+            <div>
+              <strong>切图导出设置</strong>
+              <span>默认保留背景，可逐项改为透明 PNG</span>
+            </div>
+            <span>{selectionCount}/{candidates.length}</span>
+          </header>
+          <div className="canvas-slicing-review__list">
+            {candidates.map((candidate, index) => {
+              const selected = selectedIds.has(candidate.id)
+              return (
+                <div key={candidate.id} className={`canvas-slicing-review__item${selected ? " is-selected" : ""}`}>
+                  <button
+                    type="button"
+                    className="canvas-slicing-review__select"
+                    aria-pressed={selected}
+                    onClick={() => onToggleCandidate(candidate.id)}
+                  >
+                    <HugeiconsIcon icon={CheckmarkSquare02Icon} size={17} strokeWidth={1.7} />
+                    <span>
+                      <strong>{index + 1}. {candidate.name}</strong>
+                      <small>{candidate.elementType ?? candidate.assetType}</small>
+                    </span>
+                  </button>
+                  <div className="canvas-slicing-review__modes" role="group" aria-label={`${candidate.name} 背景设置`}>
+                    <button
+                      type="button"
+                      className={candidate.cropMode === "rectangle" ? "is-active" : ""}
+                      onClick={() => candidate.cropMode !== "rectangle" && onToggleCropMode(candidate.id)}
+                    >
+                      保留背景
+                    </button>
+                    <button
+                      type="button"
+                      className={candidate.cropMode === "transparent" ? "is-active" : ""}
+                      onClick={() => candidate.cropMode !== "transparent" && onToggleCropMode(candidate.id)}
+                    >
+                      透明 PNG
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       <div
         className="canvas-slicing-controls"

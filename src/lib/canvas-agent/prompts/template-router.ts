@@ -397,6 +397,26 @@ function uiArchitecture(instruction: string) {
   return "采用真实 App 页面结构：状态与页面标题、当前任务或核心状态、唯一主操作、与任务相关的内容模块、必要的反馈区和稳定底部导航；三秒内能理解页面用途。"
 }
 
+function uiCanvasRules(width: number, height: number) {
+  const portraitMobile = height > width && width <= 900
+  if (portraitMobile) {
+    const sideInset = Math.max(32, Math.round(width * 0.064))
+    const topInset = Math.max(48, Math.round(height * 0.04))
+    const bottomInset = Math.max(72, Math.round(height * 0.06))
+    return [
+      `严格使用 ${width} × ${height} 竖版单屏画布，内容坐标从画布左上角开始，不生成画布外延、相邻页面或被裁切的延续内容。`,
+      `安全区：左右至少 ${sideInset}px、顶部至少 ${topInset}px、底部至少 ${bottomInset}px；标题、正文、图标、按钮、卡片和底部导航的完整外轮廓全部落在安全区内。`,
+      "按完整单屏做纵向预算：顶部信息约占 10%，核心状态与主操作约占 28%，主要内容约占 43%，辅助摘要约占 9%，底部导航约占 10%；内容超量时减少条目和装饰，不缩小字号、不挤出边界。",
+      "不绘制操作系统状态栏、手机圆角外壳、截图边框或悬浮在屏幕外的控件；底部导航固定在画布内部且四个入口完整可见。",
+    ]
+  }
+
+  return [
+    `严格使用 ${width} × ${height} 单屏画布，所有可见内容完整落在画布边界内，不生成相邻页面、设备样机或被裁切的延续内容。`,
+    "四周保留稳定安全边距，导航、标题、主要内容和固定操作区分别占用明确网格；内容超量时降低模块数量，不缩小到不可读，也不让元素越界。",
+  ]
+}
+
 function uiTreatment(instruction: string) {
   if (/毛玻璃|glass|玻璃/i.test(instruction)) {
     return "辅助效果选择毛玻璃：只用于导航、浮层或一个需要分层的区域，保持文字对比，不让所有卡片玻璃化。"
@@ -411,6 +431,17 @@ function uiTreatment(instruction: string) {
     return "主风格采用编辑排版，以字级、图文关系和留白建立气质；不额外叠加毛玻璃、Bento 和 3D。"
   }
   return "不预设毛玻璃、Bento、渐变或 3D；根据产品类型只选择一种必要的辅助效果，没有明确收益时保持纯净表面。"
+}
+
+function uiDomainDirection(instruction: string) {
+  if (/拉屎|排便|便便|肠道/i.test(instruction)) {
+    return [
+      "产品气质采用成熟、尊重隐私的日常健康记录工具：暖白或极浅灰背景，深墨绿/青绿色作为主操作色，少量暖色只表达提醒；避免默认科技蓝渐变、儿童化糖果色和医院式冰冷蓝白。",
+      "不用粪便 emoji 或卡通便便作为主视觉。排便状态使用克制的抽象形态、线性健康图标、短标签和小型趋势图表达；文案自然、无羞耻感且不卖萌。",
+      "首页只保留今日状态、一次醒目的“记录排便”主操作、连续天数/最近一次摘要、最多 3 条近期记录、一个紧凑周趋势和四项底部导航，确保单屏完整。",
+    ]
+  }
+  return []
 }
 
 export function buildTemplatePromptGuidance(
@@ -431,12 +462,14 @@ export function buildTemplatePromptGuidance(
   return [
     ...base,
     `交付画布：${width} × ${height}，正视单屏高保真 UI，不带设备外壳、透视样机、多屏拼图或设计说明。`,
+    ...uiCanvasRules(width, height),
     uiArchitecture(instruction),
     "先定义页面唯一任务、目标用户、当前状态和主操作，再组织信息；使用真实、简短、语义一致的产品文案和数据，不用 lorem ipsum 或乱码占位。",
     "建立可实现的设计系统：8pt 间距基线，统一栅格、字体层级、图标笔画、圆角、1px 低对比边框和克制阴影；同类组件必须一致。",
     "只呈现当前页面相关的默认状态，并在组件设计中体现 hover/active/disabled/loading/error 的统一语言；不要把所有状态拼成多屏展示板。",
+    ...uiDomainDirection(instruction),
     uiTreatment(instruction),
-    "可用性优先：正文对比清楚、触控目标合理、按钮文案明确、内容不被遮挡，移动端与 Web 端都按目标设备重新组织而不是机械缩放。",
+    "可用性优先：正文对比清楚、触控目标合理、按钮文案明确；任何文字、图标、导航、卡片、列表行和操作都不得贴边、遮挡、截断或超出画布。移动端与 Web 端按目标设备重新组织而不是机械缩放。",
     "风格公式：一种主风格 + 至多一种辅助效果 + 一个点缀色。",
   ]
 }

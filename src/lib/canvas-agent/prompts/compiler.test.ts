@@ -139,8 +139,33 @@ describe("compileGenerationPrompt", () => {
     expect(output.prompt).toContain("唯一主操作")
     expect(output.prompt).toContain("一种主风格 + 至多一种辅助效果 + 一个点缀色")
     expect(output.prompt).toContain("不预设毛玻璃、Bento、渐变或 3D")
+    expect(output.prompt).toContain("左右至少 48px")
+    expect(output.prompt).toContain("底部至少 97px")
+    expect(output.prompt).toContain("不绘制操作系统状态栏")
+    expect(output.prompt).not.toContain("35mm")
+    expect(output.prompt).not.toContain("机位与焦段")
     expect(output.negativePrompt).toContain("设备样机")
     expect(output.prompt).not.toContain("辅助效果选择毛玻璃")
+  })
+
+  it("does not let generated negative wording reroute an App page as a landing page", () => {
+    const originalGoal = "我想生成一个每天记录排便的 APP 首页，尺寸 750x1624"
+    const compiled = compileGenerationPrompt({
+      taskId: "task-health-app-routing",
+      sourceInstruction: originalGoal,
+      userInstruction: `${originalGoal}\n成熟健康工具，避免营销落地页式空洞构图。`,
+      target: { mediaType: "image", width: 750, height: 1624 },
+    })
+    const output = compiled.outputs[0]
+
+    expect(output.prompt).toContain("采用真实 App 页面结构")
+    expect(output.prompt).toContain("生活化、无羞耻感的排便记录 APP 首页")
+    expect(output.prompt).toContain("最多 3 条近期记录")
+    expect(output.prompt).toContain("不用粪便 emoji")
+    expect(output.prompt).not.toContain("采用真实产品官网结构")
+    expect(output.prompt).not.toContain("品牌导航、产品名称与明确价值说明")
+    expect(output.prompt).toContain("只生成一张严格为 750 × 1624")
+    expect(output.negativePrompt).toContain("模块越界")
   })
 
   it("keeps adaptive routing category-specific for product and photography", () => {
