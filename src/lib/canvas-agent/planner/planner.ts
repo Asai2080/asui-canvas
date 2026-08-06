@@ -49,7 +49,7 @@ function sourceStepIdForVideo(
   if (output.variantKey === "three-turntable") return "generate-1"
 
   const pairedScene = output.variantKey?.match(
-    /^(world|handdrawn)-scene-(\d{2})-video$/
+    /^(world|handdrawn|poem)-scene-(\d{2})-video$/
   )
   if (!pairedScene) return undefined
   const sourceIndex = outputs.findIndex(
@@ -63,6 +63,15 @@ function sourceStepIdForVideo(
 function imageReferencePolicy(
   output: CompiledPrompt["outputs"][number]
 ) {
+  if (output.variantKey?.startsWith("poem-scene-")) {
+    return "none" as const
+  }
+  if (
+    output.variantKey?.startsWith("antibes-") ||
+    output.variantKey === "brand-sticker-photo"
+  ) {
+    return "source-only" as const
+  }
   if (isCanvas3dStickerVariantKey(output.variantKey)) {
     return "source-and-sticker-style" as const
   }

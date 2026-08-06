@@ -127,6 +127,39 @@ describe("compileGenerationPrompt", () => {
     expect(compiled.outputs[0].prompt).toContain("【质量控制】")
   })
 
+  it("routes generic UI prompts through the adaptive UI prompt system", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-ui-adaptive",
+      userInstruction: "生成一个移动端记账 App 首页，尺寸 750x1624",
+    })
+    const output = compiled.outputs[0]
+
+    expect(output.prompt).toContain("【专业模板路由】")
+    expect(output.prompt).toContain("750 × 1624")
+    expect(output.prompt).toContain("唯一主操作")
+    expect(output.prompt).toContain("一种主风格 + 至多一种辅助效果 + 一个点缀色")
+    expect(output.prompt).toContain("不预设毛玻璃、Bento、渐变或 3D")
+    expect(output.negativePrompt).toContain("设备样机")
+    expect(output.prompt).not.toContain("辅助效果选择毛玻璃")
+  })
+
+  it("keeps adaptive routing category-specific for product and photography", () => {
+    const product = compileGenerationPrompt({
+      taskId: "task-product-adaptive",
+      userInstruction: "生成一张运动鞋产品广告图",
+    }).outputs[0]
+    const photography = compileGenerationPrompt({
+      taskId: "task-photo-adaptive",
+      userInstruction: "生成一张自然光人物写真照片",
+    }).outputs[0]
+
+    expect(product.prompt).toContain("商品与商业视觉")
+    expect(product.prompt).toContain("主商品保持唯一视觉中心")
+    expect(photography.prompt).toContain("写实摄影")
+    expect(photography.prompt).toContain("决定性瞬间")
+    expect(photography.prompt).not.toContain("采用真实产品官网结构")
+  })
+
   it("compiles a director-level video timeline and camera plan", () => {
     const compiled = compileGenerationPrompt({
       taskId: "task-video-ad",
@@ -945,5 +978,68 @@ describe("compileGenerationPrompt", () => {
     expect(compiled.outputs[1].prompt).toContain("文字出现")
     expect(compiled.outputs[1].prompt).toContain("逐步上色")
     expect(compiled.outputs[1].prompt).toContain("本工具当前配置的视频模型")
+  })
+
+  it("compiles poem lines into paired 9:16 stills and videos", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-poem",
+      userInstruction: "《静夜思》李白\n床前明月光，疑是地上霜。\n举头望明月，低头思故乡。",
+      skill: skillSnapshot("builtin-classical-poem-silk-video", "古诗词丝绸视频 Skill"),
+      target: { count: 2, durationSeconds: 5, resolution: "1080p" },
+    })
+    expect(compiled.outputs.map((output) => output.variantKey)).toEqual([
+      "poem-scene-01-image",
+      "poem-scene-01-video",
+      "poem-scene-02-image",
+      "poem-scene-02-video",
+    ])
+    expect(compiled.outputs[0]).toMatchObject({ width: 1080, height: 1920 })
+    expect(compiled.outputs[1]).toMatchObject({ mediaType: "video", durationSeconds: 5 })
+    expect(compiled.outputs[0].prompt).toContain("丝绸")
+  })
+
+  it("compiles Antibes as original pen illustration images", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-antibes",
+      userInstruction: "画一位在海边骑自行车的旅人",
+      skill: skillSnapshot("builtin-antibes-holiday", "Antibes Holiday"),
+    })
+    expect(compiled.outputs[0].mediaType).toBe("image")
+    expect(compiled.outputs[0].prompt).toContain("pen life")
+    expect(compiled.outputs[0].negativePrompt).toContain("光滑矢量线")
+  })
+
+  it("compiles still-image motion as one source-bound video", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-motion-director",
+      userInstruction: "让这张图片有克制的呼吸感",
+      context: imageContextForCompiler(),
+      skill: skillSnapshot("builtin-still-image-motion-director", "静态图运镜导演 Skill"),
+    })
+    expect(compiled.outputs).toHaveLength(1)
+    expect(compiled.outputs[0]).toMatchObject({
+      mediaType: "video",
+      operation: "animate",
+      sourceContextSnapshotId: "context-compiler-image",
+      durationSeconds: 4,
+    })
+    expect(compiled.outputs[0].prompt).toContain("一个主运动")
+  })
+
+  it("compiles a single 4:5 brand sticker product photo", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-brand-sticker",
+      userInstruction: "品牌名称：ASUI，背景色：薄荷绿，使用纯文字字标",
+      skill: skillSnapshot("builtin-brand-sticker-photo", "品牌贴纸写真 Skill"),
+    })
+    expect(compiled.outputs).toHaveLength(1)
+    expect(compiled.outputs[0]).toMatchObject({
+      mediaType: "image",
+      width: 1024,
+      height: 1280,
+      variantKey: "brand-sticker-photo",
+    })
+    expect(compiled.outputs[0].prompt).toContain("单个完整")
+    expect(compiled.outputs[0].negativePrompt).toContain("矩形底板")
   })
 })

@@ -14,6 +14,7 @@ import {
   Loading03Icon,
   PencilEdit01Icon,
   Settings01Icon,
+  SquareBottomDashedScissorsIcon,
   TextFontIcon,
   Video01Icon,
 } from "@hugeicons/core-free-icons"
@@ -57,6 +58,10 @@ type CanvasMainToolbarContextValue = {
   onCreateVideoNode: () => void
   onToggleAssistant: () => void
   onOpenApiConfig: () => void
+  slicingActive: boolean
+  sliceResultCount: number
+  onToggleSlicing: () => void
+  onDownloadSliceArchive: () => void
 }
 
 export const CanvasMainToolbarContext = createContext<CanvasMainToolbarContextValue | null>(null)
@@ -66,9 +71,10 @@ type ToolButtonProps = {
   label: string
   onClick: () => void
   icon: typeof CursorPointer01Icon
+  disabled?: boolean
 }
 
-function ToolButton({ active, label, onClick, icon }: ToolButtonProps) {
+function ToolButton({ active, label, onClick, icon, disabled }: ToolButtonProps) {
   return (
     <button
       type="button"
@@ -77,6 +83,7 @@ function ToolButton({ active, label, onClick, icon }: ToolButtonProps) {
       aria-pressed={active === undefined ? undefined : active}
       title={label}
       onClick={onClick}
+      disabled={disabled}
     >
       <HugeiconsIcon icon={icon} size={16} strokeWidth={1.7} aria-hidden="true" />
     </button>
@@ -153,6 +160,7 @@ export function CanvasMainToolbar() {
   const canvasActions = useContext(CanvasMainToolbarContext)
   const tldrawActions = useActions()
   const [styleOpen, setStyleOpen] = useState(false)
+  const [downloadOpen, setDownloadOpen] = useState(false)
   const currentToolId = useValue("current canvas tool", () => editor.getCurrentToolId(), [editor])
   const selectedImageShape = useValue(
     "selected image for main toolbar",
@@ -167,6 +175,7 @@ export function CanvasMainToolbar() {
 
   const toggleImageCrop = useCallback(() => {
     setStyleOpen(false)
+    setDownloadOpen(false)
     if (isCroppingImage) {
       editor.setCroppingShape(null)
       editor.setCurrentTool("select.idle")
@@ -205,11 +214,13 @@ export function CanvasMainToolbar() {
 
   const selectTool = (toolId: string) => {
     setStyleOpen(false)
+    setDownloadOpen(false)
     editor.setCurrentTool(toolId)
   }
 
   const runAction = (action: () => void) => {
     setStyleOpen(false)
+    setDownloadOpen(false)
     action()
   }
   const assistantName = canvasActions.assistantMode === "agent" ? "画布 Agent" : "Codex"
@@ -263,6 +274,13 @@ export function CanvasMainToolbar() {
           active={styleOpen}
           onClick={() => setStyleOpen((open) => !open)}
         />
+        <ToolButton
+          icon={SquareBottomDashedScissorsIcon}
+          label={canvasActions.slicingActive ? "退出切图模式" : "进入切图模式"}
+          active={canvasActions.slicingActive}
+          disabled={!selectedImageShape}
+          onClick={() => runAction(canvasActions.onToggleSlicing)}
+        />
         {selectedImageShape && (
           <>
             <span className="canvas-main-toolbar__separator" aria-hidden="true" />
@@ -274,8 +292,16 @@ export function CanvasMainToolbar() {
             />
             <ToolButton
               icon={ImageDownloadIcon}
-              label="下载原图"
-              onClick={() => void downloadSelectedImage()}
+              label={canvasActions.sliceResultCount > 0 ? "下载图片" : "下载原图"}
+              active={downloadOpen}
+              onClick={() => {
+                setStyleOpen(false)
+                if (canvasActions.sliceResultCount > 0) {
+                  setDownloadOpen((open) => !open)
+                } else {
+                  void downloadSelectedImage()
+                }
+              }}
             />
           </>
         )}
@@ -308,6 +334,16 @@ export function CanvasMainToolbar() {
       {styleOpen && (
         <div className="canvas-main-toolbar__style-panel is-open">
           <DefaultStylePanel />
+        </div>
+      )}
+      {downloadOpen && selectedImageShape && canvasActions.sliceResultCount > 0 && (
+        <div className="canvas-main-toolbar__download-menu">
+          <button type="button" onClick={() => void downloadSelectedImage()}>
+            下载原图
+          </button>
+          <button type="button" onClick={() => runAction(canvasActions.onDownloadSliceArchive)}>
+            打包下载原图和全部切图
+          </button>
         </div>
       )}
     </div>

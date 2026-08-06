@@ -46,6 +46,10 @@ import {
   readCanvasSnapModePreference,
 } from "@/components/canvas/canvas-main-toolbar"
 import { CanvasSizeFloatingBar } from "@/components/canvas/canvas-size-floating-bar"
+import {
+  CanvasSlicingOverlay,
+  type CanvasSlicingPhase,
+} from "@/components/canvas-slicing/canvas-slicing-overlay"
 import { CanvasApiConfigDialog } from "@/components/canvas/canvas-toolbar"
 import { CodexTaskPanel, type ResolvedCodexCanvasContext } from "@/components/canvas/codex-task-panel"
 import { GenerationPanel, type VideoResolution } from "@/components/canvas/generation-panel"
@@ -83,6 +87,8 @@ import { CANVAS_PERSISTENCE_KEY, IMAGE_VERSION_STORAGE_KEY } from "@/lib/canvas/
 import { generatePoster } from "@/lib/canvas/poster-generator"
 import { resolveCanvasSizePreset, type CanvasSizePresetId } from "@/lib/canvas/size-presets"
 import { normalizeCanvasSize } from "@/lib/canvas/size"
+import { layoutSliceResults } from "@/lib/canvas-slicing/layout"
+import type { SliceCandidate, SliceMetadata, SliceRect } from "@/lib/canvas-slicing/schema"
 import type { Bounds, CanvasSelection, CanvasSize, GenerationStatus, ImageVersion, ReferenceImage } from "@/lib/canvas/types"
 import {
   runWithAutoManagedCutoutService,
@@ -544,6 +550,20 @@ type CanvasNodeLink = {
   id: string
   source: { x: number; y: number }
   target: { x: number; y: number }
+}
+
+type CanvasSlicingSession = {
+  sessionId: string
+  sourceHolderId: TLShapeId
+  sourceImageId: TLShapeId
+  sourceVersionId?: string
+  sourceImageSrc: string
+  sourceWidth: number
+  sourceHeight: number
+  phase: CanvasSlicingPhase
+  mode?: "automatic" | "manual"
+  candidates: SliceCandidate[]
+  selectedIds: Set<string>
 }
 
 function getViewportShapeBounds(editor: Editor, shapeId: TLShapeId): Bounds | null {
@@ -1973,6 +1993,53 @@ function getImageShapeSource(editor: Editor, shapeId: TLShapeId) {
   return asset?.type === "image" ? asset.props.src : null
 }
 
+function getSlicingTarget(editor: Editor) {
+  const selectedShape = editor.getOnlySelectedShape()
+  if (!selectedShape) return null
+
+  const holder = isImageHolderShape(selectedShape)
+    ? selectedShape
+    : selectedShape.type === "image"
+      ? editor.getShape(selectedShape.parentId as TLShapeId)
+      : null
+  if (!holder || !isImageHolderShape(holder)) return null
+
+  const sourceImageId = getLatestImageShapeIdFromHolder(editor, holder.id as TLShapeId)
+  if (!sourceImageId) return null
+  const sourceImage = editor.getShape<TLImageShape>(sourceImageId)
+  const sourceImageSrc = getImageShapeSource(editor, sourceImageId)
+  if (!sourceImage || !sourceImageSrc || !sourceImage.props.assetId) return null
+  const asset = editor.getAsset(sourceImage.props.assetId)
+  if (!asset || asset.type !== "image") return null
+
+  return {
+    sourceHolderId: holder.id as TLShapeId,
+    sourceImageId,
+    sourceVersionId: getCanvasImageVersionId(sourceImage),
+    sourceImageSrc,
+    sourceWidth: Math.max(1, Math.round(asset.props.w)),
+    sourceHeight: Math.max(1, Math.round(asset.props.h)),
+  }
+}
+
+function getSliceResultHolders(editor: Editor, sourceHolderId: TLShapeId) {
+  return editor.getCurrentPageShapes().filter(
+    (shape): shape is TLFrameShape =>
+      shape.type === "frame" &&
+      isImageHolderShape(shape) &&
+      shapeMeta(shape).sourceSliceHolderId === sourceHolderId
+  )
+}
+
+function triggerBlobDownload(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = fileName
+  anchor.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+}
+
 function getVideoShapeSource(editor: Editor, shapeId: TLShapeId) {
   const shape = editor.getShape(shapeId)
   if (!shape || shape.type !== "video") return null
@@ -2216,6 +2283,7 @@ export function AiCanvas() {
   const viewportSyncFrameRef = useRef<number | null>(null)
   const lastSelectionKeyRef = useRef("")
   const directCanvasNodePointerRef = useRef<TLShapeId | null>(null)
+  const slicingSessionRef = useRef<CanvasSlicingSession | null>(null)
   const [selection, setSelection] = useState<CanvasSelection | null>(null)
   const [annotationAction, setAnnotationAction] = useState<{
     annotationId: TLShapeId
@@ -2248,6 +2316,9 @@ export function AiCanvas() {
   const [agentSelectionContextKey, setAgentSelectionContextKey] = useState("")
   const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<string[]>([])
   const [selectedHolderHasImage, setSelectedHolderHasImage] = useState(false)
+  const [slicingSession, setSlicingSession] = useState<CanvasSlicingSession | null>(null)
+  const [slicingViewportBounds, setSlicingViewportBounds] = useState<Bounds | null>(null)
+  const [sliceResultCount, setSliceResultCount] = useState(0)
   const [isCodexTaskOpen, setIsCodexTaskOpen] = useState(false)
   const [codexTaskStatus, setCodexTaskStatus] = useState<"idle" | "generating">("idle")
   const [isCanvasAgentOpen, setIsCanvasAgentOpen] = useState(false)
@@ -2358,6 +2429,10 @@ export function AiCanvas() {
   }, [])
 
   useEffect(() => {
+    slicingSessionRef.current = slicingSession
+  }, [slicingSession])
+
+  useEffect(() => {
     if (!toastMessage) return
     const timeout = window.setTimeout(() => setToastMessage(""), 5200)
     return () => window.clearTimeout(timeout)
@@ -2404,6 +2479,12 @@ export function AiCanvas() {
     setSelectedHolderHasImage(
       nextSelection?.kind === "holder" &&
         Boolean(getLatestImageShapeIdFromHolder(editor, nextSelection.shapeId as TLShapeId))
+    )
+    const slicingTarget = getSlicingTarget(editor)
+    setSliceResultCount(
+      slicingTarget
+        ? getSliceResultHolders(editor, slicingTarget.sourceHolderId).length
+        : 0
     )
 
     if (nextSelection?.kind === "holder") {
@@ -2591,6 +2672,12 @@ export function AiCanvas() {
       const bounds = getViewportShapeBounds(editor, current.shapeId)
       if (!bounds) return null
       return boundsMatch(current.bounds, bounds) ? current : { ...current, bounds }
+    })
+    const activeSlicingSession = slicingSessionRef.current
+    setSlicingViewportBounds((current) => {
+      if (!activeSlicingSession) return current === null ? current : null
+      const bounds = getViewportShapeBounds(editor, activeSlicingSession.sourceImageId)
+      return boundsMatch(current, bounds) ? current : bounds
     })
   }, [])
 
@@ -4268,6 +4355,361 @@ export function AiCanvas() {
     return {}
   }, [annotationAction, holderSize.height, holderSize.width, multiAnnotationAction, selection])
 
+  const stopSlicing = useCallback(() => {
+    setSlicingSession(null)
+    setSlicingViewportBounds(null)
+  }, [])
+
+  const toggleSlicing = useCallback(async () => {
+    if (slicingSessionRef.current) {
+      stopSlicing()
+      return
+    }
+    const editor = editorRef.current
+    if (!editor) return
+    const target = getSlicingTarget(editor)
+    if (!target) {
+      setToastMessage("请先选中一个包含图片的画布")
+      return
+    }
+    let sourceImageSrc = target.sourceImageSrc
+    if (sourceImageSrc.startsWith("asset:")) {
+      const shape = editor.getShape<TLImageShape>(target.sourceImageId)
+      sourceImageSrc = shape?.props.assetId
+        ? (await editor.resolveAssetUrl(shape.props.assetId, { shouldResolveToOriginal: true })) ?? sourceImageSrc
+        : sourceImageSrc
+    }
+    const session: CanvasSlicingSession = {
+      ...target,
+      sourceImageSrc,
+      sessionId: `slice-${crypto.randomUUID()}`,
+      phase: "menu",
+      candidates: [],
+      selectedIds: new Set(),
+    }
+    slicingSessionRef.current = session
+    setSlicingSession(session)
+    setSlicingViewportBounds(getViewportShapeBounds(editor, target.sourceImageId))
+    editor.select(target.sourceHolderId)
+  }, [stopSlicing])
+
+  const startAutomaticSlicing = useCallback(async () => {
+    const session = slicingSessionRef.current
+    if (!session) return
+    const config = readApiConfigFromSession()
+    if (!config.textBaseUrl || !config.textApiKey || !config.textModel) {
+      setToastMessage("一键切图需要先配置支持图片理解的文字模型；手动切图无需模型")
+      return
+    }
+    setSlicingSession((current) => current ? { ...current, phase: "detecting", mode: "automatic" } : current)
+    try {
+      const response = await fetch("/api/slices/candidates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceImageSrc: session.sourceImageSrc,
+          width: session.sourceWidth,
+          height: session.sourceHeight,
+          textBaseUrl: config.textBaseUrl,
+          textApiKey: config.textApiKey,
+          textModel: config.textModel,
+        }),
+      })
+      const payload = await response.json() as {
+        isUiDesign?: boolean
+        candidates?: SliceCandidate[]
+        error?: string
+      }
+      if (!response.ok) throw new Error(payload.error || "一键切图识别失败")
+      const candidates = payload.candidates ?? []
+      if (payload.isUiDesign === false || candidates.length === 0) {
+        setSlicingSession((current) => current ? { ...current, phase: "menu" } : current)
+        setToastMessage("没有识别到可靠的独立素材，可以改用手动切图")
+        return
+      }
+      setSlicingSession((current) => current ? {
+        ...current,
+        phase: "reviewing",
+        candidates,
+        selectedIds: new Set(candidates.filter((candidate) => candidate.recommended).map((candidate) => candidate.id)),
+      } : current)
+    } catch (error) {
+      setSlicingSession((current) => current ? { ...current, phase: "menu" } : current)
+      setToastMessage(errorMessage(error, "一键切图识别失败"))
+    }
+  }, [])
+
+  const startManualSlicing = useCallback(() => {
+    setSlicingSession((current) => current ? {
+      ...current,
+      phase: "manual",
+      mode: "manual",
+      candidates: [],
+      selectedIds: new Set(),
+    } : current)
+  }, [])
+
+  const addManualSlice = useCallback((rect: SliceRect) => {
+    setSlicingSession((current) => {
+      if (!current || current.phase !== "manual") return current
+      const index = current.candidates.length + 1
+      const candidate: SliceCandidate = {
+        id: `manual-${crypto.randomUUID()}`,
+        name: `manual-slice-${String(index).padStart(2, "0")}`,
+        assetType: "region",
+        cropMode: "rectangle",
+        elementType: "unknown",
+        decision: "extract",
+        ...rect,
+        confidence: 1,
+        recommended: true,
+      }
+      return {
+        ...current,
+        candidates: [...current.candidates, candidate],
+        selectedIds: new Set([...current.selectedIds, candidate.id]),
+      }
+    })
+  }, [])
+
+  const toggleSliceCandidate = useCallback((id: string) => {
+    setSlicingSession((current) => {
+      if (!current) return current
+      const selectedIds = new Set(current.selectedIds)
+      if (selectedIds.has(id)) selectedIds.delete(id)
+      else selectedIds.add(id)
+      return { ...current, selectedIds }
+    })
+  }, [])
+
+  const toggleSliceCropMode = useCallback((id: string) => {
+    setSlicingSession((current) => current ? {
+      ...current,
+      candidates: current.candidates.map((candidate) => candidate.id === id
+        ? { ...candidate, cropMode: candidate.cropMode === "transparent" ? "rectangle" : "transparent" }
+        : candidate),
+    } : current)
+  }, [])
+
+  const selectAllSlices = useCallback(() => {
+    setSlicingSession((current) => current ? {
+      ...current,
+      selectedIds: new Set(current.candidates.filter((candidate) => candidate.recommended).map((candidate) => candidate.id)),
+    } : current)
+  }, [])
+
+  const clearSlices = useCallback(() => {
+    setSlicingSession((current) => current ? {
+      ...current,
+      candidates: current.phase === "manual" ? [] : current.candidates,
+      selectedIds: new Set(),
+    } : current)
+  }, [])
+
+  const exportSelectedSlices = useCallback(async () => {
+    const editor = editorRef.current
+    const session = slicingSessionRef.current
+    if (!editor || !session) return
+    const selectedCandidates = session.candidates.filter((candidate) => session.selectedIds.has(candidate.id))
+    if (selectedCandidates.length === 0) return
+    const sourceBoundsValue = editor.getShapePageBounds(session.sourceHolderId)
+    if (!sourceBoundsValue) return
+
+    setSlicingSession((current) => current ? { ...current, phase: "exporting" } : current)
+    try {
+      const response = await fetch("/api/slices/crop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceImageSrc: session.sourceImageSrc, candidates: selectedCandidates }),
+      })
+      const payload = await response.json() as {
+        slices?: Array<{ candidate: SliceCandidate; src: string; width: number; height: number }>
+        error?: string
+      }
+      if (!response.ok || !payload.slices) throw new Error(payload.error || "切图失败")
+      const croppedSlices = payload.slices
+
+      editor.markHistoryStoppingPoint("create-image-slices")
+      const sourceBounds = toBounds(sourceBoundsValue)
+      let slices = croppedSlices
+      const transparentSlices = croppedSlices.filter((item) => item.candidate.cropMode === "transparent")
+      if (transparentSlices.length > 0) {
+        slices = await runWithAutoManagedCutoutService({
+          run: async () => Promise.all(croppedSlices.map(async (item) => {
+            if (item.candidate.cropMode !== "transparent") return item
+            const cutoutResponse = await fetch("/api/cutout", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ imageSrc: item.src, width: item.width, height: item.height }),
+            })
+            const cutoutPayload = await cutoutResponse.json().catch(() => ({})) as {
+              version?: { src?: string; width?: number; height?: number }
+              error?: string
+            }
+            if (!cutoutResponse.ok || !cutoutPayload.version?.src) {
+              throw new Error(cutoutPayload.error || `透明底处理失败：${item.candidate.name}`)
+            }
+            return {
+              ...item,
+              src: cutoutPayload.version.src,
+              width: cutoutPayload.version.width ?? item.width,
+              height: cutoutPayload.version.height ?? item.height,
+            }
+          })),
+        })
+      }
+      const layouts = layoutSliceResults({
+        candidates: slices.map((item) => item.candidate),
+        sourceBounds,
+        occupiedBounds: rootCanvasObstacles(editor),
+      })
+      const layoutById = new Map(layouts.map((layout) => [layout.candidate.id, layout.bounds]))
+      const createdVersions: ImageVersion[] = []
+      const resultHolderIds: TLShapeId[] = []
+      const createdAt = new Date().toISOString()
+
+      for (const item of slices) {
+        const version = await persistImageVersion({
+          versionId: `slice-${crypto.randomUUID()}`,
+          parentVersionId: session.sourceVersionId,
+          prompt: `切图：${item.candidate.name}`,
+          src: item.src,
+          width: item.width,
+          height: item.height,
+          createdAt,
+        })
+        const bounds = layoutById.get(item.candidate.id)
+        if (!bounds) continue
+        const { holderId, imageId } = createImageHolderWithImage(editor, version, bounds)
+        const metadata: SliceMetadata = {
+          sourceHolderId: session.sourceHolderId,
+          sourceImageId: session.sourceImageId,
+          sourceVersionId: session.sourceVersionId,
+          sessionId: session.sessionId,
+          mode: session.mode ?? "manual",
+          assetType: item.candidate.assetType,
+          cropMode: item.candidate.cropMode,
+          sourceRect: {
+            x: item.candidate.x,
+            y: item.candidate.y,
+            width: item.candidate.width,
+            height: item.candidate.height,
+          },
+          sourceImageSize: { width: session.sourceWidth, height: session.sourceHeight },
+          createdAt,
+        }
+        const holder = editor.getShape<TLFrameShape>(holderId)
+        const image = editor.getShape<TLImageShape>(imageId)
+        if (holder) editor.updateShape({
+          id: holderId,
+          type: "frame",
+          props: { name: item.candidate.name },
+          meta: { ...holder.meta, sourceSliceHolderId: session.sourceHolderId, sliceMetadata: metadata },
+        })
+        if (image) editor.updateShape({
+          id: imageId,
+          type: "image",
+          meta: { ...image.meta, sliceMetadata: metadata },
+        })
+        resultHolderIds.push(holderId)
+        createdVersions.push(version)
+      }
+
+      const sourceHolder = editor.getShape<TLFrameShape>(session.sourceHolderId)
+      if (sourceHolder) {
+        const existingIds = getStringArrayMetaValue(shapeMeta(sourceHolder), "sliceResultHolderIds")
+        editor.updateShape({
+          id: sourceHolder.id,
+          type: "frame",
+          meta: {
+            ...sourceHolder.meta,
+            sliceResultHolderIds: [...new Set([...existingIds, ...resultHolderIds])],
+            latestSliceSessionId: session.sessionId,
+          },
+        })
+      }
+      setVersions((current) => [...current, ...createdVersions])
+      editor.select(session.sourceHolderId)
+      setSliceResultCount(getSliceResultHolders(editor, session.sourceHolderId).length)
+      stopSlicing()
+      setToastMessage(`已生成 ${resultHolderIds.length} 张切图，可从下载按钮打包下载`)
+    } catch (error) {
+      setSlicingSession((current) => current ? {
+        ...current,
+        phase: current.mode === "manual" ? "manual" : "reviewing",
+      } : current)
+      setToastMessage(errorMessage(error, "切图失败"))
+    }
+  }, [stopSlicing])
+
+  const downloadSliceArchive = useCallback(async () => {
+    const editor = editorRef.current
+    if (!editor) return
+    const target = getSlicingTarget(editor)
+    if (!target) return
+    const resultHolders = getSliceResultHolders(editor, target.sourceHolderId)
+    const slices = resultHolders.flatMap((holder, index) => {
+      const imageId = getLatestImageShapeIdFromHolder(editor, holder.id)
+      const src = imageId ? getImageShapeSource(editor, imageId) : null
+      if (!imageId || !src) return []
+      return [{
+        name: `${String(holder.props.name || `slice-${index + 1}`).replace(/[^A-Za-z0-9\u4e00-\u9fff_-]+/g, "-")}.png`,
+        src,
+        metadata: shapeMeta(holder).sliceMetadata,
+      }]
+    })
+    if (slices.length === 0) {
+      setToastMessage("当前画布还没有切图结果")
+      return
+    }
+    try {
+      const response = await fetch("/api/slices/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          archiveName: `canvas-slices-${new Date().toISOString().slice(0, 10)}`,
+          original: { name: `original.${extensionFromSrc(target.sourceImageSrc)}`, src: target.sourceImageSrc },
+          slices: slices.map(({ name, src }) => ({ name, src })),
+          manifest: {
+            version: "2.1.2",
+            sourceHolderId: target.sourceHolderId,
+            sourceImageId: target.sourceImageId,
+            sourceVersionId: target.sourceVersionId,
+            sourceImageSize: { width: target.sourceWidth, height: target.sourceHeight },
+            slices: slices.map(({ name, metadata }) => ({ name, metadata })),
+          },
+        }),
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: string }
+        throw new Error(payload.error || "打包下载失败")
+      }
+      triggerBlobDownload(await response.blob(), `canvas-slices-${new Date().toISOString().slice(0, 10)}.zip`)
+    } catch (error) {
+      setToastMessage(errorMessage(error, "打包下载失败"))
+    }
+  }, [])
+
+  const startSlicingFromAgent = useCallback(async (
+    resultNodeIds: string[],
+    mode: "automatic" | "manual"
+  ) => {
+    const editor = editorRef.current
+    if (!editor) return
+    const holder = resultNodeIds
+      .map((id) => editor.getShape(id as TLShapeId))
+      .find((shape): shape is TLFrameShape => Boolean(shape && shape.type === "frame" && isImageHolderShape(shape)))
+    if (!holder || !getLatestImageShapeIdFromHolder(editor, holder.id)) {
+      setToastMessage("没有找到这次生成的图片画布")
+      return
+    }
+    editor.select(holder.id)
+    syncSelection(editor)
+    await toggleSlicing()
+    if (mode === "automatic") await startAutomaticSlicing()
+    else startManualSlicing()
+  }, [startAutomaticSlicing, startManualSlicing, syncSelection, toggleSlicing])
+
   const canGenerateFromAnnotation = Boolean(annotationAction) && status !== "editing"
   const canGenerateFromAllAnnotations = Boolean(multiAnnotationAction) && status !== "editing"
   const canCutoutFromAnnotation = Boolean(annotationAction) && status !== "editing"
@@ -4520,6 +4962,10 @@ export function AiCanvas() {
               }
             },
             onOpenApiConfig: () => window.dispatchEvent(new Event("asui:open-api-config")),
+            slicingActive: Boolean(slicingSession),
+            sliceResultCount,
+            onToggleSlicing: () => void toggleSlicing(),
+            onDownloadSliceArchive: () => void downloadSliceArchive(),
           }}
         >
           <Tldraw
@@ -4547,6 +4993,25 @@ export function AiCanvas() {
             ×
           </Button>
         </div>
+      )}
+      {slicingSession && slicingViewportBounds && (
+        <CanvasSlicingOverlay
+          bounds={slicingViewportBounds}
+          sourceWidth={slicingSession.sourceWidth}
+          sourceHeight={slicingSession.sourceHeight}
+          phase={slicingSession.phase}
+          candidates={slicingSession.candidates}
+          selectedIds={slicingSession.selectedIds}
+          onAutomatic={() => void startAutomaticSlicing()}
+          onManual={startManualSlicing}
+          onAddManual={addManualSlice}
+          onToggleCandidate={toggleSliceCandidate}
+          onToggleCropMode={toggleSliceCropMode}
+          onSelectAll={selectAllSlices}
+          onClear={clearSlices}
+          onExport={() => void exportSelectedSlices()}
+          onCancel={stopSlicing}
+        />
       )}
       {videoNodeLinks.length + versionNodeLinks.length > 0 && (
         <svg className="video-node-link-layer" aria-hidden="true">
@@ -4791,6 +5256,7 @@ export function AiCanvas() {
           }}
           onBusyChange={setIsCanvasAgentBusy}
           onForegroundTaskChange={setForegroundAgentTask}
+          onStartSlicing={(resultNodeIds, mode) => void startSlicingFromAgent(resultNodeIds, mode)}
           onClose={() => setIsCanvasAgentOpen(false)}
         />
       )}

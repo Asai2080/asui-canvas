@@ -36,6 +36,7 @@ import {
   Settings01Icon,
   SidebarRight01Icon,
   StopIcon,
+  SquareBottomDashedScissorsIcon,
 } from "@hugeicons/core-free-icons"
 import { BorderBeam } from "border-beam"
 
@@ -86,6 +87,7 @@ type CanvasAgentShellProps = {
   storyboardRequestKey?: number
   onBusyChange?: (busy: boolean) => void
   onForegroundTaskChange?: (task?: AgentTask) => void
+  onStartSlicing?: (resultNodeIds: string[], mode: "automatic" | "manual") => void
 }
 
 const STATUS_LABELS: Partial<Record<AgentTask["status"], string>> = {
@@ -719,6 +721,7 @@ export function CanvasAgentShell({
   storyboardRequestKey = 0,
   onBusyChange,
   onForegroundTaskChange,
+  onStartSlicing,
 }: CanvasAgentShellProps) {
   const [selectedSkillId, setSelectedSkillId] = useState("")
   const [selectedSkill, setSelectedSkill] = useState<SkillRecord>()
@@ -735,6 +738,8 @@ export function CanvasAgentShell({
     kind: "success" | "error"
     message: string
   }>()
+  const [dismissedSliceTaskIds, setDismissedSliceTaskIds] = useState<Set<string>>(new Set())
+  const [sliceSuggestionStartedAt] = useState(() => new Date().toISOString())
   const [, setSelectionRefreshKey] = useState(0)
   const [conversationStartedAt, setConversationStartedAt] = useState("")
   const [showHistory, setShowHistory] = useState(false)
@@ -877,6 +882,19 @@ export function CanvasAgentShell({
   const queuedBehind = visibleTasks.filter(
     (task) => task.status === "queued" && task.id !== foregroundTask?.id
   ).length
+  const sliceSuggestionTask = [...visibleTasks]
+    .reverse()
+    .find((task) => {
+      if (dismissedSliceTaskIds.has(task.id) || task.status !== "completed") return false
+      if ((task.completedAt ?? task.updatedAt) < sliceSuggestionStartedAt) return false
+      const hasImage = Object.values(task.artifacts ?? {}).flat().some((artifact) => artifact.kind === "image")
+      const intentText = [
+        task.userInstruction,
+        task.interpretation?.normalizedInstruction,
+        task.compiledPrompt?.summary,
+      ].filter(Boolean).join(" ")
+      return hasImage && task.resultNodeIds.length > 0 && /(?:UI|UX|界面|设计稿|网页|网站|App|应用界面|后台|仪表盘|dashboard)/i.test(intentText)
+    })
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -1100,6 +1118,38 @@ export function CanvasAgentShell({
                 >
                   {composerToolFeedback.message}
                 </p>
+              )}
+              {sliceSuggestionTask && onStartSlicing && (
+                <div className="canvas-agent-slice-suggestion" role="status">
+                  <span className="canvas-agent-slice-suggestion__icon">
+                    <HugeiconsIcon icon={SquareBottomDashedScissorsIcon} size={17} strokeWidth={1.7} />
+                  </span>
+                  <div className="canvas-agent-slice-suggestion__copy">
+                    <strong>已识别为 UI 设计稿</strong>
+                    <span>需要继续切图吗？</span>
+                  </div>
+                  <button type="button" onClick={() => {
+                    onStartSlicing(sliceSuggestionTask.resultNodeIds, "automatic")
+                    setDismissedSliceTaskIds((current) => new Set([...current, sliceSuggestionTask.id]))
+                  }}>
+                    一键切图
+                  </button>
+                  <button type="button" onClick={() => {
+                    onStartSlicing(sliceSuggestionTask.resultNodeIds, "manual")
+                    setDismissedSliceTaskIds((current) => new Set([...current, sliceSuggestionTask.id]))
+                  }}>
+                    手动切图
+                  </button>
+                  <button
+                    type="button"
+                    className="is-dismiss"
+                    aria-label="暂不切图"
+                    title="暂不切图"
+                    onClick={() => setDismissedSliceTaskIds((current) => new Set([...current, sliceSuggestionTask.id]))}
+                  >
+                    <HugeiconsIcon icon={MultiplicationSignIcon} size={15} strokeWidth={1.7} />
+                  </button>
+                </div>
               )}
               <BorderBeam
                 size="md"

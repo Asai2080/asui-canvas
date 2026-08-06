@@ -1,13 +1,17 @@
 import type { CanvasContextSnapshot } from "../context/schema"
 import type { SkillSnapshot } from "../skills/schema"
 import {
+  isAntibesHolidaySkillName,
+  isBrandStickerPhotoSkillName,
   isCanvas3dStickerSkillName,
+  isClassicalPoemSilkVideoSkillName,
   isCoverSkillName,
   isHanddrawnVideoSkillName,
   isImageTo3dSkillName,
   isIanXiaoheiSkillName,
   isPortraitSkillName,
   isSocialCardSkillName,
+  isStillImageMotionDirectorSkillName,
   isStoryboardSkillName,
   isWorldSkillName,
 } from "../skills/identifiers"
@@ -19,6 +23,11 @@ import {
   compiledPromptSchema,
   type CompiledPrompt,
 } from "../task-schema"
+import {
+  buildTemplatePromptGuidance,
+  selectVisualPromptTemplate,
+  templateNegativePrompt,
+} from "./template-router"
 
 const DEFAULT_IMAGE_EDGE = 1024
 const VARIANT_DIFFERENCES = [
@@ -504,6 +513,19 @@ function extractAspectRatio(instruction: string): [number, number] | undefined {
   const height = Number(match[2])
   if (width <= 0 || height <= 0) return undefined
   return [width, height]
+}
+
+function extractRequestedDimensions(
+  instruction: string
+): { width: number; height: number } | undefined {
+  const match = instruction.match(
+    /(?:尺寸|画布|分辨率)?\s*(\d{3,5})\s*[x×✕*]\s*(\d{3,5})/i
+  )
+  if (!match) return undefined
+  const width = Number(match[1])
+  const height = Number(match[2])
+  if (width < 256 || height < 256) return undefined
+  return { width, height }
 }
 
 function dimensionsForRatio(
@@ -2247,6 +2269,278 @@ function compileCoverPrompt({
   })
 }
 
+function poemSceneTexts(instruction: string, requestedCount?: number) {
+  const body = instruction
+    .replace(/hbg-classical-poem-silk-video|古诗词丝绸视频\s*skill/gi, "")
+    .replace(/^(?:使用|调用|用).{0,12}(?:生成|制作|做成)?/i, "")
+    .trim()
+  const lines = body
+    .split(/\n+/)
+    .flatMap((line) => line.split(/(?<=[。！？；])/))
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line.length >= 2 &&
+        !/^《.+》/.test(line) &&
+        !/^(?:作者|朝代|诗人)\s*[:：]/.test(line)
+    )
+  const groups = lines.length > 4
+    ? Array.from({ length: Math.ceil(lines.length / 2) }, (_, index) =>
+        lines.slice(index * 2, index * 2 + 2).join("")
+      )
+    : lines
+  const count = Math.max(1, Math.min(6, requestedCount ?? (groups.length || 1)))
+  return Array.from({ length: count }, (_, index) => groups[index] ?? groups.at(-1) ?? body)
+}
+
+function compileClassicalPoemSilkVideoPrompt({
+  taskId,
+  originalGoal,
+  professionalBrief,
+  skill,
+  target,
+}: {
+  taskId: string
+  originalGoal: string
+  professionalBrief?: string
+  skill: SkillSnapshot
+  target?: CompileGenerationPromptInput["target"]
+}): CompiledPrompt {
+  const explicitSceneCount = originalGoal.match(/(\d+)\s*(?:个)?(?:场景|镜头|段)/)?.[1]
+  const requestedSceneCount = explicitSceneCount
+    ? Number(explicitSceneCount)
+    : target?.count && target.count > 1
+      ? target.count
+      : undefined
+  const scenes = poemSceneTexts(originalGoal, requestedSceneCount)
+  const durationSeconds = Math.min(15, target?.durationSeconds ?? 5)
+  const resolution = target?.resolution ?? "1080p"
+  const continuity = [
+    "全片共享同一朝代考据、季节、地点、人物身份、服饰、建筑、器物、天气、主光方向和色彩脚本。",
+    "把诗意转译为可见动作、空间和自然现象，不把诗句机械画成符号堆砌。",
+    "画面采用丝绸般柔润流动的光泽与层叠空间，但人物、建筑和物体结构必须稳定可信。",
+    "图片内不出现诗句、字幕、书法、印章、题签、现代物件、水印、边框或拼图。",
+  ]
+  const outputs = scenes.flatMap((verse, index) => {
+    const number = String(index + 1).padStart(2, "0")
+    const phase = index === 0 ? "建立时代、地点与季节" : index === scenes.length - 1 ? "完成情绪收束与余韵" : "推进意象、动作与情绪转折"
+    const imagePrompt = [
+      `【古诗词场景 SC#${number}】`,
+      `本场诗句：${verse}`,
+      `叙事功能：${phase}。`,
+      "先识别诗句中的主体、动作、时间、天气、地点、前景意象和远景意象，再组织为一个可拍摄的决定性瞬间。",
+      professionalBrief ? `文字模型创作简报：${professionalBrief}` : "",
+      "构图：9:16 竖版电影画面，前景以枝叶、帘幕、烟岚或水纹引导，中景承载人物或核心动作，远景交代山水与建筑尺度；保留连续运镜通道。",
+      "光色：依据诗意选择黎明、日暮、月夜或阴晴变化，综合色彩克制，丝绸质感来自柔润高光、雾气层次和缓慢流动的光影，而不是塑料或金属反光。",
+      ...continuity,
+      "只生成一张 1080 × 1920 无字高清场景图。",
+    ].filter(Boolean).join("\n")
+    const videoPrompt = [
+      `【古诗词运镜 SC#${number}】`,
+      `严格以 SC#${number} 场景图为唯一首帧，锁定人物、服饰、建筑、器物、构图、光向和色彩。`,
+      `诗句与情绪：${verse}；${phase}。`,
+      `0-${(durationSeconds * 0.2).toFixed(1)} 秒：稳定建立画面，只启动风、雾、水、衣袖或枝叶中的一种细微环境运动。`,
+      `${(durationSeconds * 0.2).toFixed(1)}-${(durationSeconds * 0.8).toFixed(1)} 秒：完成一次缓慢、有动机的推进、横移或轻微升降，产生真实视差；人物最多完成一个克制动作。`,
+      `${(durationSeconds * 0.8).toFixed(1)}-${durationSeconds} 秒：自然减速并停在可衔接的稳定构图，保留诗意余韵。`,
+      ...continuity,
+      `输出 ${durationSeconds} 秒 ${resolution} 单镜头视频，不生成字幕、音乐、转场或合片。`,
+    ].join("\n")
+    return [
+      {
+        id: `${taskId}-output-${index * 2 + 1}`,
+        mediaType: "image" as const,
+        operation: "create" as const,
+        prompt: imagePrompt,
+        negativePrompt: "现代元素、时代错置、身份漂移、结构融化、文字、书法、印章、字幕、水印、边框、拼图、过曝、塑料质感",
+        variantKey: `poem-scene-${number}-image`,
+        variantDifference: `场景 ${number}：${verse}`,
+        width: 1080,
+        height: 1920,
+        preserveConstraints: continuity,
+      },
+      {
+        id: `${taskId}-output-${index * 2 + 2}`,
+        mediaType: "video" as const,
+        operation: "animate" as const,
+        prompt: videoPrompt,
+        negativePrompt: "镜头瞬移、数字变焦、跳轴、人物变脸、服装变化、结构闪烁、纹理游走、物体随机增删、字幕、水印、边框",
+        variantKey: `poem-scene-${number}-video`,
+        variantDifference: `场景 ${number} 图生视频`,
+        durationSeconds,
+        resolution,
+        preserveConstraints: continuity,
+      },
+    ]
+  })
+  return compiledPromptSchema.parse({
+    originalGoal,
+    summary: `古诗词丝绸视频：${scenes.length} 个场景`,
+    sharedConstraints: [
+      `${scenes.length} 张 9:16 场景图与 ${scenes.length} 段对应视频`,
+      `本次共调用 ${scenes.length} 次图片生成和 ${scenes.length} 次视频生成`,
+      ...continuity,
+    ],
+    negativeConstraints: ["当前阶段不声称完成字幕、配乐、合片或最终 MP4"],
+    skillSnapshotId: skill.id,
+    outputs,
+  })
+}
+
+function compileAntibesHolidayPrompt({
+  taskId,
+  originalGoal,
+  professionalBrief,
+  context,
+  skill,
+  target,
+}: {
+  taskId: string
+  originalGoal: string
+  professionalBrief?: string
+  context?: CanvasContextSnapshot
+  skill: SkillSnapshot
+  target?: CompileGenerationPromptInput["target"]
+}): CompiledPrompt {
+  const count = Math.max(1, Math.min(6, target?.count ?? extractCount(originalGoal)))
+  const outputs = Array.from({ length: count }, (_, index) => ({
+    id: `${taskId}-output-${index + 1}`,
+    mediaType: "image" as const,
+    operation: "create" as const,
+    prompt: [
+      "【Antibes Holiday 原创钢笔插画】",
+      `用户概念：${originalGoal}`,
+      professionalBrief ? `内容扩写：${professionalBrief}` : "",
+      `版本 ${index + 1}：${VARIANT_DIFFERENCES[index % VARIANT_DIFFERENCES.length]}`,
+      "先用一条松弛动作线确定主体的姿势、重心和关系，再以少量高识别细节明确人物、动物、物件或地点，最后加入不规则的 pen life：轻微抖动、线宽变化、偶尔断开、重描与不完全闭合。",
+      "使用黑色钢笔与自然白纸，大面积留白，线条轻快但不幼稚；细节密度集中在叙事焦点，边缘区域逐渐稀疏。保留手绘的不稳定和呼吸感，不做光滑矢量轮廓。",
+      hasImageReference(context) ? "参考当前选中图片的线条行为、节奏和气质，但不复制其主体、构图、标志性图案或签名。" : "建立原创主体与构图，不复制第三方作品、角色或标志性母题。",
+      "只输出一张完整独立插画，不生成设计说明、拼图、边框或水印。",
+    ].filter(Boolean).join("\n"),
+    negativePrompt: "光滑矢量线、贝塞尔曲线感、通用素描滤镜、铅笔排线、写实明暗塑造、过度整洁、闭合轮廓堆叠、伪文字、水印、边框、拼图",
+    variantKey: `antibes-${String(index + 1).padStart(2, "0")}`,
+    variantDifference: `钢笔插画版本 ${index + 1}`,
+    sourceContextSnapshotId: hasImageReference(context) ? context?.id : undefined,
+    width: target?.width ?? 1024,
+    height: target?.height ?? 1024,
+  }))
+  return compiledPromptSchema.parse({
+    originalGoal,
+    summary: `Antibes Holiday：${count} 张原创钢笔插画`,
+    sharedConstraints: ["只借鉴线条行为，不复制第三方主体或构图", "每张结果为独立图片画布"],
+    skillSnapshotId: skill.id,
+    outputs,
+  })
+}
+
+function compileStillImageMotionDirectorPrompt({
+  taskId,
+  originalGoal,
+  professionalBrief,
+  context,
+  skill,
+  target,
+}: {
+  taskId: string
+  originalGoal: string
+  professionalBrief?: string
+  context?: CanvasContextSnapshot
+  skill: SkillSnapshot
+  target?: CompileGenerationPromptInput["target"]
+}): CompiledPrompt {
+  if (!context?.id || !hasImageReference(context)) throw new Error("静态图运镜导演需要选中一张图片")
+  const durationSeconds = Math.min(15, target?.durationSeconds ?? 4)
+  const motionMode = /完全静止|保持静止|不需要运动|static/i.test(originalGoal)
+    ? "static"
+    : /明显运动|大幅运动|推进|横移|环绕|motion/i.test(originalGoal)
+      ? "motion"
+      : "micro-motion"
+  const primaryMotion =
+    motionMode === "static"
+      ? "一个主运动：无。摄影机与所有主体保持静止，只保留原始静帧。"
+      : motionMode === "motion"
+        ? "一个主运动：使用一次平滑启动与减速的摄影机推进、横移或环绕，路径顺应原构图轴线，以真实位移产生视差，不使用数字变焦。"
+        : "一个主运动：使用一次幅度很小、平滑启动与减速的摄影机推进或横移，路径顺应原构图轴线，以真实位移产生轻微视差，不使用数字变焦。"
+  const prompt = [
+    `【静态图运镜导演决策】${motionMode}`,
+    `用户目标：${originalGoal}`,
+    professionalBrief ? `画面分析补充：${professionalBrief}` : "",
+    "观察：以选中图片为唯一事实依据，先识别主主体、构图轴线、留白、景深层次、文字/数字/Logo/边框/网格等脆弱元素，以及物体之间的物理连接。",
+    "锁定：主体身份、脸部、服装、产品几何、文字拼写、数字、Logo、版式、纸张纹理、边框、网格、背景结构、光向和综合色彩不得改变。",
+    primaryMotion,
+    "次运动：只允许一种与场景物理相关的微动，例如呼吸、发丝、布料、蒸汽、树叶或反射高光；若画面不存在合理动因则保持静止。",
+    `时间：0-${(durationSeconds * 0.2).toFixed(1)} 秒建立静帧；${(durationSeconds * 0.2).toFixed(1)}-${(durationSeconds * 0.8).toFixed(1)} 秒完成主运动；${(durationSeconds * 0.8).toFixed(1)}-${durationSeconds} 秒自然减速并保留稳定结尾。`,
+    `输出 ${durationSeconds} 秒 ${target?.resolution ?? "720p"} 单镜头图生视频。`,
+  ].filter(Boolean).join("\n")
+  return compiledPromptSchema.parse({
+    originalGoal,
+    summary: "静态图运镜导演：克制单镜头",
+    sharedConstraints: ["一个主运动，最多一个物理相关次运动", "严格锁定文字、数字、Logo、版式和主体身份"],
+    skillSnapshotId: skill.id,
+    outputs: [{
+      id: `${taskId}-output-1`,
+      mediaType: "video",
+      operation: "animate",
+      prompt,
+      negativePrompt: "重绘主体、文字变形、数字变化、Logo 漂移、布局改变、镜头瞬移、数字变焦、跳轴、剧烈摇移、随机动作、闪烁、融化、水印、字幕",
+      variantKey: "still-motion-director-video",
+      variantDifference: "克制图生视频",
+      sourceContextSnapshotId: context.id,
+      durationSeconds,
+      resolution: target?.resolution ?? "720p",
+    }],
+  })
+}
+
+function compileBrandStickerPhotoPrompt({
+  taskId,
+  originalGoal,
+  professionalBrief,
+  context,
+  skill,
+}: {
+  taskId: string
+  originalGoal: string
+  professionalBrief?: string
+  context?: CanvasContextSnapshot
+  skill: SkillSnapshot
+}): CompiledPrompt {
+  const brand = originalGoal.match(/(?:品牌名称|品牌名|品牌|BRAND_NAME)\s*[:：]?\s*([^\n，。；;]+)/i)?.[1]?.trim() ?? "用户指定品牌"
+  const color = originalGoal.match(/(?:背景颜色|背景色|BACKGROUND_COLOR)\s*[:：]?\s*([^\n，。；;]+)/i)?.[1]?.trim() ?? "用户指定纯色"
+  const hasReference = hasImageReference(context)
+  const identity = hasReference
+    ? "把当前选中的 Logo/字标图片作为唯一品牌视觉依据，逐字保持拼写、字形、轮廓、比例、间距和品牌色，不重绘成相似但错误的标志。"
+    : "用户已确认使用纯文字字标；只排印品牌名称，不伪造、猜测或声称使用官方 Logo。"
+  const prompt = [
+    "【品牌贴纸商业写真】",
+    `品牌名称：${brand}`,
+    `无缝背景色：${color}`,
+    professionalBrief ? `品牌视觉分析：${professionalBrief}` : "",
+    identity,
+    "主体：单个完整 die-cut laminated vinyl sticker 漂浮在画面中央略偏上，贴纸轮廓与品牌标志自然贴合，四周保留均匀安全边距；仅一个贴纸，不重复、不拼贴。",
+    "材料：真实覆膜乙烯基，清晰切边厚度、细腻凸起印刷和受控的虹彩反射。上方一个角形成统一、可剥离的轻微卷曲，卷曲属于同一张贴纸，不出现第二层贴纸或撕裂。",
+    "摄影：4:5 竖版高端棚拍，正面略带三分之四视角，大面积柔光塑形，窄轮廓光勾出清晰边缘；背景为纯色无缝空间，没有地平线、桌面、地面、底座、接触阴影或环境道具。",
+    "品牌名称必须准确、清晰、可读，不增加标语、错误字母、装饰文字或其他 Logo。只输出一张完整商业成片。",
+  ].filter(Boolean).join("\n")
+  return compiledPromptSchema.parse({
+    originalGoal,
+    summary: `品牌贴纸写真：${brand}`,
+    sharedConstraints: [identity, "固定 4:5 单贴纸产品写真", "无地面、无底座、无接触阴影"],
+    skillSnapshotId: skill.id,
+    outputs: [{
+      id: `${taskId}-output-1`,
+      mediaType: "image",
+      operation: "create",
+      prompt,
+      negativePrompt: "拼写错误、Logo 变形、通用假 Logo、重复贴纸、多个贴纸、矩形底板、地面、桌面、底座、接触阴影、贴纸被裁切、卷角分裂、Chrome 金属、塑料玩具、水印、边框、拼图",
+      variantKey: "brand-sticker-photo",
+      variantDifference: "4:5 品牌贴纸商业写真",
+      sourceContextSnapshotId: hasReference ? context?.id : undefined,
+      width: 1024,
+      height: 1280,
+    }],
+  })
+}
+
 export function compileGenerationPrompt({
   taskId,
   userInstruction,
@@ -2265,6 +2559,25 @@ export function compileGenerationPrompt({
   const creativeInstruction = professionalBrief
     ? `${originalGoal}\n${professionalBrief}`
     : originalGoal
+
+  if (isClassicalPoemSilkVideoSkillName(skill?.name) && skill) {
+    return compileClassicalPoemSilkVideoPrompt({ taskId, originalGoal, professionalBrief, skill, target })
+  }
+  if (isAntibesHolidaySkillName(skill?.name) && skill) {
+    return compileAntibesHolidayPrompt({ taskId, originalGoal, professionalBrief, context, skill, target })
+  }
+  if (isStillImageMotionDirectorSkillName(skill?.name) && skill) {
+    return compileStillImageMotionDirectorPrompt({ taskId, originalGoal, professionalBrief, context, skill, target })
+  }
+  if (isBrandStickerPhotoSkillName(skill?.name) && skill) {
+    return compileBrandStickerPhotoPrompt({
+      taskId,
+      originalGoal,
+      professionalBrief,
+      context,
+      skill,
+    })
+  }
 
   if (isStoryboardSkill(skill) && skill) {
     return compileStoryboardPrompt({
@@ -2368,12 +2681,13 @@ export function compileGenerationPrompt({
   }
   const count = Math.max(1, requestedCount)
   const requestedRatio = extractAspectRatio(creativeInstruction)
+  const requestedDimensions = extractRequestedDimensions(creativeInstruction)
   const sourceSize = sourceDimensions(context)
   const defaultSize = dimensionsForRatio(requestedRatio)
   const width =
-    effectiveTarget?.width ?? sourceSize?.width ?? defaultSize.width
+    effectiveTarget?.width ?? requestedDimensions?.width ?? sourceSize?.width ?? defaultSize.width
   const height =
-    effectiveTarget?.height ?? sourceSize?.height ?? defaultSize.height
+    effectiveTarget?.height ?? requestedDimensions?.height ?? sourceSize?.height ?? defaultSize.height
   const mediaType =
     effectiveTarget?.mediaType ??
     (/视频|动画|动起来|镜头/.test(creativeInstruction) ? "video" : "image")
@@ -2391,6 +2705,12 @@ export function compileGenerationPrompt({
     effectiveTarget?.resolution ??
     creativeInstruction.match(/(480p|720p|1080p|4k)/i)?.[1] ??
     "720p"
+  const selectedTemplate = selectVisualPromptTemplate(creativeInstruction)
+  const templateGuidance = buildTemplatePromptGuidance(
+    creativeInstruction,
+    width,
+    height
+  )
   const videoFrameRule = requestedRatio
     ? `画幅比例 ${requestedRatio[0]}:${requestedRatio[1]}`
     : animate
@@ -2408,6 +2728,7 @@ export function compileGenerationPrompt({
 
   const sharedConstraints = [
     `输出尺寸 ${width} × ${height}`,
+    `专业视觉模板：${selectedTemplate.label}`,
     ...(requestedRatio
       ? [`宽高比 ${requestedRatio[0]}:${requestedRatio[1]}`]
       : []),
@@ -2441,6 +2762,9 @@ export function compileGenerationPrompt({
         ? [`文字模型创作简报：${professionalBrief}`]
         : []),
       `成片定位：${imageDirection.style}`,
+      "",
+      "【专业模板路由】",
+      ...templateGuidance,
       "",
       "【主体与场景】",
       imageDirection.subject,
@@ -2568,7 +2892,7 @@ export function compileGenerationPrompt({
       prompt,
       negativePrompt:
         mediaType === "image" && !edit
-          ? imageDirection.negative
+          ? `${imageDirection.negative}；${templateNegativePrompt(creativeInstruction)}`
           : mediaType === "video"
             ? `${animate ? "不要改变参考图中的主体身份、外观、服装、道具、环境布局、光向或核心构图；" : ""}不要镜头瞬移、无动机抖动、焦距突变、跳轴、主体漂移、身份变化、肢体畸形、材质闪烁、纹理游走、背景融化、物体穿透、违背重力和惯性的动作、首尾帧突变、字幕、水印、边框或拼图。`
             : "不要忽略用户指令，不要改变未要求修改的内容，不要输出标注线和解释文字。",

@@ -225,7 +225,7 @@ function variantKeyForArtifact(task: AgentTask, artifact: AgentArtifact) {
 
 function matchingPairedImageVariant(variantKey?: string) {
   const scene = variantKey?.match(
-    /^(world|handdrawn)-scene-(\d{2})-video$/
+    /^(world|handdrawn|poem)-scene-(\d{2})-video$/
   )
   return scene ? `${scene[1]}-scene-${scene[2]}-image` : undefined
 }

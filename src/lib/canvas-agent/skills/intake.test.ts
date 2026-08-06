@@ -890,4 +890,61 @@ describe("resolveBuiltinSkillIntake", () => {
 
     expect(intake.clarification).toBeUndefined()
   })
+
+  it("only asks for missing poem content and checks both media models", () => {
+    const missing = resolveBuiltinSkillIntake({
+      userInstruction: "使用古诗词丝绸视频 Skill",
+      skill: skill("古诗词丝绸视频 Skill"),
+    })
+    expect(missing.clarification?.summary).toBe("古诗词内容待补充")
+
+    const ready = resolveBuiltinSkillIntake({
+      userInstruction: "《静夜思》李白\n床前明月光，疑是地上霜。\n举头望明月，低头思故乡。",
+      skill: skill("古诗词丝绸视频 Skill"),
+      generationCapabilities: { image: true, video: true },
+    })
+    expect(ready.clarification).toBeUndefined()
+  })
+
+  it("routes Antibes as an image skill without unrelated questions", () => {
+    const intake = resolveBuiltinSkillIntake({
+      userInstruction: "画一位在海边骑自行车的旅人",
+      skill: skill("Antibes Holiday"),
+      generationCapabilities: { image: true, video: false },
+    })
+    expect(intake.clarification).toBeUndefined()
+  })
+
+  it("requires a selected image and only the video model for motion direction", () => {
+    const missing = resolveBuiltinSkillIntake({
+      userInstruction: "让这张图片轻轻动起来",
+      skill: skill("静态图运镜导演 Skill"),
+      generationCapabilities: { image: false, video: true },
+    })
+    expect(missing.clarification?.summary).toBe("静态图运镜输入待选择")
+
+    const ready = resolveBuiltinSkillIntake({
+      userInstruction: "让这张图片轻轻动起来",
+      skill: skill("静态图运镜导演 Skill"),
+      context: imageContext(),
+      generationCapabilities: { image: false, video: true },
+    })
+    expect(ready.clarification).toBeUndefined()
+  })
+
+  it("asks brand sticker inputs once and accepts a wordmark decision", () => {
+    const missing = resolveBuiltinSkillIntake({
+      userInstruction: "使用品牌贴纸写真 Skill",
+      skill: skill("品牌贴纸写真 Skill"),
+    })
+    expect(missing.clarification?.message).toContain("品牌名称")
+    expect(missing.clarification?.message).toContain("背景颜色")
+
+    const ready = resolveBuiltinSkillIntake({
+      userInstruction: "品牌名称：ASUI，背景色：薄荷绿，使用纯文字字标",
+      skill: skill("品牌贴纸写真 Skill"),
+      generationCapabilities: { image: true, video: false },
+    })
+    expect(ready.clarification).toBeUndefined()
+  })
 })

@@ -98,6 +98,29 @@ export function isIanXiaoheiSkillName(name?: string) {
   )
 }
 
+export function isClassicalPoemSilkVideoSkillName(name?: string) {
+  if (!name) return false
+  const normalized = normalizedSkillName(name)
+  return normalized === "hbg-classical-poem-silk-video" || normalized === "古诗词丝绸视频-skill"
+}
+
+export function isAntibesHolidaySkillName(name?: string) {
+  if (!name) return false
+  return normalizedSkillName(name) === "antibes-holiday"
+}
+
+export function isStillImageMotionDirectorSkillName(name?: string) {
+  if (!name) return false
+  const normalized = normalizedSkillName(name)
+  return normalized === "gc-still-image-motion-director" || normalized === "静态图运镜导演-skill"
+}
+
+export function isBrandStickerPhotoSkillName(name?: string) {
+  if (!name) return false
+  const normalized = normalizedSkillName(name)
+  return normalized === "generate-brand-sticker-photo" || normalized === "品牌贴纸写真-skill"
+}
+
 export function isIanXiaoheiVariantKey(variantKey?: string) {
   return variantKey?.startsWith("ian-xiaohei-") ?? false
 }
@@ -114,6 +137,9 @@ export function skillMediaIntent(name?: string): "image" | "video" | undefined {
   ) {
     return "image"
   }
+  if (isAntibesHolidaySkillName(name) || isBrandStickerPhotoSkillName(name)) return "image"
+  if (isStillImageMotionDirectorSkillName(name)) return "video"
+  if (isClassicalPoemSilkVideoSkillName(name)) return undefined
   if (isHanddrawnVideoSkillName(name)) return "video"
   return undefined
 }
@@ -128,6 +154,10 @@ export function skillDisplayName(name: string) {
   if (isHanddrawnVideoSkillName(name)) return "story-to-handdrawn-video"
   if (isCanvas3dStickerSkillName(name)) return "画布 3D 贴纸风格转换"
   if (isIanXiaoheiSkillName(name)) return "Ian 小蓝滴配图"
+  if (isClassicalPoemSilkVideoSkillName(name)) return "古诗词丝绸视频 Skill"
+  if (isAntibesHolidaySkillName(name)) return "Antibes Holiday Skill"
+  if (isStillImageMotionDirectorSkillName(name)) return "静态图运镜导演 Skill"
+  if (isBrandStickerPhotoSkillName(name)) return "品牌贴纸写真 Skill"
   return name
 }
 

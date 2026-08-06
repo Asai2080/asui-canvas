@@ -791,4 +791,211 @@ describe("built-in Skill end-to-end contracts", () => {
     expect(completed.status).toBe("completed")
     expect(completed.resultNodeIds).toHaveLength(6)
   })
+
+  it("runs classical poem scenes through matching image-to-video pairs and canvas writeback", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction:
+          "《静夜思》李白\n床前明月光，疑是地上霜。\n举头望明月，低头思故乡。",
+        executionMode: "auto",
+        requestedOutputCount: 2,
+        skillId: "builtin-classical-poem-silk-video",
+      },
+      { id: "task-poem-e2e", eventId: "event-poem", now }
+    )
+    await createStoredAgentTask(task, root)
+    const { dependencies, imageInputs, videoInputs } = createDependencies(root)
+
+    const writing = await runUntilWritingCanvas(task.id, dependencies)
+
+    expect(writing.compiledPrompt?.summary).toBe("古诗词丝绸视频：2 个场景")
+    expect(imageInputs).toHaveLength(2)
+    expect(videoInputs).toHaveLength(2)
+    expect(videoInputs.map(({ sourceImageSrc }) => sourceImageSrc)).toEqual([
+      "https://example.test/generated-1.png",
+      "https://example.test/generated-2.png",
+    ])
+    expect(imageInputs.every(({ sourceImageSrc }) => !sourceImageSrc)).toBe(true)
+    expect(imageInputs[0].prompt).toContain("逐句识别时代")
+    expect(imageInputs[0].prompt).not.toContain("商业交付级细节")
+
+    const promptBatch = await capturePromptBatch(writing)
+    expect(promptBatch.commands).toContainEqual(
+      expect.objectContaining({
+        type: "create-prompt-node",
+        title: "古诗词场景与运镜方案",
+      })
+    )
+    const { batch, completed } = await applyResultBatch(writing, root)
+    expect(
+      batch.commands.filter(({ type }) => type === "create-image-node")
+    ).toHaveLength(2)
+    expect(
+      batch.commands.filter(({ type }) => type === "create-video-node")
+    ).toHaveLength(2)
+    expect(
+      batch.commands.filter(
+        (command) =>
+          command.type === "connect-nodes" && Boolean(command.sourceNodeRef)
+      )
+    ).toHaveLength(2)
+    expect(completed.status).toBe("completed")
+  })
+
+  it("runs Antibes as an isolated image workflow with only the selected reference", async () => {
+    const root = await createRoot()
+    const context = imageContext("antibes-context")
+    await createStoredCanvasContextSnapshot(context, root)
+    const task = createAgentTask(
+      {
+        userInstruction: "画一位沿海边骑自行车、外套被风吹起的旅人",
+        executionMode: "auto",
+        requestedOutputCount: 2,
+        skillId: "builtin-antibes-holiday",
+        contextSnapshotId: context.id,
+        selectedCanvasId: context.selectedNodeId,
+      },
+      { id: "task-antibes-e2e", eventId: "event-antibes", now }
+    )
+    await createStoredAgentTask(task, root)
+    const { dependencies, imageInputs, videoInputs } = createDependencies(root)
+
+    const writing = await runUntilWritingCanvas(task.id, dependencies)
+
+    expect(writing.compiledPrompt?.summary).toBe(
+      "Antibes Holiday：2 张原创钢笔插画"
+    )
+    expect(imageInputs).toHaveLength(2)
+    expect(videoInputs).toHaveLength(0)
+    for (const input of imageInputs) {
+      expect(input.sourceImageSrc).toBe(
+        "https://example.test/antibes-context-source.png"
+      )
+      expect(input.referenceImageSrcs).toEqual([])
+      expect(input.prompt).toContain("pen life")
+      expect(input.prompt).not.toContain("电影主光")
+    }
+
+    const promptBatch = await capturePromptBatch(writing)
+    expect(promptBatch.commands).toContainEqual(
+      expect.objectContaining({
+        type: "create-prompt-node",
+        title: "Antibes 插画方案",
+      })
+    )
+    const { batch, completed } = await applyResultBatch(writing, root)
+    expect(
+      batch.commands.filter(({ type }) => type === "create-image-node")
+    ).toHaveLength(2)
+    expect(completed.status).toBe("completed")
+  })
+
+  it("runs still-image motion with the selected image as the only first frame", async () => {
+    const root = await createRoot()
+    const context = imageContext("still-motion-context")
+    await createStoredCanvasContextSnapshot(context, root)
+    const task = createAgentTask(
+      {
+        userInstruction: "让镜头克制地轻微推进，人物只保留自然呼吸",
+        executionMode: "auto",
+        skillId: "builtin-still-image-motion-director",
+        contextSnapshotId: context.id,
+        selectedCanvasId: context.selectedNodeId,
+      },
+      { id: "task-still-motion-e2e", eventId: "event-still-motion", now }
+    )
+    await createStoredAgentTask(task, root)
+    const { dependencies, imageInputs, videoInputs } = createDependencies(root)
+
+    const writing = await runUntilWritingCanvas(task.id, dependencies)
+
+    expect(writing.compiledPrompt?.summary).toBe(
+      "静态图运镜导演：克制单镜头"
+    )
+    expect(imageInputs).toHaveLength(0)
+    expect(videoInputs).toHaveLength(1)
+    expect(videoInputs[0]).toMatchObject({
+      sourceImageSrc:
+        "https://example.test/still-motion-context-source.png",
+      durationSeconds: 4,
+      resolution: "720p",
+    })
+    expect(videoInputs[0].prompt).toContain("一个主运动")
+    expect(videoInputs[0].prompt).toContain("只允许一种")
+    expect(videoInputs[0].prompt).toContain("不得重新设计画面")
+    expect(videoInputs[0].prompt).not.toContain("电影主光")
+
+    const promptBatch = await capturePromptBatch(writing)
+    expect(promptBatch.commands).toContainEqual(
+      expect.objectContaining({
+        type: "create-prompt-node",
+        title: "静态图运镜方案",
+      })
+    )
+    const { batch, completed } = await applyResultBatch(writing, root)
+    expect(
+      batch.commands.filter(({ type }) => type === "create-video-node")
+    ).toHaveLength(1)
+    expect(batch.commands).toContainEqual(
+      expect.objectContaining({
+        type: "connect-nodes",
+        sourceNodeId: context.selectedNodeId,
+      })
+    )
+    expect(completed.status).toBe("completed")
+  })
+
+  it("runs brand sticker photography with the selected logo as its only reference", async () => {
+    const root = await createRoot()
+    const context = imageContext("brand-sticker-context")
+    await createStoredCanvasContextSnapshot(context, root)
+    const task = createAgentTask(
+      {
+        userInstruction: "品牌名称：ASUI，背景色：薄荷绿，使用当前 Logo",
+        executionMode: "auto",
+        skillId: "builtin-brand-sticker-photo",
+        contextSnapshotId: context.id,
+        selectedCanvasId: context.selectedNodeId,
+      },
+      { id: "task-brand-sticker-e2e", eventId: "event-brand-sticker", now }
+    )
+    await createStoredAgentTask(task, root)
+    const { dependencies, imageInputs, videoInputs } = createDependencies(root)
+
+    const writing = await runUntilWritingCanvas(task.id, dependencies)
+
+    expect(writing.compiledPrompt?.summary).toBe("品牌贴纸写真：ASUI")
+    expect(imageInputs).toHaveLength(1)
+    expect(videoInputs).toHaveLength(0)
+    expect(imageInputs[0]).toMatchObject({
+      sourceImageSrc:
+        "https://example.test/brand-sticker-context-source.png",
+      referenceImageSrcs: [],
+      width: 1024,
+      height: 1280,
+    })
+    expect(imageInputs[0].prompt).toContain("逐字保持拼写")
+    expect(imageInputs[0].prompt).toContain("没有地平线、桌面、地面、底座")
+    expect(imageInputs[0].prompt).toContain("唯一主体是一张完整")
+
+    const promptBatch = await capturePromptBatch(writing)
+    expect(promptBatch.commands).toContainEqual(
+      expect.objectContaining({
+        type: "create-prompt-node",
+        title: "品牌贴纸写真方案",
+      })
+    )
+    const { batch, completed } = await applyResultBatch(writing, root)
+    expect(
+      batch.commands.filter(({ type }) => type === "create-image-node")
+    ).toHaveLength(1)
+    expect(batch.commands).toContainEqual(
+      expect.objectContaining({
+        type: "connect-nodes",
+        sourceNodeId: context.selectedNodeId,
+      })
+    )
+    expect(completed.status).toBe("completed")
+  })
 })

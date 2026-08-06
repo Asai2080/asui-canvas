@@ -686,6 +686,10 @@
     @apply bg-primary text-primary-foreground;
   }
 
+  .canvas-main-toolbar__button:disabled {
+    @apply cursor-not-allowed opacity-35 hover:bg-transparent hover:text-current;
+  }
+
   .canvas-main-toolbar__separator {
     @apply mx-1 h-7 w-px shrink-0 bg-[#39383F];
   }
@@ -710,6 +714,134 @@
     margin: 0;
     max-height: calc(100vh - 120px);
     box-shadow: 0 18px 48px rgb(0 0 0 / 35%);
+  }
+
+  .canvas-main-toolbar__download-menu {
+    @apply absolute bottom-[calc(100%+10px)] right-0 flex min-w-52 flex-col gap-1 rounded-xl border border-white/10 bg-[#1c1c21]/98 p-1.5 text-xs text-[#e8e8eb] shadow-2xl;
+  }
+
+  .canvas-main-toolbar__download-menu button {
+    @apply rounded-lg px-3 py-2 text-left transition-colors hover:bg-white/[0.07];
+  }
+
+  .canvas-slicing-layer {
+    @apply pointer-events-none absolute inset-0 z-[80] overflow-hidden;
+  }
+
+  .canvas-slicing-image-overlay {
+    @apply pointer-events-auto absolute overflow-hidden;
+    box-shadow: inset 0 0 0 2px rgb(163 254 68 / 82%);
+  }
+
+  .canvas-slicing-image-overlay.is-manual {
+    cursor: crosshair;
+  }
+
+  .canvas-slicing-candidate {
+    @apply absolute min-h-2 min-w-2 border border-dashed border-white/70 bg-black/10 text-left text-white transition-colors;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 24%);
+  }
+
+  .canvas-slicing-candidate:hover,
+  .canvas-slicing-candidate.is-selected {
+    @apply border-primary bg-primary/10;
+    box-shadow: 0 0 0 1px rgb(163 254 68 / 42%), 0 0 14px rgb(163 254 68 / 18%);
+  }
+
+  .canvas-slicing-candidate.is-skipped {
+    @apply border-white/35 bg-black/5 opacity-70;
+  }
+
+  .canvas-slicing-candidate.is-skipped:hover {
+    @apply border-amber-300/80 bg-amber-300/10 opacity-100;
+    box-shadow: 0 0 0 1px rgb(252 211 77 / 28%);
+  }
+
+  .canvas-slicing-candidate > span {
+    @apply absolute left-0 top-0 flex min-w-4 -translate-y-full items-center justify-center bg-primary px-1 text-[10px] font-semibold leading-4 text-primary-foreground;
+  }
+
+  .canvas-slicing-candidate > small {
+    @apply absolute bottom-0 left-0 hidden whitespace-nowrap bg-black/75 px-1 text-[9px] leading-4 text-white;
+  }
+
+  .canvas-slicing-candidate:hover > small {
+    @apply block;
+  }
+
+  .canvas-slicing-candidate > em {
+    @apply absolute left-0 top-0 hidden max-w-56 -translate-y-full rounded-t bg-black/85 px-1.5 py-1 text-[10px] font-normal not-italic leading-4 text-white;
+  }
+
+  .canvas-slicing-candidate__mode {
+    @apply absolute bottom-1 right-1 z-10 rounded-md border border-white/20 bg-black/75 px-1.5 py-0.5 text-[9px] leading-4 text-white opacity-0 transition-opacity hover:bg-primary hover:text-primary-foreground;
+  }
+
+  .canvas-slicing-candidate:hover .canvas-slicing-candidate__mode,
+  .canvas-slicing-candidate.is-selected .canvas-slicing-candidate__mode {
+    @apply opacity-100;
+  }
+
+  .canvas-slicing-candidate:hover > em {
+    @apply block;
+  }
+
+  .canvas-slicing-draft {
+    @apply pointer-events-none absolute border border-dashed border-primary bg-primary/10;
+    box-shadow: 0 0 0 1px rgb(163 254 68 / 40%), 0 0 16px rgb(163 254 68 / 20%);
+  }
+
+  .canvas-slicing-controls {
+    @apply pointer-events-auto absolute flex min-h-10 -translate-x-1/2 items-center gap-1 rounded-xl border border-white/10 bg-[#1c1c21]/98 p-1 text-xs text-[#e8e8eb] shadow-2xl backdrop-blur-xl;
+  }
+
+  .canvas-slicing-controls button {
+    @apply flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[#d4d4d8] transition-colors hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-35;
+  }
+
+  .canvas-slicing-controls button.is-icon {
+    @apply w-8 justify-center px-0;
+  }
+
+  .canvas-slicing-controls button.is-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary/85;
+  }
+
+  .canvas-slicing-controls__status,
+  .canvas-slicing-controls__count {
+    @apply flex h-8 items-center gap-2 whitespace-nowrap px-2 text-[#b8b8c0];
+  }
+
+  .canvas-agent-slice-suggestion {
+    @apply relative z-10 mb-2 flex min-w-0 items-center gap-2 rounded-xl border border-white/10 bg-[#1b1b1f]/96 p-2 text-xs shadow-lg;
+  }
+
+  .canvas-agent-slice-suggestion__icon {
+    @apply flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary;
+  }
+
+  .canvas-agent-slice-suggestion__copy {
+    @apply mr-auto flex min-w-0 flex-col gap-0.5;
+  }
+
+  .canvas-agent-slice-suggestion__copy strong {
+    @apply truncate font-medium text-foreground;
+  }
+
+  .canvas-agent-slice-suggestion__copy span {
+    @apply whitespace-nowrap text-muted-foreground;
+  }
+
+  .canvas-agent-slice-suggestion button {
+    @apply h-7 shrink-0 rounded-lg bg-white/[0.06] px-2 text-[11px] text-foreground transition-colors hover:bg-white/[0.1];
+  }
+
+  .canvas-agent-slice-suggestion button:first-of-type {
+    @apply bg-primary text-primary-foreground hover:bg-primary/85;
+  }
+
+  .canvas-agent-slice-suggestion button.is-dismiss {
+    @apply flex w-7 items-center justify-center bg-transparent px-0 text-muted-foreground hover:bg-white/[0.06] hover:text-foreground;
   }
 
   .canvas-modal-surface {

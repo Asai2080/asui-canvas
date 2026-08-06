@@ -69,6 +69,10 @@ function promptNodeTitle(compiledPrompt: CompiledPrompt) {
   if (compiledPrompt.summary.includes("社交卡")) return "社交卡编排方案"
   if (compiledPrompt.summary.startsWith("人物写真")) return "人物写真导演方案"
   if (compiledPrompt.summary.startsWith("手绘故事视频")) return "手绘故事分镜"
+  if (compiledPrompt.summary.startsWith("古诗词丝绸视频")) return "古诗词场景与运镜方案"
+  if (compiledPrompt.summary.startsWith("Antibes Holiday")) return "Antibes 插画方案"
+  if (compiledPrompt.summary.startsWith("静态图运镜导演")) return "静态图运镜方案"
+  if (compiledPrompt.summary.startsWith("品牌贴纸写真")) return "品牌贴纸写真方案"
   return "专业提示词"
 }
 

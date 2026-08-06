@@ -360,6 +360,59 @@ description: 中文正文配图 Skill。把文章、观点、流程或方法论�
 - 结果不合格时只重试对应图片，不重新执行其他已完成输出。
 `
 
+const CLASSICAL_POEM_SILK_VIDEO_SKILL_DOCUMENT = `---
+name: 古诗词丝绸视频 Skill
+description: 古诗词视觉叙事 Skill。把完整诗词拆为连续的无字场景图和对应图生视频段落。
+---
+
+# 古诗词丝绸视频
+
+本 Skill 参考 hbg-classical-poem-silk-video，改写为 ASUI 原生图片与视频链路。先解析诗题、作者、时代、地点、季节、意象、动作和情绪弧线，再按诗句分组生成独立场景图与对应视频。四句以内默认一行一场景，超过四句默认两行一场景；一次最多六个场景。
+
+## 交付与问询
+- 必须获得完整诗词或明确的诗句文本；用户已提供的内容不重复询问。
+- 未指定时由 Agent 推断时代、季节、服饰、材质、镜头和丝绸般的光影，不为了补全细节反复追问。
+- 图片模型和视频模型都必须在确认前可用；每个场景生成一张 9:16 无字场景图，再以该图为唯一首帧生成一段视频。
+- 只交付独立场景图和分段视频，不伪称已经完成配乐、字幕、合片或最终 MP4；不执行上游脚本、ffmpeg、Docker、Python 或网络请求。
+- 场景图与视频按场景成对写回画布，提示词和场景信息写入相邻文字画布，所有节点自动避让已有内容。
+`
+
+const ANTIBES_HOLIDAY_SKILL_DOCUMENT = `---
+name: Antibes Holiday
+description: 黑色钢笔手绘插画 Skill。保留松弛、不均匀和有生命力的线条，用于单张插画、系列、图标或标志。
+---
+
+# Antibes Holiday
+
+本 Skill 参考 antibes-holiday，适用于插画、叙事场景、icon/badge 和 logo。先识别交付类型、主体关系和核心动作，再用 gesture、recognition、pen life 三轮规则编译为一张或一组图片。保持开放轮廓、线条漂移、粗细不均、留白和不完美接缝，不生成矢量化或通用素描滤镜效果。
+
+用户已经给出主体和概念时直接推断构图、纸张、线条和黑白层次；只有交付类型或核心概念确实无法判断时才询问。只调用当前图片模型，结果写入独立图片画布，不生成视频、不执行上游脚本或网络请求。
+`
+
+const STILL_IMAGE_MOTION_DIRECTOR_SKILL_DOCUMENT = `---
+name: 静态图运镜导演 Skill
+description: 图生视频导演 Skill。分析选中的静态图片后，只设计一条克制且可执行的运镜并生成视频。
+---
+
+# 静态图运镜导演
+
+本 Skill 参考 gc-still-image-motion-director。必须读取当前选中的图片，区分观察事实与导演建议，并在 motion、micro-motion、static 中选择一种。最多一个主运动和一个有物理关系的次运动；锁定主体身份、文字、数字、边框、纸张、网格、版式和脆弱细节。默认 4 秒、平台无关，先展示运动决策和专业图生视频提示词，确认后调用当前视频模型。
+
+没有有效图片时只提示用户先选图；不调用图片生成，不把普通文字需求路由到视频，不执行上游脚本。视频结果写入源图片旁边的新视频画布并建立引用关系。
+`
+
+const BRAND_STICKER_PHOTO_SKILL_DOCUMENT = `---
+name: 品牌贴纸写真 Skill
+description: 品牌贴纸商业摄影 Skill。生成一张 4:5、无地面接触的透明贴纸产品写真。
+---
+
+# 品牌贴纸写真
+
+本 Skill 参考 generate-brand-sticker-photo。必须有品牌名称和背景色；官方 Logo 优先使用用户提供的已授权参考图或当前视觉模型识别结果，不擅自联网，不凭空伪造品牌标志。若没有 Logo 参考，先询问是否接受纯文字/通用字标处理。
+
+只生成一张 4:5 图片：单个完整的 die-cut 覆膜贴纸漂浮在无缝纯色背景上，无桌面、地面、底座或接触阴影；表现覆膜高光、凸起印刷、切边厚度、统一上角翘起和受控虹彩反射。严格保留拼写、字形、比例和色彩；发现拼写错误、重复贴纸、矩形底板、落地摆拍、遮挡或 Chrome 塑料感即视为不合格。只调用当前图片模型，结果写入提示词画布旁的新图片节点。
+`
+
 export const BUILTIN_SKILLS: readonly BuiltinSkillDefinition[] = [
   {
     id: "builtin-cover-design",
@@ -414,6 +467,33 @@ export const BUILTIN_SKILLS: readonly BuiltinSkillDefinition[] = [
     key: "ian-xiaohei-illustrations",
     document: IAN_XIAOHEI_SKILL_DOCUMENT,
     releasedAt: "2026-08-01T00:00:00.000Z",
+  },
+  {
+    id: "builtin-classical-poem-silk-video",
+    key: "classical-poem-silk-video",
+    document: CLASSICAL_POEM_SILK_VIDEO_SKILL_DOCUMENT,
+    homepage: "https://github.com/Mr-funny/hbg-classical-poem-silk-video",
+    releasedAt: "2026-08-05T00:00:00.000Z",
+  },
+  {
+    id: "builtin-antibes-holiday",
+    key: "antibes-holiday",
+    document: ANTIBES_HOLIDAY_SKILL_DOCUMENT,
+    homepage: "https://github.com/haorantang97/antibes-holiday",
+    releasedAt: "2026-08-05T00:00:00.000Z",
+  },
+  {
+    id: "builtin-still-image-motion-director",
+    key: "still-image-motion-director",
+    document: STILL_IMAGE_MOTION_DIRECTOR_SKILL_DOCUMENT,
+    homepage: "https://github.com/LiamGvchi/gc-still-image-motion-director",
+    releasedAt: "2026-08-05T00:00:00.000Z",
+  },
+  {
+    id: "builtin-brand-sticker-photo",
+    key: "brand-sticker-photo",
+    document: BRAND_STICKER_PHOTO_SKILL_DOCUMENT,
+    releasedAt: "2026-08-05T00:00:00.000Z",
   },
 ]
 

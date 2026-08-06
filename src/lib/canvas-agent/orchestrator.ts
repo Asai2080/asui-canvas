@@ -27,7 +27,11 @@ import {
 } from "./prompts/compiler"
 import { resolveBuiltinSkillIntake } from "./skills/intake"
 import {
+  isAntibesHolidaySkillName,
+  isBrandStickerPhotoSkillName,
+  isClassicalPoemSilkVideoSkillName,
   isIanXiaoheiSkillName,
+  isStillImageMotionDirectorSkillName,
   skillMediaIntent,
 } from "./skills/identifiers"
 import { createSkillSnapshot } from "./skills/registry"
@@ -109,12 +113,65 @@ function ianArticleInterpretationBrief() {
   ].join("\n")
 }
 
+function classicalPoemInterpretationBrief(instruction: string) {
+  return [
+    "【古诗词视觉导演简报】",
+    `原始诗词：${instruction}`,
+    "先逐句识别时代、地点、季节、时辰、天气、人物、动作、器物、植物、建筑与情绪变化；无法考据的细节采用保守表达，不混搭朝代。",
+    "把抽象诗意转译为可见事件：明确前景意象、中景动作、远景空间、主光方向和一个决定性瞬间，不把诗句机械画成文字或符号。",
+    "建立跨场景美术圣经，锁定人物身份、服饰、建筑、器物、季节、天气、综合色彩和丝绸般柔润光泽；每个场景只推进一个意象或情绪节点。",
+    "运镜必须从场景构图中推导，只选择一次缓慢推进、横移或轻微升降，并为结尾衔接保留稳定空间锚点。",
+  ].join("\n")
+}
+
+function antibesInterpretationBrief(instruction: string) {
+  return [
+    "【Antibes 钢笔插画简报】",
+    `用户概念：${instruction}`,
+    "把主体、动作和关系具体化：说明身体重心、动作方向、视线、关键道具与环境反馈，选择一个一眼可读的叙事瞬间。",
+    "构图从一条松弛 gesture line 开始，识别细节只集中在脸、手、道具和事件焦点；边缘逐渐稀疏并保留大面积自然白纸。",
+    "只使用黑色钢笔的轻微抖动、线宽变化、断线、重描和不完全闭合建立 pen life；不添加电影布光、写实材质、渐变、矢量描边或通用素描滤镜。",
+  ].join("\n")
+}
+
+function stillImageMotionInterpretationBrief(instruction: string) {
+  return [
+    "【静态图运镜分析简报】",
+    `用户运动意图：${instruction}`,
+    "当前选中图片是唯一事实和首帧。先区分可动主体、可产生物理微动的元素，以及文字、数字、Logo、版式、边框、网格、脸部和产品几何等必须完全锁定的元素。",
+    "根据原图景深和构图轴线只选择 motion、micro-motion 或 static 中一种；最多一个主摄影机运动和一个有物理因果的次运动。",
+    "不得重新设计画面、改光、换色、补景、重绘主体或使用通用电影美术扩写；提示词只描述真实可执行的运动路径、时间节拍、稳定结尾与防漂移约束。",
+  ].join("\n")
+}
+
+function brandStickerInterpretationBrief(instruction: string) {
+  return [
+    "【品牌贴纸商业写真简报】",
+    `用户目标：${instruction}`,
+    "锁定品牌名称、背景色和 Logo 依据；有参考图时逐字保留字形、比例、间距与品牌色，没有参考图时只使用用户确认的纯文字字标。",
+    "唯一主体是一张完整 die-cut 覆膜贴纸，明确贴纸外轮廓、切边厚度、凸起印刷、受控虹彩高光和一个统一轻微卷角。",
+    "使用 4:5 无缝纯色棚拍背景，贴纸漂浮且四周留有安全边距；禁止桌面、地面、底座、接触阴影、第二张贴纸和额外品牌文案。",
+  ].join("\n")
+}
+
 function buildInterpretationBrief(
   input: TextModelInterpretationInput,
   intent: "image" | "video"
 ) {
   if (isIanXiaoheiSkillName(input.skill?.name)) {
     return ianArticleInterpretationBrief()
+  }
+  if (isClassicalPoemSilkVideoSkillName(input.skill?.name)) {
+    return classicalPoemInterpretationBrief(input.userInstruction.trim())
+  }
+  if (isAntibesHolidaySkillName(input.skill?.name)) {
+    return antibesInterpretationBrief(input.userInstruction.trim())
+  }
+  if (isStillImageMotionDirectorSkillName(input.skill?.name)) {
+    return stillImageMotionInterpretationBrief(input.userInstruction.trim())
+  }
+  if (isBrandStickerPhotoSkillName(input.skill?.name)) {
+    return brandStickerInterpretationBrief(input.userInstruction.trim())
   }
   return buildProfessionalCreativeBrief(input.userInstruction.trim(), intent)
 }

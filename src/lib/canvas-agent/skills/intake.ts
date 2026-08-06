@@ -5,13 +5,17 @@ import type {
   AgentInterpretation,
 } from "../task-schema"
 import {
+  isAntibesHolidaySkillName,
+  isBrandStickerPhotoSkillName,
   isCanvas3dStickerSkillName,
+  isClassicalPoemSilkVideoSkillName,
   isCoverSkillName,
   isHanddrawnVideoSkillName,
   isImageTo3dSkillName,
   isIanXiaoheiSkillName,
   isPortraitSkillName,
   isSocialCardSkillName,
+  isStillImageMotionDirectorSkillName,
   isStoryboardSkillName,
   isWorldSkillName,
 } from "./identifiers"
@@ -966,6 +970,80 @@ function handdrawnVideoClarification(
   )
 }
 
+function classicalPoemClarification(instruction: string) {
+  const content = instruction
+    .replace(/hbg-classical-poem-silk-video|古诗词丝绸视频\s*skill/gi, "")
+    .replace(/使用|调用|用|这个|帮我|请|生成|制作|做成|古诗|诗词|视频|一下|可以|需要|想要|我要|吧|呀|哟/gi, "")
+    .replace(/[\s，。！？、,.!?:：；;“”"'《》「」]/g, "")
+  if (content.length >= 8) return undefined
+  return clarification(
+    "请提供完整诗词（包含诗题、作者更好）。我会自动解析时代、季节、地点、意象和情绪弧线：四句以内默认一行一场景，超过四句默认两行一场景，不会重复询问已经给出的信息。",
+    "古诗词内容待补充",
+    instruction
+  )
+}
+
+function antibesHolidayClarification(instruction: string) {
+  const content = instruction
+    .replace(/antibes-holiday|\bskill\b/gi, "")
+    .replace(/使用|调用|用|这个|帮我|请|生成|制作|做|插画|图片|一下|可以|需要|想要|我要|吧|呀|哟/gi, "")
+    .replace(/[\s，。！？、,.!?:：；;“”"'《》「」]/g, "")
+  if (content.length >= 3) return undefined
+  return clarification(
+    "请告诉我想表现的主体或场景，以及它正在做什么。若你不指定交付类型，我会默认生成一张松弛黑色钢笔叙事插画；线条、留白和纸面气质由 Skill 自动完成。",
+    "Antibes 插画概念待补充",
+    instruction
+  )
+}
+
+function stillImageMotionClarification(
+  instruction: string,
+  context?: CanvasContextSnapshot
+) {
+  if (hasUsableSelectedImage(context)) return undefined
+  return clarification(
+    "请先在画布中选中一张有效图片。这个 Skill 会先分析画面中可动与必须锁定的元素，选择 motion、micro-motion 或 static，再生成默认 4 秒的克制图生视频；不会重新生图。",
+    "静态图运镜输入待选择",
+    instruction
+  )
+}
+
+function brandStickerClarification(
+  instruction: string,
+  context?: CanvasContextSnapshot
+) {
+  const brand = instruction.match(/(?:品牌名称|品牌名|品牌|BRAND_NAME)\s*[:：]?\s*([^\n，。；;]+)/i)?.[1]?.trim()
+  const color = instruction.match(/(?:背景颜色|背景色|BACKGROUND_COLOR)\s*[:：]?\s*([^\n，。；;]+)/i)?.[1]?.trim()
+  const acceptsWordmark = /纯文字|文字字标|通用字标|不使用\s*logo|无需\s*logo/i.test(instruction)
+  const hasReference = hasUsableSelectedImage(context)
+  const missing = [!brand ? "品牌名称" : "", !color ? "背景颜色" : ""].filter(Boolean)
+  if (missing.length > 0) {
+    return clarification(
+      `请补充${missing.join("和")}。例如“品牌名称：ASUI，背景色：薄荷绿”。已经提供的内容不用重复。`,
+      "品牌贴纸信息待补充",
+      instruction
+    )
+  }
+  if (hasReference || acceptsWordmark) return undefined
+  return clarification(
+    "品牌名和背景色已经记下。请选中或上传一张你有权使用的 Logo/字标参考图；如果没有，请确认“使用纯文字字标”，我不会凭空伪造官方 Logo。",
+    "品牌 Logo 依据待确认",
+    instruction,
+    {
+      groups: [
+        choiceGroup("brand-sticker-logo", "Logo 处理", [
+          {
+            id: "brand-sticker-wordmark",
+            label: "使用纯文字字标",
+            value: "使用纯文字字标，不使用或伪造官方 Logo",
+          },
+        ]),
+      ],
+      submitLabel: "确认 Logo 处理",
+    }
+  )
+}
+
 function capabilityClarification(
   skillName: string | undefined,
   instruction: string,
@@ -998,6 +1076,27 @@ function capabilityClarification(
       settingsChoice()
     )
   }
+  if (isClassicalPoemSilkVideoSkillName(skillName)) {
+    const missing = [
+      !capabilities.image ? "图片模型" : "",
+      !capabilities.video ? "视频模型" : "",
+    ].filter(Boolean)
+    if (missing.length === 0) return undefined
+    return clarification(
+      `古诗词丝绸视频需要先生成场景图，再生成对应视频。请先在设置中完成${missing.join("和")}配置。`,
+      "古诗词视频能力待配置",
+      instruction,
+      settingsChoice()
+    )
+  }
+  if (isStillImageMotionDirectorSkillName(skillName) && !capabilities.video) {
+    return clarification(
+      "静态图运镜导演需要调用视频模型。请先在设置中完成视频模型配置。",
+      "视频生成能力待配置",
+      instruction,
+      settingsChoice()
+    )
+  }
   if (
     (isCoverSkillName(skillName) ||
       isStoryboardSkillName(skillName) ||
@@ -1010,6 +1109,18 @@ function capabilityClarification(
   ) {
     return clarification(
       "这个 Skill 需要调用图片模型。请先在设置中完成图片模型的 Base URL、API Key 和模型配置，再重新发送这次任务。",
+      "图片生成能力待配置",
+      instruction,
+      settingsChoice()
+    )
+  }
+  if (
+    (isAntibesHolidaySkillName(skillName) ||
+      isBrandStickerPhotoSkillName(skillName)) &&
+    !capabilities.image
+  ) {
+    return clarification(
+      "这个 Skill 需要调用图片模型。请先在设置中完成图片模型配置。",
       "图片生成能力待配置",
       instruction,
       settingsChoice()
@@ -1193,6 +1304,58 @@ export function resolveBuiltinSkillIntake({
         capabilityClarification(
           skill?.name,
           isolatedInstruction,
+          generationCapabilities
+        ),
+    }
+  }
+  if (isClassicalPoemSilkVideoSkillName(skill?.name)) {
+    const details = classicalPoemClarification(resolvedInstruction)
+    return {
+      resolvedInstruction,
+      clarification:
+        details ??
+        capabilityClarification(
+          skill?.name,
+          resolvedInstruction,
+          generationCapabilities
+        ),
+    }
+  }
+  if (isAntibesHolidaySkillName(skill?.name)) {
+    const details = antibesHolidayClarification(resolvedInstruction)
+    return {
+      resolvedInstruction,
+      clarification:
+        details ??
+        capabilityClarification(
+          skill?.name,
+          resolvedInstruction,
+          generationCapabilities
+        ),
+    }
+  }
+  if (isStillImageMotionDirectorSkillName(skill?.name)) {
+    const details = stillImageMotionClarification(resolvedInstruction, context)
+    return {
+      resolvedInstruction,
+      clarification:
+        details ??
+        capabilityClarification(
+          skill?.name,
+          resolvedInstruction,
+          generationCapabilities
+        ),
+    }
+  }
+  if (isBrandStickerPhotoSkillName(skill?.name)) {
+    const details = brandStickerClarification(resolvedInstruction, context)
+    return {
+      resolvedInstruction,
+      clarification:
+        details ??
+        capabilityClarification(
+          skill?.name,
+          resolvedInstruction,
           generationCapabilities
         ),
     }

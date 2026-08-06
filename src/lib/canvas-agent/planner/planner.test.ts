@@ -260,6 +260,65 @@ describe("createAgentPlan", () => {
     })
   })
 
+  it("feeds each poem scene image into its matching motion segment", () => {
+    const compiled: CompiledPrompt = {
+      originalGoal: "两段古诗词场景",
+      summary: "古诗词丝绸视频：2 个场景",
+      sharedConstraints: [],
+      outputs: [1, 2].flatMap((scene) => {
+        const number = String(scene).padStart(2, "0")
+        return [
+          {
+            id: `poem-image-${number}`,
+            mediaType: "image" as const,
+            operation: "create" as const,
+            prompt: `诗词场景 ${number}`,
+            width: 1080,
+            height: 1920,
+            variantKey: `poem-scene-${number}-image`,
+          },
+          {
+            id: `poem-video-${number}`,
+            mediaType: "video" as const,
+            operation: "animate" as const,
+            prompt: `诗词运镜 ${number}`,
+            durationSeconds: 5,
+            resolution: "1080p",
+            variantKey: `poem-scene-${number}-video`,
+          },
+        ]
+      }),
+    }
+
+    const plan = createAgentPlan({ taskId: "task-poem", compiledPrompt: compiled })
+    expect(plan.steps.find((step) => step.id === "generate-2")).toMatchObject({
+      dependsOn: ["generate-1"],
+      input: { sourceStepId: "generate-1" },
+    })
+    expect(plan.steps.find((step) => step.id === "generate-4")).toMatchObject({
+      dependsOn: ["generate-3"],
+      input: { sourceStepId: "generate-3" },
+    })
+    expect(plan.steps.find((step) => step.id === "generate-1")?.input).toMatchObject({
+      referencePolicy: "none",
+    })
+  })
+
+  it("uses only the selected logo reference for brand sticker photos", () => {
+    const compiled = imagePrompt(1)
+    compiled.outputs[0].variantKey = "brand-sticker-photo"
+    compiled.outputs[0].sourceContextSnapshotId = "context-logo"
+    const plan = createAgentPlan({
+      taskId: "task-brand-sticker",
+      compiledPrompt: compiled,
+      contextSnapshotId: "context-logo",
+    })
+    expect(plan.steps.find((step) => step.id === "generate-1")?.input).toMatchObject({
+      contextSnapshotId: "context-logo",
+      referencePolicy: "source-only",
+    })
+  })
+
   it("isolates four-view generation from unrelated selected references", () => {
     const compiled = imagePrompt(1)
     compiled.outputs[0].variantKey = "three-front-three-quarter"
