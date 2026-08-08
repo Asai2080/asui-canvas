@@ -5,7 +5,7 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-PORT="${ASUI_CANVAS_PORT:-3030}"
+PORT="${ASUI_CANVAS_PORT:-3001}"
 HOST="${ASUI_CANVAS_HOST:-localhost}"
 URL="http://${HOST}:${PORT}/"
 

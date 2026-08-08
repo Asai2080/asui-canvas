@@ -349,6 +349,34 @@ function AgentPromptReview({
         </span>
         {!isImageTo3d && currentSizeLabel && <span>{currentSizeLabel}</span>}
       </div>
+      <div className="agent-prompt-review__content">
+        {compiledPrompt.outputs.map((output, index) => {
+          const outputLabel =
+            canAdjustSize && validDimensions
+              ? currentSizeLabel
+              : outputSizeLabel(output)
+          const outputPrompt =
+            canAdjustSize && validDimensions
+              ? promptWithDimensions(
+                  output.prompt,
+                  output.width,
+                  output.height,
+                  width,
+                  height
+                )
+              : output.prompt
+
+          return (
+            <section key={output.id}>
+              <strong>
+                {promptOutputLabel(compiledPrompt, output, index)}
+                {outputLabel ? ` · ${outputLabel}` : ""}
+              </strong>
+              <p>{outputPrompt}</p>
+            </section>
+          )
+        })}
+      </div>
       {canAdjustSize && (
         <div className="agent-prompt-review__size-editor">
           <div className="agent-prompt-review__size-heading">
@@ -425,34 +453,6 @@ function AgentPromptReview({
           )}
         </div>
       )}
-      <div className="agent-prompt-review__content">
-        {compiledPrompt.outputs.map((output, index) => {
-          const outputLabel =
-            canAdjustSize && validDimensions
-              ? currentSizeLabel
-              : outputSizeLabel(output)
-          const outputPrompt =
-            canAdjustSize && validDimensions
-              ? promptWithDimensions(
-                  output.prompt,
-                  output.width,
-                  output.height,
-                  width,
-                  height
-                )
-              : output.prompt
-
-          return (
-            <section key={output.id}>
-              <strong>
-                {promptOutputLabel(compiledPrompt, output, index)}
-                {outputLabel ? ` · ${outputLabel}` : ""}
-              </strong>
-              <p>{outputPrompt}</p>
-            </section>
-          )
-        })}
-      </div>
       {(!readOnly || isExecuting) && (
         <>
           <p className="agent-prompt-review__hint">

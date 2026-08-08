@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react"
+import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   CheckmarkSquare02Icon,
@@ -71,6 +71,10 @@ type CandidateGesture = {
 
 const RESIZE_HANDLES: SliceResizeHandle[] = ["nw", "ne", "sw", "se"]
 type GeometryDraft = Record<SliceRectField, string>
+type GeometryDraftState = {
+  candidateId: string | null
+  draft: GeometryDraft | null
+}
 
 function geometryDraftFromCandidate(candidate: SliceCandidate): GeometryDraft {
   return {
@@ -115,21 +119,22 @@ export function CanvasSlicingOverlay({
   const [drag, setDrag] = useState<DragRect | null>(null)
   const [activeCandidateId, setActiveCandidateId] = useState<string | null>(null)
   const [geometryOpen, setGeometryOpen] = useState(false)
-  const [geometryDraft, setGeometryDraft] = useState<GeometryDraft | null>(null)
+  const [geometryDraftState, setGeometryDraftState] = useState<GeometryDraftState>({
+    candidateId: null,
+    draft: null,
+  })
   const candidateGestureRef = useRef<CandidateGesture | null>(null)
 
   const editable = phase === "reviewing" || phase === "manual"
   const activeCandidate = candidates.find((candidate) => candidate.id === activeCandidateId)
-
-  useEffect(() => {
-    setGeometryDraft(activeCandidate ? geometryDraftFromCandidate(activeCandidate) : null)
-  }, [
-    activeCandidate?.id,
-    activeCandidate?.x,
-    activeCandidate?.y,
-    activeCandidate?.width,
-    activeCandidate?.height,
-  ])
+  const geometryDraft =
+    activeCandidate &&
+    geometryDraftState.candidateId === activeCandidate.id &&
+    geometryDraftState.draft
+      ? geometryDraftState.draft
+      : activeCandidate
+        ? geometryDraftFromCandidate(activeCandidate)
+        : null
 
   const pointInImage = (event: PointerEvent<HTMLDivElement>) => ({
     x: Math.max(0, Math.min(bounds.w, event.clientX - bounds.x)),
@@ -302,14 +307,25 @@ export function CanvasSlicingOverlay({
   const busy = phase === "detecting" || phase === "exporting"
   const selectionCount = selectedIds.size
   const updateActiveDraft = (field: SliceRectField, value: string) => {
-    if (!/^\d*$/.test(value)) return
-    setGeometryDraft((current) => current ? { ...current, [field]: value } : current)
+    if (!activeCandidate || !/^\d*$/.test(value)) return
+    const currentDraft =
+      geometryDraftState.candidateId === activeCandidate.id &&
+      geometryDraftState.draft
+        ? geometryDraftState.draft
+        : geometryDraftFromCandidate(activeCandidate)
+    setGeometryDraftState({
+      candidateId: activeCandidate.id,
+      draft: { ...currentDraft, [field]: value },
+    })
   }
   const commitActiveField = (field: SliceRectField) => {
     if (!activeCandidate || !geometryDraft) return
     const rawValue = geometryDraft[field].trim()
     if (!rawValue) {
-      setGeometryDraft(geometryDraftFromCandidate(activeCandidate))
+      setGeometryDraftState({
+        candidateId: activeCandidate.id,
+        draft: geometryDraftFromCandidate(activeCandidate),
+      })
       return
     }
     const nextRect = updateSliceRectField(
@@ -319,7 +335,10 @@ export function CanvasSlicingOverlay({
       sourceWidth,
       sourceHeight
     )
-    setGeometryDraft(geometryDraftFromCandidate({ ...activeCandidate, ...nextRect }))
+    setGeometryDraftState({
+      candidateId: activeCandidate.id,
+      draft: geometryDraftFromCandidate({ ...activeCandidate, ...nextRect }),
+    })
     onUpdateCandidate(activeCandidate.id, nextRect)
   }
 
@@ -562,7 +581,10 @@ export function CanvasSlicingOverlay({
                   }
                   if (event.key === "Escape") {
                     event.preventDefault()
-                    setGeometryDraft(geometryDraftFromCandidate(activeCandidate))
+                    setGeometryDraftState({
+                      candidateId: activeCandidate.id,
+                      draft: geometryDraftFromCandidate(activeCandidate),
+                    })
                   }
                 }}
               />

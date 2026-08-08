@@ -24,7 +24,10 @@ if not exist "node_modules\.bin\next.cmd" (
 
 if not exist ".env.local" copy /y ".env.example" ".env.local" >nul
 
-start "" http://localhost:3030/
-echo [ASUI Canvas] 项目启动中：http://localhost:3030/
-call npm run dev -- --port 3030
+for /f "delims=" %%P in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=3001; while (Get-NetTCPConnection -State Listen -LocalPort $p -ErrorAction SilentlyContinue) { $p++ }; $p"') do set "PORT=%%P"
+if not defined PORT set "PORT=3001"
+
+start "" powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "$url='http://localhost:%PORT%/'; for($i=0; $i -lt 60; $i++){ try { Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec 1 | Out-Null; Start-Process $url; exit } catch { Start-Sleep -Seconds 1 } }"
+echo [ASUI Canvas] 项目启动中：http://localhost:%PORT%/
+call npm run dev -- --port %PORT%
 pause

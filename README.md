@@ -14,27 +14,27 @@
 
 ## 快速开始
 
-环境要求：Node.js 18 或更高版本。
-
-### 一键启动
+### 一键启动（推荐）
 
 - macOS：双击项目根目录的 `Start ASUI Canvas.command`。
 - Windows：双击项目根目录的 `Start ASUI Canvas.bat`。
-- 终端：执行 `npm run start:one-click`。
+- 终端用户也只需执行 `npm run start:one-click`。
 
-首次启动会自动安装 npm 依赖、创建 `.env.local` 默认配置，并在浏览器打开项目。已有 `.env.local` 不会被覆盖；API Key 请在网页的 API 配置面板中填写。若 `3030` 端口被其他程序占用，启动器会自动选择下一个可用端口。
+启动器会自动检查 Node.js、首次安装项目依赖、创建安全的 `.env.local` 默认文件，并在浏览器中打开画布。默认地址为 `http://localhost:3001`；端口被占用时会使用下一个可用端口。
+
+日常使用不需要手动执行 `npm install`、创建 `.env` 或填写环境变量。macOS 若未安装 Node.js 且已安装 Homebrew，启动器会尝试自动安装；其他情况只需先安装一次 Node.js 18+，之后始终双击启动即可。
+
+图片、视频和 Agent 的 API Key 也不需要写入环境文件：需要真实生成时，直接在应用内的「API 配置」面板填写即可。未填写时仍可使用本地演示模式。
+
+### 开发者命令
+
+只有二次开发时才需要使用以下命令：
 
 ```bash
-npm install
-npm run dev -- -p 3020
-```
-
-打开 [http://127.0.0.1:3020](http://127.0.0.1:3020)。
-
-Canvas Agent 默认关闭。开发时可通过环境变量启用：
-
-```bash
-NEXT_PUBLIC_CANVAS_AGENT_ENABLED=true npm run dev -- -p 3030
+npm run dev -- --port 3001
+npm run lint
+npm test
+npm run build
 ```
 
 ## 使用流程

@@ -250,7 +250,9 @@ function normalizeInterpretationPayload(
       targetRecord.mediaType !== "image" &&
       targetRecord.mediaType !== "video"
     ) {
-      const { mediaType: _ignoredMediaType, ...restTarget } = targetRecord
+      const restTarget = Object.fromEntries(
+        Object.entries(targetRecord).filter(([key]) => key !== "mediaType")
+      )
       normalized = { ...normalized, target: restTarget }
     }
   }
