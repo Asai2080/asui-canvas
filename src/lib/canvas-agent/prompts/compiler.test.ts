@@ -134,18 +134,54 @@ describe("compileGenerationPrompt", () => {
     })
     const output = compiled.outputs[0]
 
-    expect(output.prompt).toContain("【专业模板路由】")
+    expect(output.prompt).toContain("【产品与页面任务】")
+    expect(output.prompt).toContain("个人记账与预算管理 App")
     expect(output.prompt).toContain("750 × 1624")
-    expect(output.prompt).toContain("唯一主操作")
-    expect(output.prompt).toContain("一种主风格 + 至多一种辅助效果 + 一个点缀色")
-    expect(output.prompt).toContain("不预设毛玻璃、Bento、渐变或 3D")
-    expect(output.prompt).toContain("左右至少 48px")
-    expect(output.prompt).toContain("底部至少 97px")
-    expect(output.prompt).toContain("不绘制操作系统状态栏")
+    expect(output.prompt).toContain("唯一主操作按钮写“记一笔”")
+    expect(output.prompt).toContain("已支出 ¥3,286.40")
+    expect(output.prompt).toContain("安全区 x=48–702px，y=65–1527px")
+    expect(output.prompt).toContain("触控目标至少 88×88px")
+    expect(output.prompt).toContain("不绘制设备外壳、操作系统状态栏")
     expect(output.prompt).not.toContain("35mm")
     expect(output.prompt).not.toContain("机位与焦段")
+    expect(output.prompt).not.toContain("文字模型创作简报")
+    expect(output.prompt.length).toBeLessThan(3_000)
     expect(output.negativePrompt).toContain("设备样机")
-    expect(output.prompt).not.toContain("辅助效果选择毛玻璃")
+    expect(output.negativePrompt).toContain("模块越界")
+  })
+
+  it("defaults mobile UI generation to the product mobile canvas", () => {
+    const originalGoal = "生成一个移动端课程学习首页，用户要查看今日课程并继续学习"
+    const brief = buildProfessionalCreativeBrief(originalGoal)
+    const output = compileGenerationPrompt({
+      taskId: "task-ui-default-nine-sixteen",
+      userInstruction: brief,
+      sourceInstruction: originalGoal,
+    }).outputs[0]
+
+    expect(brief).toContain("750 × 1624 移动端 App")
+    expect(output).toMatchObject({ width: 750, height: 1624 })
+    expect(output.prompt).toContain("750 × 1624")
+  })
+
+  it("routes mobile homepage wording through UI compilation without camera leakage", () => {
+    const prompts = [
+      "生成一个面向自由职业者的移动端项目收支首页，尺寸 750x1624，安静专业",
+      "生成一个手机端健康记录首页，尺寸 750x1624",
+      "生成 Web 端运营工作台，尺寸 1440x1024",
+    ]
+
+    for (const userInstruction of prompts) {
+      const output = compileGenerationPrompt({
+        taskId: `task-ui-natural-${prompts.indexOf(userInstruction)}`,
+        userInstruction,
+      }).outputs[0]
+
+      expect(output.prompt).toContain("【产品与页面任务】")
+      expect(output.prompt).not.toContain("35mm")
+      expect(output.prompt).not.toContain("摄影棚主光")
+      expect(output.prompt).not.toContain("景深变化")
+    }
   })
 
   it("does not let generated negative wording reroute an App page as a landing page", () => {
@@ -158,13 +194,13 @@ describe("compileGenerationPrompt", () => {
     })
     const output = compiled.outputs[0]
 
-    expect(output.prompt).toContain("采用真实 App 页面结构")
-    expect(output.prompt).toContain("生活化、无羞耻感的排便记录 APP 首页")
-    expect(output.prompt).toContain("最多 3 条近期记录")
+    expect(output.prompt).toContain("日常排便与肠道状态记录 App")
+    expect(output.prompt).toContain("最多三条近期记录")
     expect(output.prompt).toContain("不用粪便 emoji")
-    expect(output.prompt).not.toContain("采用真实产品官网结构")
-    expect(output.prompt).not.toContain("品牌导航、产品名称与明确价值说明")
-    expect(output.prompt).toContain("只生成一张严格为 750 × 1624")
+    expect(output.prompt).not.toContain("真实产品官网")
+    expect(output.prompt).not.toContain("品牌导航")
+    expect(output.prompt).toContain("750 × 1624")
+    expect(output.prompt).toContain("唯一主操作按钮写“记录一次”")
     expect(output.negativePrompt).toContain("模块越界")
   })
 
@@ -180,9 +216,70 @@ describe("compileGenerationPrompt", () => {
 
     expect(product.prompt).toContain("商品与商业视觉")
     expect(product.prompt).toContain("主商品保持唯一视觉中心")
+    expect(product.prompt).not.toContain("【空间系统】")
     expect(photography.prompt).toContain("写实摄影")
     expect(photography.prompt).toContain("决定性瞬间")
+    expect(photography.prompt).not.toContain("【空间系统】")
     expect(photography.prompt).not.toContain("采用真实产品官网结构")
+  })
+
+  it("does not let a mismatched model brief contaminate the user's image category", () => {
+    const product = compileGenerationPrompt({
+      taskId: "task-category-isolation",
+      sourceInstruction: "生成一张运动鞋产品广告图",
+      userInstruction:
+        "【UI 产品定义】运动 App 首页。【当前状态】已跑 3km。【可见内容与顺序】顶部导航。【准确短文案】“开始跑步”。【设计系统】蓝色卡片。【画布与可用性】750x1624。【禁止】无。",
+    }).outputs[0]
+
+    expect(product.prompt).toContain("商品与商业视觉")
+    expect(product.prompt).toContain("主商品保持唯一视觉中心")
+    expect(product.prompt).not.toContain("运动 App 首页")
+    expect(product.prompt).not.toContain("开始跑步")
+    expect(product.prompt).not.toContain("触控目标")
+  })
+
+  it("binds selected reference images to ordinary generation with category-specific semantics", () => {
+    const context = imageContextForCompiler()
+    const ui = compileGenerationPrompt({
+      taskId: "task-ui-reference",
+      userInstruction: "参考这张图生成一个移动端记账 App 首页，750x1624",
+      context,
+      target: { mediaType: "image", width: 750, height: 1624 },
+    }).outputs[0]
+
+    expect(ui.operation).toBe("create")
+    expect(ui.sourceContextSnapshotId).toBe(context.id)
+    expect(ui.prompt).toContain("【参考图使用协议】")
+    expect(ui.prompt).toContain("提取信息架构、模块顺序、栅格、间距节奏")
+    expect(ui.prompt).toContain("不要照抄参考图中的品牌名")
+    expect(ui.prompt).not.toContain("35mm")
+  })
+
+  it("preserves the requested login-page task when a UI reference is selected", () => {
+    const output = compileGenerationPrompt({
+      taskId: "task-auth-reference",
+      sourceInstruction:
+        "参考这张图片的设计风格，生成记录排便 App 登录页，严格参考这张图，750x1624",
+      userInstruction: [
+        "【参考图分析】薄荷绿渐变上半区、粗黑标题、双角色插画、黑色主按钮、浅灰胶囊次级按钮和底部协议文字。",
+        "【UI 产品定义】日常排便记录 App，目标用户是希望轻松记录健康状态的成年人；本屏只负责选择登录方式并进入账户。",
+        "【当前状态】首次打开，尚未登录。",
+        "【可见内容与顺序】欢迎语；插画；登录按钮组；协议与隐私入口。",
+        "【准确短文案】“轻松记录”“手机号登录”“其他登录方式”“隐私政策”。",
+        "【设计系统】迁移参考图的薄荷绿、粗黑圆润标题、角色插画和胶囊按钮节奏。",
+        "【画布与可用性】严格 750x1624。",
+        "【禁止】首页、趋势图、近期记录、底部导航。",
+      ].join("\n"),
+      context: imageContextForCompiler(),
+      target: { mediaType: "image", width: 750, height: 1624 },
+    }).outputs[0]
+
+    expect(output.prompt).toContain("【参考图视觉拆解与迁移】")
+    expect(output.prompt).toContain("登录方式并进入账户")
+    expect(output.prompt).toContain("薄荷绿渐变")
+    expect(output.prompt).not.toContain("今日尚未记录")
+    expect(output.prompt).not.toContain("最多三条近期记录")
+    expect(output.prompt).not.toContain("底部导航包含首页")
   })
 
   it("compiles a director-level video timeline and camera plan", () => {
@@ -535,6 +632,52 @@ describe("compileGenerationPrompt", () => {
     expect(compiled.outputs[0].prompt).toContain("冷色调")
     expect(compiled.outputs[0].prompt).toContain("超粗黑体")
     expect(compiled.outputs[0].prompt).toContain("描边效果")
+  })
+
+  it("preserves the selected cover background and layers the title behind the person", () => {
+    const skill: SkillSnapshot = {
+      id: "skill-snapshot-cover-preserve-background",
+      skillId: "builtin-cover-design",
+      name: "封面 Skill",
+      description: "封面设计",
+      contentHash: "c".repeat(64),
+      instructions: "严格保留参考图背景，只添加封面内容。",
+      risks: [],
+      createdAt,
+    }
+
+    const compiled = compileGenerationPrompt({
+      taskId: "task-cover-preserve-background",
+      userInstruction: [
+        "封面主题：春日新品",
+        "主标题：春日新章",
+        "构图风格：10 正面对视风",
+        "使用当前选中的人物图作为图 1，没有其他素材",
+        "人物表情：6",
+        "背景：7 保留原背景",
+        "字体：1",
+        "文字效果：4",
+      ].join("\n"),
+      context: imageContextForCompiler(),
+      skill,
+      target: { mediaType: "image" },
+    })
+    const prompt = compiled.outputs[0].prompt
+
+    expect(prompt).toContain("背景模式：保留原背景")
+    expect(prompt).toContain("不改变图 1 的原背景")
+    expect(prompt).toContain("原背景 < 主标题文字 < 人物主体")
+    expect(prompt).toContain("人物轮廓自然遮挡主标题的一部分")
+    expect(prompt).toContain("仍能完整辨认")
+    expect(prompt).not.toContain("建立一个主色、一个辅助色")
+    expect(prompt).not.toContain("柔和主光塑造主体体积")
+    expect(prompt).toContain("沿用图 1 现有的人物表情、动作、视线和身体重心")
+    expect(prompt).not.toContain("人物表情与状态：托腮思考")
+    expect(prompt).toContain("保持图 1 原有取景、主体位置、画面比例与空间关系")
+    expect(prompt).not.toContain("面部位于画面中上部")
+    expect(compiled.outputs[0].preserveConstraints).toContain(
+      "不改变图 1 的原背景内容、色调、光线、构图、景深与已有物体。"
+    )
   })
 
   it("preserves explicitly supplied cover small copy", () => {
@@ -1066,5 +1209,145 @@ describe("compileGenerationPrompt", () => {
     })
     expect(compiled.outputs[0].prompt).toContain("单个完整")
     expect(compiled.outputs[0].negativePrompt).toContain("矩形底板")
+  })
+
+  it("compiles an official brand sticker graphic instead of a wordmark", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-brand-sticker-official-icon",
+      sourceInstruction: [
+        "品牌名称：美团",
+        "背景色：白色",
+        "Logo 依据：使用官方品牌图标，根据品牌名称识别公开且稳定的官方主图形",
+      ].join("\n"),
+      userInstruction: [
+        "美团官方主图形为黄色底色上的黑色袋鼠剪影，轮廓完整且具有明确负空间。",
+        "保留袋鼠头部、耳朵和尾部的识别关系。",
+      ].join("\n"),
+      skill: skillSnapshot("builtin-brand-sticker-photo", "品牌贴纸写真 Skill"),
+    })
+
+    expect(compiled.outputs[0].prompt).toContain("官方主图形识别模式")
+    expect(compiled.outputs[0].prompt).toContain("袋鼠剪影")
+    expect(compiled.outputs[0].prompt).not.toContain("用户已确认使用纯文字字标")
+  })
+
+  it("compiles a source-bound square metal Logo sculpture", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-metal-logo",
+      userInstruction: "品牌名称：ASUI，背景色：深灰，金属颜色：枪灰色",
+      context: imageContextForCompiler(),
+      skill: skillSnapshot(
+        "builtin-metal-logo-sculpture",
+        "generate-metal-logo-sculpture"
+      ),
+    })
+    expect(compiled.outputs).toHaveLength(1)
+    expect(compiled.outputs[0]).toMatchObject({
+      mediaType: "image",
+      operation: "create",
+      width: 1024,
+      height: 1024,
+      variantKey: "metal-logo-sculpture",
+      sourceContextSnapshotId: "context-compiler-image",
+    })
+    expect(compiled.outputs[0].prompt).toContain("宽倒角")
+    expect(compiled.outputs[0].prompt).toContain("微装配缝")
+    expect(compiled.outputs[0].prompt).toContain("x=128–896")
+    expect(compiled.outputs[0].prompt).toContain("不向背景投射阴影")
+    expect(compiled.outputs[0].negativePrompt).toContain("整体镜面铬")
+  })
+
+  it("compiles an official graphical brand icon without degrading to a wordmark", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-metal-logo-official-icon",
+      sourceInstruction: [
+        "品牌名称：拼多多",
+        "背景色：浅灰",
+        "金属颜色：红色",
+        "Logo 依据：使用官方品牌图标",
+      ].join("\n"),
+      userInstruction: [
+        "官方主图形为红白分区的圆角心形应用图标。",
+        "中央保留清晰的‘拼’字内部符号和对称负空间。",
+      ].join("\n"),
+      skill: skillSnapshot(
+        "builtin-metal-logo-sculpture",
+        "generate-metal-logo-sculpture"
+      ),
+    })
+
+    expect(compiled.outputs[0]).toMatchObject({
+      width: 1024,
+      height: 1024,
+      sourceContextSnapshotId: undefined,
+    })
+    expect(compiled.outputs[0].prompt).toContain("官方主图形")
+    expect(compiled.outputs[0].prompt).toContain("红白分区")
+    expect(compiled.outputs[0].prompt).toContain("负空间")
+    expect(compiled.outputs[0].prompt).not.toContain("用户已确认使用纯文字字标")
+    expect(compiled.outputs[0].prompt).not.toContain("逐字排印品牌名称")
+  })
+
+  it("keeps the explicit metal Logo wordmark fallback", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-metal-logo-wordmark",
+      userInstruction: [
+        "品牌名称：ASUI",
+        "背景色：深灰",
+        "金属颜色：枪灰色",
+        "Logo 依据：使用纯文字字标",
+      ].join("\n"),
+      skill: skillSnapshot(
+        "builtin-metal-logo-sculpture",
+        "generate-metal-logo-sculpture"
+      ),
+    })
+
+    expect(compiled.outputs[0].prompt).toContain("用户已确认使用纯文字字标")
+    expect(compiled.outputs[0].prompt).not.toContain("官方主图形识别模式")
+  })
+
+  it("compiles a square playful App icon without unrelated canvas references", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-playful-icon",
+      userInstruction: "为一个帮助用户专注 25 分钟并减少分心的 App 设计 iOS 图标",
+      context: imageContextForCompiler(),
+      skill: skillSnapshot(
+        "builtin-design-playful-app-icons",
+        "design-playful-app-icons"
+      ),
+    })
+    expect(compiled.outputs).toHaveLength(1)
+    expect(compiled.outputs[0]).toMatchObject({
+      mediaType: "image",
+      operation: "create",
+      width: 1024,
+      height: 1024,
+      variantKey: "playful-app-icon-create",
+      sourceContextSnapshotId: undefined,
+    })
+    expect(compiled.outputs[0].prompt).toContain("三个在产品隐喻或外轮廓上真正不同的方向")
+    expect(compiled.outputs[0].prompt).toContain("主体占画布 70%–85%")
+    expect(compiled.outputs[0].prompt).toContain("32px")
+    expect(compiled.outputs[0].prompt).toContain("不烘焙圆角蒙版")
+    expect(compiled.outputs[0].negativePrompt).toContain("现有 App 图标")
+  })
+
+  it("binds the selected image only for an explicit App icon refinement", () => {
+    const compiled = compileGenerationPrompt({
+      taskId: "task-playful-icon-refine",
+      userInstruction: "把当前图标优化成更清晰的 Android 专注计时器图标",
+      context: imageContextForCompiler(),
+      skill: skillSnapshot(
+        "builtin-design-playful-app-icons",
+        "design-playful-app-icons"
+      ),
+    })
+    expect(compiled.outputs[0]).toMatchObject({
+      variantKey: "playful-app-icon-refine",
+      sourceContextSnapshotId: "context-compiler-image",
+    })
+    expect(compiled.outputs[0].prompt).toContain("当前选中的图标只用于")
+    expect(compiled.outputs[0].prompt).toContain("自适应图标")
   })
 })

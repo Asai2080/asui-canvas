@@ -41,6 +41,10 @@ import {
 import { BorderBeam } from "border-beam"
 
 import { EdgeBlur } from "@/components/ui/edge-blur"
+import {
+  readConversationStartedAt,
+  writeConversationStartedAt,
+} from "@/lib/canvas-agent/conversation-session"
 import type {
   AgentChoiceOption,
   AgentExecutionMode,
@@ -62,6 +66,7 @@ import {
 } from "@/lib/canvas-agent/skills/identifiers"
 
 import { CuriousAiOrb } from "./curious-ai-orb"
+import { CanvasWorkspaceEntry } from "./canvas-workspace-entry"
 import {
   getAgentPromptReviewState,
   getAgentTaskResultText,
@@ -130,7 +135,8 @@ const IMAGE_SIZE_PRESETS = [
   { label: "1:1", width: 1024, height: 1024 },
   { label: "3:4", width: 768, height: 1024 },
   { label: "4:3", width: 1024, height: 768 },
-  { label: "9:16", width: 576, height: 1024 },
+  { label: "移动端", width: 750, height: 1624 },
+  { label: "9:16", width: 1080, height: 1920 },
   { label: "16:9", width: 1024, height: 576 },
 ] as const
 const STORYBOARD_SIZE_PRESETS = [
@@ -725,6 +731,10 @@ export function CanvasAgentShell({
 }: CanvasAgentShellProps) {
   const [selectedSkillId, setSelectedSkillId] = useState("")
   const [selectedSkill, setSelectedSkill] = useState<SkillRecord>()
+  const selectSkill = useCallback((skill?: SkillRecord) => {
+    setSelectedSkillId(skill?.id ?? "")
+    setSelectedSkill(skill)
+  }, [])
   const [selectedTextModel, setSelectedTextModel] = useState("")
   const [executionMode, setExecutionMode] =
     useState<AgentExecutionMode>("confirm")
@@ -741,7 +751,14 @@ export function CanvasAgentShell({
   const [dismissedSliceTaskIds, setDismissedSliceTaskIds] = useState<Set<string>>(new Set())
   const [sliceSuggestionStartedAt] = useState(() => new Date().toISOString())
   const [, setSelectionRefreshKey] = useState(0)
-  const [conversationStartedAt, setConversationStartedAt] = useState("")
+  const [conversationStartedAt, setConversationStartedAt] = useState(() => {
+    if (typeof window === "undefined") return ""
+    try {
+      return readConversationStartedAt(window.sessionStorage)
+    } catch {
+      return ""
+    }
+  })
   const [showHistory, setShowHistory] = useState(false)
   const imageImportInputRef = useRef<HTMLInputElement>(null)
   const storyboardMode = isStoryboardSkillName(selectedSkill?.name)
@@ -1038,7 +1055,13 @@ export function CanvasAgentShell({
   }
 
   const startNewConversation = () => {
-    setConversationStartedAt(new Date().toISOString())
+    const startedAt = new Date().toISOString()
+    try {
+      writeConversationStartedAt(window.sessionStorage, startedAt)
+    } catch {
+      // Keep the new conversation in memory when browser storage is unavailable.
+    }
+    setConversationStartedAt(startedAt)
     setShowHistory(false)
     setSelectedSkillId("")
     setSelectedSkill(undefined)
@@ -1088,6 +1111,7 @@ export function CanvasAgentShell({
                 <CuriousAiOrb />
                 <h3>有什么可以帮你？</h3>
                 <p>生成的图片、视频会放到画布上，点击画布内容即可继续引用给我。</p>
+                <CanvasWorkspaceEntry />
               </div>
             </ThreadPrimitive.Empty>
             <ThreadPrimitive.Messages components={{ Message: ThreadMessage }} />
@@ -1268,9 +1292,8 @@ export function CanvasAgentShell({
                       <SkillPicker
                         compact
                         value={selectedSkillId}
-                        onChange={setSelectedSkillId}
                         selectedSkill={selectedSkill}
-                        onSkillSelect={setSelectedSkill}
+                        onSkillChange={selectSkill}
                         modelValue={selectedTextModel}
                         onModelChange={setSelectedTextModel}
                       />

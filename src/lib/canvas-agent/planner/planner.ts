@@ -68,8 +68,15 @@ function imageReferencePolicy(
   }
   if (
     output.variantKey?.startsWith("antibes-") ||
-    output.variantKey === "brand-sticker-photo"
+    output.variantKey === "brand-sticker-photo" ||
+    output.variantKey === "metal-logo-sculpture"
   ) {
+    return "source-only" as const
+  }
+  if (output.variantKey === "playful-app-icon-create") {
+    return "none" as const
+  }
+  if (output.variantKey === "playful-app-icon-refine") {
     return "source-only" as const
   }
   if (isCanvas3dStickerVariantKey(output.variantKey)) {

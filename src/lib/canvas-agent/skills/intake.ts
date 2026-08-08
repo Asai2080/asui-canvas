@@ -13,6 +13,8 @@ import {
   isHanddrawnVideoSkillName,
   isImageTo3dSkillName,
   isIanXiaoheiSkillName,
+  isMetalLogoSculptureSkillName,
+  isPlayfulAppIconsSkillName,
   isPortraitSkillName,
   isSocialCardSkillName,
   isStillImageMotionDirectorSkillName,
@@ -282,6 +284,12 @@ function hasCoverReferenceDecision(instruction: string) {
   )
 }
 
+function locksCoverReference(instruction: string) {
+  return /(?:什么都|全部|人物和背景|人物、背景).{0,8}不(?:要|作)?(?:改变|变|修改)|(?:参考图|原图|当前图片).{0,10}(?:保持不变|不改变|不修改)|背景.{0,10}(?:保持不变|不要修改|不改变|不修改)/i.test(
+    instruction
+  )
+}
+
 function coverVisualAnswer(
   userInstruction: string,
   history?: TextModelConversationMessage[],
@@ -332,6 +340,14 @@ function coverVisualAnswer(
     .split(/\s*[\/／|]\s*/)
     .map((value) => value.match(/\d+/)?.[0])
     .filter(Boolean)
+  if (locksCoverReference(accumulatedInstruction) && values.length >= 2) {
+    return {
+      expression: "8 参考图人物状态不变",
+      background: "7 保留原背景",
+      font: values[0]!,
+      effect: values[1]!,
+    }
+  }
   if (values.length >= 4) {
     return {
       expression: values[0]!,
@@ -361,6 +377,16 @@ function appendCoverVisualAnswer(
     `字体：${answer.font}`,
     `文字效果：${answer.effect}`,
   ].join("\n")
+}
+
+function preservesOriginalCoverBackground(value?: string) {
+  return Boolean(
+    value &&
+      (/(?:^|\s)7(?:\s|$)/.test(value) ||
+        /保留原背景|不改变.{0,12}(?:原图|参考图|当前图片|上传图片)?背景/i.test(
+          value
+        ))
+  )
 }
 
 function coverStyleMenu() {
@@ -454,6 +480,7 @@ function coverVisualChoices(style: CoverStyle) {
           ["3", "暖色"],
           ["4", "冷色"],
           ["6", "交给模型"],
+          ["7", "保留原背景"],
         ]
       : [
           ["1", "浅色"],
@@ -462,6 +489,7 @@ function coverVisualChoices(style: CoverStyle) {
           ["4", "冷色"],
           ["5", "高饱和撞色"],
           ["6", "交给模型"],
+          ["7", "保留原背景"],
         ]
   ).map(([value, label]) => ({
     id: `cover-background-${value}`,
@@ -471,6 +499,43 @@ function coverVisualChoices(style: CoverStyle) {
   return [
     choiceGroup("cover-expression", "人物表情", expressionOptions),
     choiceGroup("cover-background", "背景色调", backgroundOptions),
+    choiceGroup(
+      "cover-font",
+      "字体",
+      [
+        ["1", "超粗黑体"],
+        ["2", "柔和圆体"],
+        ["3", "手写涂鸦体"],
+        ["4", "极简无衬线"],
+        ["5", "复古宋体"],
+        ["6", "狗哥风格字体"],
+        ["7", "交给模型"],
+      ].map(([value, label]) => ({
+        id: `cover-font-${value}`,
+        label,
+        value,
+      }))
+    ),
+    choiceGroup(
+      "cover-text-effect",
+      "文字效果",
+      [
+        ["1", "纯白"],
+        ["2", "纯黑"],
+        ["3", "渐变色"],
+        ["4", "描边效果"],
+        ["5", "交给模型"],
+      ].map(([value, label]) => ({
+        id: `cover-text-effect-${value}`,
+        label,
+        value,
+      }))
+    ),
+  ]
+}
+
+function coverLockedVisualChoices() {
+  return [
     choiceGroup(
       "cover-font",
       "字体",
@@ -581,6 +646,32 @@ function coverClarification(
     history,
     instruction
   )
+  if (
+    visualAnswer &&
+    preservesOriginalCoverBackground(visualAnswer.background) &&
+    !hasUsableSelectedImage(context)
+  ) {
+    return clarification(
+      "“保留原背景”需要一张可作为底图的参考图片。请先在画布中选中一张图片，再继续当前封面任务；我会保留它的原背景，只添加封面元素，并把标题放在人物后方。",
+      "封面原背景待选择",
+      instruction
+    )
+  }
+  if (
+    hasUsableSelectedImage(context) &&
+    locksCoverReference(instruction) &&
+    !visualAnswer
+  ) {
+    return clarification(
+      "已锁定当前参考图：人物身份、动作、状态、构图、光线和原背景全部沿用，不进行重绘或调色。现在只需要选择新增标题的字体和文字效果。",
+      "封面文字样式待选择",
+      instruction,
+      {
+        groups: coverLockedVisualChoices(),
+        submitLabel: "确认文字样式",
+      }
+    )
+  }
   if (!visualAnswer) {
     const expression =
       style[0] === 8
@@ -588,8 +679,8 @@ function coverClarification(
         : "A. 人物表情：1 捂嘴惊讶 / 2 张嘴震惊 / 3 开心大笑 / 4 兴奋雀跃 / 5 自信得意 / 6 托腮思考 / 7 推荐种草感 / 8 交给模型"
     const background =
       style[0] === 5 || style[0] === 7
-        ? "B. 背景色调：本风格默认浅色系；可回复 1 浅色 / 3 暖色 / 4 冷色 / 6 交给模型"
-        : "B. 背景色调：1 浅色 / 2 深色 / 3 暖色 / 4 冷色 / 5 高饱和撞色 / 6 交给模型"
+        ? "B. 背景色调：本风格默认浅色系；可回复 1 浅色 / 3 暖色 / 4 冷色 / 6 交给模型 / 7 保留原背景"
+        : "B. 背景色调：1 浅色 / 2 深色 / 3 暖色 / 4 冷色 / 5 高饱和撞色 / 6 交给模型 / 7 保留原背景"
     return clarification(
       [
         "【封面 Skill · 第 3 轮 / 3】视觉细节",
@@ -1015,6 +1106,10 @@ function brandStickerClarification(
   const brand = instruction.match(/(?:品牌名称|品牌名|品牌|BRAND_NAME)\s*[:：]?\s*([^\n，。；;]+)/i)?.[1]?.trim()
   const color = instruction.match(/(?:背景颜色|背景色|BACKGROUND_COLOR)\s*[:：]?\s*([^\n，。；;]+)/i)?.[1]?.trim()
   const acceptsWordmark = /纯文字|文字字标|通用字标|不使用\s*logo|无需\s*logo/i.test(instruction)
+  const acceptsOfficialIcon =
+    /(?:Logo\s*依据\s*[:：]?\s*)?使用官方品牌图标|官方应用图标|官方\s*(?:App\s*)?(?:Logo|图标)/i.test(
+      instruction
+    )
   const hasReference = hasUsableSelectedImage(context)
   const missing = [!brand ? "品牌名称" : "", !color ? "背景颜色" : ""].filter(Boolean)
   if (missing.length > 0) {
@@ -1024,14 +1119,20 @@ function brandStickerClarification(
       instruction
     )
   }
-  if (hasReference || acceptsWordmark) return undefined
+  if (hasReference || acceptsOfficialIcon || acceptsWordmark) return undefined
   return clarification(
-    "品牌名和背景色已经记下。请选中或上传一张你有权使用的 Logo/字标参考图；如果没有，请确认“使用纯文字字标”，我不会凭空伪造官方 Logo。",
+    "品牌名和背景色已经记下。请选择 Logo 依据：已选中的参考图会自动作为最高优先级；选择官方品牌图标后，我会根据品牌名称识别公开且稳定的官方主图形；也可以只排印品牌名称。需要完全精确复制时，建议上传 Logo 参考图。",
     "品牌 Logo 依据待确认",
     instruction,
     {
       groups: [
         choiceGroup("brand-sticker-logo", "Logo 处理", [
+          {
+            id: "brand-sticker-official-icon",
+            label: "使用官方品牌图标",
+            value:
+              "Logo 依据：使用官方品牌图标，根据品牌名称识别公开且稳定的官方主图形",
+          },
           {
             id: "brand-sticker-wordmark",
             label: "使用纯文字字标",
@@ -1040,6 +1141,139 @@ function brandStickerClarification(
         ]),
       ],
       submitLabel: "确认 Logo 处理",
+    }
+  )
+}
+
+function metalLogoSculptureClarification(
+  instruction: string,
+  context?: CanvasContextSnapshot
+) {
+  const brand = instruction.match(/(?:品牌名称|品牌名|品牌|BRAND_NAME)\s*[:：]?\s*([^\n，。；;]+)/i)?.[1]?.trim()
+  const backgroundColor = instruction.match(/(?:背景颜色|背景色|BACKGROUND_COLOR)\s*[:：]?\s*([^\n，。；;]+)/i)?.[1]?.trim()
+  const objectColor = instruction.match(/(?:金属对象颜色|金属颜色|物体颜色|雕塑颜色|OBJECT_COLOR)\s*[:：]?\s*([^\n，。；;]+)/i)?.[1]?.trim()
+  const acceptsWordmark = /纯文字|文字字标|通用字标|不使用\s*logo|无需\s*logo/i.test(instruction)
+  const acceptsOfficialIcon =
+    /(?:Logo\s*依据\s*[:：]?\s*)?使用官方品牌图标|官方应用图标|官方\s*(?:App\s*)?(?:Logo|图标)/i.test(
+      instruction
+    )
+  const hasReference = hasUsableSelectedImage(context)
+  const missing = [
+    !brand ? "品牌名称" : "",
+    !backgroundColor ? "背景颜色" : "",
+    !objectColor ? "金属对象颜色" : "",
+  ].filter(Boolean)
+  if (missing.length > 0) {
+    return clarification(
+      `请补充${missing.join("、")}。例如“品牌名称：ASUI，背景色：深灰，金属颜色：枪灰色”。已经提供的信息不用重复。`,
+      "金属 Logo 雕塑信息待补充",
+      instruction
+    )
+  }
+  if (hasReference || acceptsOfficialIcon || acceptsWordmark) return undefined
+  return clarification(
+    "品牌、背景色和金属颜色已经记下。请选择 Logo 依据：已选中的参考图会自动作为最高优先级；知名品牌可让 Agent 根据品牌名称识别公开且稳定的官方主图形；自定义品牌可使用纯文字字标。需要完全精确复制时，建议上传 Logo 参考图。",
+    "金属 Logo 依据待确认",
+    instruction,
+    {
+      groups: [
+        choiceGroup("metal-logo-source", "Logo 处理", [
+          {
+            id: "metal-logo-official-icon",
+            label: "使用官方品牌图标",
+            value:
+              "Logo 依据：使用官方品牌图标，根据品牌名称识别公开且稳定的官方主图形",
+          },
+          {
+            id: "metal-logo-wordmark",
+            label: "使用纯文字字标",
+            value: "Logo 依据：使用纯文字字标，不使用或伪造官方 Logo",
+          },
+        ]),
+      ],
+      submitLabel: "确认 Logo 处理",
+    }
+  )
+}
+
+function defaultMetalLogoSource(
+  instruction: string,
+  context?: CanvasContextSnapshot
+) {
+  const hasReference = hasUsableSelectedImage(context)
+  const acceptsWordmark = /纯文字|文字字标|通用字标|不使用\s*logo|无需\s*logo/i.test(
+    instruction
+  )
+  const acceptsOfficialIcon =
+    /(?:Logo\s*依据\s*[:：]?\s*)?使用官方品牌图标|官方应用图标|官方\s*(?:App\s*)?(?:Logo|图标)/i.test(
+      instruction
+    )
+  if (hasReference || acceptsWordmark || acceptsOfficialIcon) return instruction
+
+  const hasBrand = Boolean(
+    instruction.match(
+      /(?:品牌名称|品牌名|品牌|BRAND_NAME)\s*[:：]?\s*([^\n，。；;]+)/i
+    )?.[1]?.trim()
+  )
+  const hasBackground = Boolean(
+    instruction.match(
+      /(?:背景颜色|背景色|BACKGROUND_COLOR)\s*[:：]?\s*([^\n，。；;]+)/i
+    )?.[1]?.trim()
+  )
+  const hasObjectColor = Boolean(
+    instruction.match(
+      /(?:金属对象颜色|金属颜色|物体颜色|雕塑颜色|OBJECT_COLOR)\s*[:：]?\s*([^\n，。；;]+)/i
+    )?.[1]?.trim()
+  )
+  if (!hasBrand || !hasBackground || !hasObjectColor) return instruction
+  return `${instruction}\nLogo 依据：使用官方品牌图标，根据品牌名称识别公开且稳定的官方主图形`
+}
+
+function playfulAppIconsClarification(instruction: string) {
+  const productBrief = instruction
+    .replace(/design-playful-app-icons|playful-app-icons|趣味\s*app\s*图标\s*skill/gi, "")
+    .replace(/(?:iOS|iPhone|苹果|Android|安卓|通用概念|通用平台)/gi, "")
+    .replace(
+      /使用|调用|用|这个|帮我|请|生成|制作|设计|做|一张|app|应用|图标|icon|skill|一下|可以|需要|想要|我要|吧|呀|哟|的/gi,
+      ""
+    )
+    .replace(/[\s，。！？、,.!?:：；;“”"'《》「」]/g, "")
+  if (productBrief.length < 2) {
+    return clarification(
+      "请告诉我这个 App 的核心用途或用户获得的主要收益，例如“帮助用户专注 25 分钟并减少分心”。受众、情绪、品牌色和具体造型可以不填，我会据此提出三个不同的产品隐喻并选择最强方向。",
+      "App 图标产品用途待补充",
+      instruction
+    )
+  }
+
+  if (/\biOS\b|iPhone|苹果平台|Android|安卓|通用概念|通用平台/i.test(instruction)) {
+    return undefined
+  }
+  return clarification(
+    "产品用途已经记下。请选择目标平台；这会决定安全区、背景和交付约束，不会改变你已经提供的产品需求。",
+    "App 图标平台待确认",
+    instruction,
+    {
+      groups: [
+        choiceGroup("playful-app-icon-platform", "目标平台", [
+          {
+            id: "playful-app-icon-ios",
+            label: "iOS",
+            value: "目标平台：iOS，输出不透明 1024×1024 图标，不烘焙圆角蒙版",
+          },
+          {
+            id: "playful-app-icon-android",
+            label: "Android",
+            value: "目标平台：Android，前景主体遵守自适应图标安全区并与满版背景可分离",
+          },
+          {
+            id: "playful-app-icon-generic",
+            label: "通用概念",
+            value: "目标平台：通用概念，同时兼顾 iOS 与 Android 启动器预览",
+          },
+        ]),
+      ],
+      submitLabel: "确认平台",
     }
   )
 }
@@ -1104,7 +1338,9 @@ function capabilityClarification(
       isSocialCardSkillName(skillName) ||
       isPortraitSkillName(skillName) ||
       isCanvas3dStickerSkillName(skillName) ||
-      isIanXiaoheiSkillName(skillName)) &&
+      isIanXiaoheiSkillName(skillName) ||
+      isMetalLogoSculptureSkillName(skillName) ||
+      isPlayfulAppIconsSkillName(skillName)) &&
     !capabilities.image
   ) {
     return clarification(
@@ -1156,6 +1392,9 @@ export function resolveBuiltinSkillIntake({
     userInstruction,
     conversationHistory
   )
+  if (isMetalLogoSculptureSkillName(skill?.name)) {
+    resolvedInstruction = defaultMetalLogoSource(resolvedInstruction, context)
+  }
   if (isCoverSkillName(skill?.name)) {
     resolvedInstruction = normalizeCoverInstruction(
       resolvedInstruction,
@@ -1349,6 +1588,35 @@ export function resolveBuiltinSkillIntake({
   }
   if (isBrandStickerPhotoSkillName(skill?.name)) {
     const details = brandStickerClarification(resolvedInstruction, context)
+    return {
+      resolvedInstruction,
+      clarification:
+        details ??
+        capabilityClarification(
+          skill?.name,
+          resolvedInstruction,
+          generationCapabilities
+        ),
+    }
+  }
+  if (isMetalLogoSculptureSkillName(skill?.name)) {
+    const details = metalLogoSculptureClarification(
+      resolvedInstruction,
+      context
+    )
+    return {
+      resolvedInstruction,
+      clarification:
+        details ??
+        capabilityClarification(
+          skill?.name,
+          resolvedInstruction,
+          generationCapabilities
+        ),
+    }
+  }
+  if (isPlayfulAppIconsSkillName(skill?.name)) {
+    const details = playfulAppIconsClarification(resolvedInstruction)
     return {
       resolvedInstruction,
       clarification:

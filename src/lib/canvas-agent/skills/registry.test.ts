@@ -144,6 +144,13 @@ describe("Canvas Agent personal Skill registry", () => {
       createdAt: "2026-07-31T02:00:00.000Z",
     })
 
+    expect(skills.find((skill) => skill.id === "builtin-storyboard")).toMatchObject({
+      name: "分镜 Skill",
+      available: true,
+      description: expect.stringContaining("连续分镜"),
+      source: { type: "builtin", key: "storyboard" },
+    })
+
     const imageTo3d = skills.find(
       (skill) => skill.id === "builtin-image-to-3d"
     )
@@ -201,6 +208,14 @@ describe("Canvas Agent personal Skill registry", () => {
       available: true,
       description: expect.stringContaining("中文正文配图"),
       source: { type: "builtin", key: "ian-xiaohei-illustrations" },
+    })
+    expect(
+      skills.find((skill) => skill.id === "builtin-design-playful-app-icons")
+    ).toMatchObject({
+      name: "design-playful-app-icons",
+      available: true,
+      description: expect.stringContaining("App 图标"),
+      source: { type: "builtin", key: "design-playful-app-icons" },
     })
   })
 })

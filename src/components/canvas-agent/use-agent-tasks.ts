@@ -17,14 +17,17 @@ import type {
 import { readApiConfigFromSession } from "@/lib/canvas/api-config"
 
 import {
+  isAgentCapabilityIntroduction,
   selectForegroundTask,
   selectPromptWritebackTask,
   tasksToConversationHistory,
 } from "./agent-view-model"
 import {
+  canContinueClarification,
   continuationRequestOverrides,
   type ContinuationRequestOverrides,
 } from "./continuation-request"
+import { agentTaskAdvanceDelay } from "./task-polling"
 
 export type AgentCanvasContext = {
   snapshot: CanvasContextSnapshot
@@ -260,7 +263,10 @@ export function useAgentTasks({
       }
     }
 
-    const timer = window.setTimeout(() => void advance(), 750)
+    const timer = window.setTimeout(
+      () => void advance(),
+      agentTaskAdvanceDelay(foregroundTask)
+    )
     return () => {
       cancelled = true
       window.clearTimeout(timer)
@@ -291,7 +297,10 @@ export function useAgentTasks({
           requestedOutputCount:
             overrides?.requestedOutputCount ?? requestedOutputCount,
           selectedCanvasId: context.snapshot.selectedNodeId,
-          skillId: overrides?.skillId ?? (selectedSkillId || undefined),
+          // An explicitly selected Skill starts a new route. A continuation
+          // may supply the previous Skill only when no Skill is selected.
+          skillId: selectedSkillId || overrides?.skillId,
+          continuationOfTaskId: overrides?.continuationOfTaskId,
           contextSnapshot: context.snapshot,
         }),
       })
@@ -321,9 +330,25 @@ export function useAgentTasks({
     async (message: AppendMessage) => {
       const userInstruction = messageText(message)
       if (!userInstruction) return
-      await submitInstruction(userInstruction)
+      const latestClarification = [...tasks]
+        .filter(
+          (task) =>
+            sessionTaskIdsRef.current.has(task.id) &&
+            task.status === "completed" &&
+            task.skillId &&
+            task.interpretation?.intent === "conversation" &&
+            canContinueClarification(task, selectedSkillId) &&
+            !isAgentCapabilityIntroduction(task)
+        )
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]
+      await submitInstruction(
+        userInstruction,
+        latestClarification
+          ? continuationRequestOverrides(latestClarification)
+          : undefined
+      )
     },
-    [submitInstruction]
+    [selectedSkillId, submitInstruction, tasks]
   )
 
   const performTaskAction = useCallback(

@@ -9,6 +9,8 @@ import {
   isImageTo3dVariantKey,
   isIanXiaoheiSkillName,
   isIanXiaoheiVariantKey,
+  isMetalLogoSculptureSkillName,
+  isPlayfulAppIconsSkillName,
   isHanddrawnVideoSkillName,
   isPortraitSkillName,
   isSocialCardSkillName,
@@ -80,8 +82,24 @@ describe("Canvas Agent Skill identifiers", () => {
     expect(skillMediaIntent("图片转 3D Skill")).toBe("image")
     expect(skillMediaIntent("分镜 Skill")).toBe("image")
     expect(skillMediaIntent("canvas-3d-sticker-stylizer")).toBe("image")
+    expect(skillMediaIntent("generate-metal-logo-sculpture")).toBe("image")
+    expect(skillMediaIntent("design-playful-app-icons")).toBe("image")
     expect(skillMediaIntent("story-to-handdrawn-video")).toBe("video")
     expect(skillMediaIntent("世界 Skill")).toBeUndefined()
+  })
+
+  it("recognizes the metal Logo sculpture workflow", () => {
+    expect(isMetalLogoSculptureSkillName("generate-metal-logo-sculpture")).toBe(true)
+    expect(isMetalLogoSculptureSkillName("金属 Logo 雕塑 Skill")).toBe(true)
+    expect(skillDisplayName("generate-metal-logo-sculpture")).toBe(
+      "generate-metal-logo-sculpture"
+    )
+  })
+
+  it("recognizes the playful App icon workflow", () => {
+    expect(isPlayfulAppIconsSkillName("design-playful-app-icons")).toBe(true)
+    expect(isPlayfulAppIconsSkillName("趣味 App 图标 Skill")).toBe(true)
+    expect(skillDisplayName("playful-app-icons")).toBe("design-playful-app-icons")
   })
 
   it("recognizes the canvas 3D sticker workflow", () => {

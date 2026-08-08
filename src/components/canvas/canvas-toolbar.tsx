@@ -24,7 +24,7 @@ const CANVAS_AGENT_ENABLED = ["1", "true", "yes", "on"].includes(
 
 const API_CONFIG_MODES = {
   text: {
-    title: "Agent 文字",
+    title: "Agent 推理",
     baseUrlKey: "textBaseUrl",
     apiKeyKey: "textApiKey",
     modelKey: "textModel",
@@ -156,7 +156,7 @@ export function CanvasApiConfigDialog() {
                       <h2 id="api-config-title" className="text-base font-semibold leading-none">
                         API 配置
                       </h2>
-                      <p className="mt-1 text-xs text-muted-foreground">对话理解、图片和视频分别读取这里</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Agent 推理、图片和视频分别读取这里</p>
                     </div>
                   </div>
                 </div>
@@ -196,7 +196,7 @@ export function CanvasApiConfigDialog() {
                       setConfigMessage("")
                     }}
                   >
-                    <span>Agent 对话</span>
+                    <span>Agent 推理</span>
                   </button>
                 ) : null}
                 <button
@@ -272,7 +272,7 @@ export function CanvasApiConfigDialog() {
 
               <div className="mt-5 rounded-2xl border border-dashed bg-muted/40 p-3 text-[11px] leading-relaxed text-muted-foreground">
                 {configMode === "text"
-                  ? "说明：文字模型负责理解目标、结构化规划和对话回复；未配置或失败时自动使用本地规则。界面只展示可审计摘要，不展示隐藏思维链。"
+                  ? "说明：这里配置的是 Agent 推理模型，负责理解需求、识别并调用正确的 Skill、真正优化提示词、处理参考图信息并决定下一步；图片和视频由对应生成模型负责。它可以是支持推理和结构化输出的文字模型，不需要再单独配置一个推理入口。未配置或失败时自动使用本地规则。"
                   : configMode === "image"
                     ? "说明：图片节点和批注生成会读取图片生成配置；未配置时使用本地演示生成器。"
                     : "说明：视频节点会读取视频生成配置；未配置时先停留在本地占位流程，后续接入真实图生视频接口。"}

@@ -49,7 +49,11 @@ def _load_model():
     global _model
     if _model is None:
         torch.set_float32_matmul_precision("high")
-        _model = AutoModelForImageSegmentation.from_pretrained(MODEL_ID, trust_remote_code=True)
+        _model = AutoModelForImageSegmentation.from_pretrained(
+            MODEL_ID,
+            trust_remote_code=True,
+            low_cpu_mem_usage=False,
+        )
         _model.to(_device)
         _model.eval()
     return _model

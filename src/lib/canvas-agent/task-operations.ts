@@ -434,6 +434,7 @@ export async function retryAgentTask(
       selectedCanvasId: stored.task.selectedCanvasId,
       skillId: stored.task.skillId,
       contextSnapshotId: stored.task.contextSnapshotId,
+      continuationOfTaskId: stored.task.continuationOfTaskId,
       retryOfTaskId: stored.task.id,
     },
     {

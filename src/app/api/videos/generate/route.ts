@@ -1,4 +1,5 @@
 import { resolveVideoGenerationProvider } from "@/lib/video-generation/providers"
+import { persistVideoGenerationResult } from "@/lib/video-generation/persist-result"
 import type { VideoGenerationRequest } from "@/lib/video-generation/types"
 
 export const runtime = "nodejs"
@@ -33,19 +34,25 @@ export async function POST(request: Request) {
         throw new Error(`${provider.label} 暂不支持异步视频任务查询`)
       }
       const result = await provider.pollTask({ ...body, taskId: body.taskId })
+      const persistedResult =
+        "src" in result
+          ? await persistVideoGenerationResult(result)
+          : result
       return Response.json({
-        video: "src" in result ? result : undefined,
-        task: "src" in result ? undefined : result,
+        video: "src" in persistedResult ? persistedResult : undefined,
+        task: "src" in persistedResult ? undefined : persistedResult,
         provider: {
           id: provider.id,
           label: provider.label,
           supports: provider.supports,
         },
-        raw: result.raw,
+        raw: persistedResult.raw,
       })
     }
 
-    const video = await provider.generate(body)
+    const video = await persistVideoGenerationResult(
+      await provider.generate(body)
+    )
     return Response.json({
       video,
       provider: {

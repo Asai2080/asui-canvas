@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises"
 import { extname, join } from "node:path"
+import sharp from "sharp"
 
 import type { ImageVersion } from "@/lib/canvas/types"
 
@@ -180,12 +181,28 @@ function nearestStandardImageSize(width: number, height: number) {
   }, standardSizes[0])
 }
 
+function supportsExplicitPixelSize(model: string) {
+  return /(?:^|\/)gpt(?:-[\d.]+)?-image-2(?:-|$)/i.test(model)
+}
+
 function openAiCompatibleSizeFor(model: string, width: number, height: number) {
   const normalizedModel = model.toLowerCase()
 
-  if (normalizedModel.includes("gpt-image-2")) {
-    const nextWidth = Math.min(roundUpToMultiple(width, 16), 3840)
-    const nextHeight = Math.min(roundUpToMultiple(height, 16), 3840)
+  if (supportsExplicitPixelSize(normalizedModel)) {
+    const minimumPixelBudget = 655_360
+    const requestedWidth = roundUpToMultiple(width, 16)
+    const requestedHeight = roundUpToMultiple(height, 16)
+    const budgetScale = Math.sqrt(
+      minimumPixelBudget / (requestedWidth * requestedHeight)
+    )
+    const nextWidth = Math.min(
+      roundUpToMultiple(Math.ceil(requestedWidth * Math.max(1, budgetScale)), 16),
+      3840
+    )
+    const nextHeight = Math.min(
+      roundUpToMultiple(Math.ceil(requestedHeight * Math.max(1, budgetScale)), 16),
+      3840
+    )
     return `${nextWidth}x${nextHeight}`
   }
 
@@ -273,9 +290,14 @@ function composeImagePrompt({
   const feedbackText = feedback?.trim() ?? ""
   const hasFeedback = Boolean(feedbackText)
 
-  if (!hasSourceImage && referenceImageCount > 0) {
+  if (!hasFeedback && (hasSourceImage || referenceImageCount > 0)) {
+    const total = referenceImageCount + (hasSourceImage ? 1 : 0)
     return [
-      `Use the ${referenceImageCount} uploaded reference image${referenceImageCount > 1 ? "s" : ""} as visual references for subject, style, composition, materials, colors, and details.`,
+      `There ${total === 1 ? "is" : "are"} ${total} explicitly selected reference image${total > 1 ? "s" : ""} attached to this generation request.`,
+      hasSourceImage
+        ? "Reference image 1 is the user's actively selected primary canvas image. Treat later images as supporting references only."
+        : "Treat the first attached image as the primary reference and later images as supporting references.",
+      "Use the category-specific reference protocol inside the text prompt to decide whether each image controls identity, product geometry, UI layout, visual style, composition, palette, or materials.",
       "Generate a new clean image from the user's text prompt. Do not copy UI chrome, upload thumbnails, selection handles, or canvas controls.",
       "If multiple references are provided, synthesize their useful visual traits coherently instead of producing separate images.",
       "Follow the text prompt as the primary instruction when it conflicts with a reference image.",
@@ -614,10 +636,45 @@ function bodyForProvider({
     }))
 
   if (provider === "openrouter") {
+    if (supportsExplicitPixelSize(model)) {
+      const size = openAiCompatibleSizeFor(model, width, height)
+      const [providerWidth, providerHeight] = size.split("x").map(Number)
+      const uiImage = /高保真(?:产品)?界面|单屏\s*UI|UI\s*成片|App\s*首页/i.test(
+        composedPrompt
+      )
+      const sizePrompt = uiImage &&
+        (providerWidth !== width || providerHeight !== height)
+        ? `\n\n【OpenRouter 像素适配】API 将以最接近且可用的 ${size} 生成，随后等比微裁为严格 ${width} × ${height}；不拉伸、不增加留白。四边保留既定安全区，任何文字、图标、按钮、卡片、图表和导航都不得接触画布边缘。`
+        : ""
+      return {
+        model,
+        prompt: `${composedPrompt}${sizePrompt}`,
+        size,
+        output_format: "png",
+        ...(inputReferences.length ? { input_references: inputReferences } : {}),
+      }
+    }
+    const aspectRatio = nearestOpenRouterAspectRatio(width, height)
+    const [providerWidth, providerHeight] = aspectRatio.split(":").map(Number)
+    const providerRatio = providerWidth / providerHeight
+    const targetRatio = width / height
+    const uiImage = /高保真(?:产品)?界面|单屏\s*UI|UI\s*成片|App\s*首页/i.test(
+      composedPrompt
+    )
+    const ratioMismatch = Math.abs(Math.log(providerRatio / targetRatio)) > 0.01
+    const horizontalSafePercent = Math.max(
+      15,
+      Math.ceil(((1 - targetRatio / providerRatio) / 2) * 100) + 6
+    )
+    const framingPrompt = uiImage && ratioMismatch
+      ? providerRatio > targetRatio
+        ? `\n\n【OpenRouter 画幅适配】API 只能生成 ${aspectRatio}，最终会等比完整缩放到严格 ${width}:${height}，空余区域使用界面背景色延展；不会拉伸变形，也不会裁掉界面内容。左右各保留至少 ${horizontalSafePercent}% 的内部安全边距。`
+        : `\n\n【OpenRouter 画幅适配】API 只能生成 ${aspectRatio}，最终会等比完整缩放到严格 ${width}:${height}，空余区域使用界面背景色延展；不会拉伸变形，也不会裁掉界面内容。上下各保留至少 ${Math.ceil(((1 - providerRatio / targetRatio) / 2) * 100) + 6}% 的内部安全边距。`
+      : ""
     return {
       model,
-      prompt: composedPrompt,
-      aspect_ratio: nearestOpenRouterAspectRatio(width, height),
+      prompt: `${composedPrompt}${framingPrompt}`,
+      aspect_ratio: aspectRatio,
       output_format: "png",
       ...(inputReferences.length ? { input_references: inputReferences } : {}),
     }
@@ -631,6 +688,67 @@ function bodyForProvider({
     ...(requiresTransparentBackground
       ? { background: "transparent", output_format: "png" }
       : {}),
+  }
+}
+
+async function normalizeGeneratedImageSize(
+  src: string,
+  width: number,
+  height: number,
+  fit: "cover" | "contain" = "cover"
+) {
+  let input: Buffer
+  if (src.startsWith("data:image/")) {
+    const encoded = src.slice(src.indexOf(",") + 1)
+    input = Buffer.from(encoded, "base64")
+  } else {
+    // Keep provider-hosted URLs untouched. Downloading and rewriting a remote
+    // asset here would add a second network failure point to a successful job.
+    return src
+  }
+
+  try {
+    const metadata = await sharp(input).metadata()
+    if (metadata.width === width && metadata.height === height) return src
+    let background: { r: number; g: number; b: number; alpha: number } | undefined
+    if (fit === "contain") {
+      const { data, info } = await sharp(input)
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true })
+      const cornerOffsets = [
+        0,
+        (info.width - 1) * info.channels,
+        (info.height - 1) * info.width * info.channels,
+        (info.height * info.width - 1) * info.channels,
+      ]
+      const averageChannel = (channel: number, fallback: number) =>
+        Math.round(
+          cornerOffsets.reduce(
+            (sum, offset) => sum + (data[offset + channel] ?? fallback),
+            0
+          ) / cornerOffsets.length
+        )
+      background = {
+        r: averageChannel(0, 247),
+        g: averageChannel(1, 248),
+        b: averageChannel(2, 244),
+        alpha: averageChannel(3, 255) / 255,
+      }
+    }
+    const output = await sharp(input)
+      .resize(width, height, {
+        fit,
+        position: "centre",
+        ...(background ? { background } : {}),
+      })
+      .png()
+      .toBuffer()
+    return `data:image/png;base64,${output.toString("base64")}`
+  } catch {
+    // Some compatible providers return opaque test fixtures or URLs that cannot
+    // be decoded locally. Keep their response instead of rejecting valid output.
+    return src
   }
 }
 
@@ -801,12 +919,24 @@ export async function POST(request: Request) {
     feedbackPreview: feedback ? truncate(feedback.replace(/\s+/g, " "), 260) : "",
   })
 
+  const uiImage = /高保真(?:产品)?界面|单屏\s*UI|UI\s*成片|App\s*首页/i.test(
+    composedPrompt
+  )
+  const canUseNearExactSize =
+    provider === "openrouter" && supportsExplicitPixelSize(model)
+  const normalizedImageSrc = await normalizeGeneratedImageSize(
+    image.src,
+    width,
+    height,
+    uiImage && !canUseNearExactSize ? "contain" : "cover"
+  )
+
   return Response.json({
     version: createVersion({
       prompt: image.revisedPrompt ?? prompt,
       feedback: body.feedback,
       parentVersionId: body.parentVersionId,
-      src: image.src,
+      src: normalizedImageSrc,
       width,
       height,
     }),

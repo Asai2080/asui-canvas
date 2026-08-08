@@ -9,7 +9,7 @@ import {
   useState,
 } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Image01Icon, Video01Icon } from "@hugeicons/core-free-icons"
+import { Image01Icon, ImageDownloadIcon, Video01Icon } from "@hugeicons/core-free-icons"
 import type { OrbState } from "thinking-orbs"
 import {
   AssetRecordType,
@@ -21,6 +21,7 @@ import {
   HTMLContainer,
   ImageShapeUtil,
   Rectangle2d,
+  serializeTldrawJson,
   SnapIndicatorOverlayUtil,
   Tldraw,
   type TLAsset,
@@ -84,11 +85,23 @@ import {
   insetCanvasMediaBounds,
 } from "@/lib/canvas/media-layout"
 import { CANVAS_PERSISTENCE_KEY, IMAGE_VERSION_STORAGE_KEY } from "@/lib/canvas/persistence"
+import {
+  CANVAS_WORKSPACE_CHANGED_EVENT,
+  persistCanvasDocumentToWorkspace,
+  persistCanvasTextToWorkspace,
+  persistImageVersionToWorkspace,
+  persistVideoToWorkspace,
+} from "@/lib/canvas/workspace"
 import { generatePoster } from "@/lib/canvas/poster-generator"
 import { resolveCanvasSizePreset, type CanvasSizePresetId } from "@/lib/canvas/size-presets"
 import { normalizeCanvasSize } from "@/lib/canvas/size"
-import { layoutSliceResults } from "@/lib/canvas-slicing/layout"
-import type { SliceCandidate, SliceMetadata, SliceRect } from "@/lib/canvas-slicing/schema"
+import { getSliceDisplaySize, layoutSliceResults } from "@/lib/canvas-slicing/layout"
+import {
+  sliceMetadataSchema,
+  type SliceCandidate,
+  type SliceMetadata,
+  type SliceRect,
+} from "@/lib/canvas-slicing/schema"
 import type { Bounds, CanvasSelection, CanvasSize, GenerationStatus, ImageVersion, ReferenceImage } from "@/lib/canvas/types"
 import {
   runWithAutoManagedCutoutService,
@@ -145,6 +158,10 @@ const shapeMeta = (shape?: TLShape | null) => (shape?.meta ?? {}) as Record<stri
 const isImageHolderShape = (shape?: TLShape | null) => {
   const meta = shapeMeta(shape)
   return meta.kind === "image-holder" || meta.asuiNode === "image-holder"
+}
+const isSliceResultShape = (shape?: TLShape | null) => {
+  const meta = shapeMeta(shape)
+  return Boolean(meta.sourceSliceHolderId || meta.sliceMetadata)
 }
 const isVideoNodeShape = (shape?: TLShape | null) => {
   const meta = shapeMeta(shape)
@@ -351,7 +368,9 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
     if (!isAsuiNode) return content
 
     return (
-      <div className={`asui-node-frame asui-node-frame--${kind}`}>
+      <div
+        className={`asui-node-frame asui-node-frame--${kind}${isSliceResultShape(shape) ? " asui-node-frame--slice" : ""}`}
+      >
         {content}
         {isEmpty && (
           <HTMLContainer
@@ -389,7 +408,7 @@ class AsuiFrameShapeUtil extends FrameShapeUtil {
     }
 
     const path = new Path2D()
-    path.roundRect(0, 0, shape.props.w, shape.props.h, 30)
+    path.roundRect(0, 0, shape.props.w, shape.props.h, isSliceResultShape(shape) ? 8 : 30)
     return path
   }
 }
@@ -562,6 +581,7 @@ type CanvasSlicingSession = {
   sourceHeight: number
   phase: CanvasSlicingPhase
   mode?: "automatic" | "manual"
+  isSupplementing?: boolean
   candidates: SliceCandidate[]
   selectedIds: Set<string>
 }
@@ -1252,9 +1272,12 @@ function createImageShape(
   bounds: Bounds,
   options: {
     parentId?: TLShapeId
+    mediaInset?: number
   } = {}
 ) {
-  const mediaBounds = options.parentId ? insetCanvasMediaBounds(bounds) : bounds
+  const mediaBounds = options.parentId
+    ? insetCanvasMediaBounds(bounds, options.mediaInset)
+    : bounds
   const assetId = AssetRecordType.createId()
   const shapeId = createShapeId()
   const extension = extensionFromSrc(version.src)
@@ -1340,7 +1363,12 @@ function findImageShapeByVersionId(editor: Editor, versionId?: string) {
   return shape?.id as TLShapeId | null
 }
 
-function createImageHolderWithImage(editor: Editor, version: ImageVersion, bounds: Bounds) {
+function createImageHolderWithImage(
+  editor: Editor,
+  version: ImageVersion,
+  bounds: Bounds,
+  options: { mediaInset?: number } = {}
+) {
   const holderId = createShapeId()
 
   editor.createShape({
@@ -1374,7 +1402,7 @@ function createImageHolderWithImage(editor: Editor, version: ImageVersion, bound
       w: bounds.w,
       h: bounds.h,
     },
-    { parentId: holderId }
+    { parentId: holderId, mediaInset: options.mediaInset }
   )
   const holderShape = editor.getShape(holderId)
   if (holderShape) {
@@ -1456,6 +1484,8 @@ function createVideoShape(
     },
   })
 
+  void persistVideoToWorkspace(src, taskId ?? shapeId).catch(() => undefined)
+
   return shapeId
 }
 
@@ -1529,6 +1559,7 @@ async function persistImageVersion(version: ImageVersion) {
     throw new Error(payload.error ?? "图片资产保存失败")
   }
 
+  void persistImageVersionToWorkspace(payload.version).catch(() => undefined)
   return payload.version
 }
 
@@ -2031,6 +2062,47 @@ function getSliceResultHolders(editor: Editor, sourceHolderId: TLShapeId) {
   )
 }
 
+const SLICE_DISPLAY_LAYOUT_VERSION = 2
+
+function migrateSliceResultDisplaySizes(editor: Editor) {
+  for (const holder of editor.getCurrentPageShapes()) {
+    if (holder.type !== "frame" || !isImageHolderShape(holder)) continue
+    const holderMeta = shapeMeta(holder)
+    if (holderMeta.sliceDisplayLayoutVersion === SLICE_DISPLAY_LAYOUT_VERSION) continue
+    const parsedMetadata = sliceMetadataSchema.safeParse(holderMeta.sliceMetadata)
+    if (!parsedMetadata.success) continue
+
+    const metadata = parsedMetadata.data
+    const sourceImage = editor.getShape(metadata.sourceImageId as TLShapeId)
+    const imageId = getLatestImageShapeIdFromHolder(editor, holder.id)
+    const image = imageId ? editor.getShape(imageId) : null
+    if (sourceImage?.type !== "image" || image?.type !== "image") continue
+
+    const size = getSliceDisplaySize(
+      metadata.sourceRect,
+      { w: sourceImage.props.w, h: sourceImage.props.h },
+      metadata.sourceImageSize
+    )
+    editor.updateShape({
+      id: holder.id,
+      type: "frame",
+      props: { w: size.width, h: size.height },
+      meta: {
+        ...holder.meta,
+        size: { width: size.width, height: size.height },
+        sliceDisplayLayoutVersion: SLICE_DISPLAY_LAYOUT_VERSION,
+      },
+    })
+    editor.updateShape({
+      id: image.id,
+      type: "image",
+      x: 0,
+      y: 0,
+      props: { w: size.width, h: size.height },
+    })
+  }
+}
+
 function triggerBlobDownload(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement("a")
@@ -2281,6 +2353,7 @@ export function AiCanvas() {
   const editorRef = useRef<Editor | null>(null)
   const unlistenRef = useRef<(() => void) | null>(null)
   const viewportSyncFrameRef = useRef<number | null>(null)
+  const workspaceSaveTimerRef = useRef<number | null>(null)
   const lastSelectionKeyRef = useRef("")
   const directCanvasNodePointerRef = useRef<TLShapeId | null>(null)
   const slicingSessionRef = useRef<CanvasSlicingSession | null>(null)
@@ -2319,6 +2392,7 @@ export function AiCanvas() {
   const [slicingSession, setSlicingSession] = useState<CanvasSlicingSession | null>(null)
   const [slicingViewportBounds, setSlicingViewportBounds] = useState<Bounds | null>(null)
   const [sliceResultCount, setSliceResultCount] = useState(0)
+  const [sliceDownloadSourceId, setSliceDownloadSourceId] = useState<TLShapeId | null>(null)
   const [isCodexTaskOpen, setIsCodexTaskOpen] = useState(false)
   const [codexTaskStatus, setCodexTaskStatus] = useState<"idle" | "generating">("idle")
   const [isCanvasAgentOpen, setIsCanvasAgentOpen] = useState(false)
@@ -2424,6 +2498,9 @@ export function AiCanvas() {
       unlistenRef.current?.()
       if (viewportSyncFrameRef.current !== null) {
         window.cancelAnimationFrame(viewportSyncFrameRef.current)
+      }
+      if (workspaceSaveTimerRef.current !== null) {
+        window.clearTimeout(workspaceSaveTimerRef.current)
       }
     }
   }, [])
@@ -2863,6 +2940,11 @@ export function AiCanvas() {
               artifactId: command.nodeRef,
             })
             resultNodeIds.push(promptNodeId)
+            void persistCanvasTextToWorkspace(
+              batch.taskId,
+              command.title,
+              command.content
+            ).catch(() => undefined)
             continue
           }
 
@@ -3125,21 +3207,10 @@ export function AiCanvas() {
           if (focusIds.length === 0) {
             throw new Error("找不到需要聚焦的生成结果")
           }
-          const promptIds = editor
-            .getCurrentPageShapes()
-            .filter(
-              (shape): shape is TLFrameShape =>
-                shape.type === "frame" &&
-                isAgentPromptShape(shape) &&
-                getStringMetaValue(shapeMeta(shape), "agentTaskId") ===
-                  batch.taskId
-            )
-            .map((shape) => shape.id)
-          editor.select(...new Set([...promptIds, ...focusIds]))
-          const taskBounds = editor.getSelectionPageBounds()
           editor.select(...focusIds)
-          if (taskBounds) {
-            editor.zoomToBounds(taskBounds, {
+          const resultBounds = editor.getSelectionPageBounds()
+          if (resultBounds) {
+            editor.zoomToBounds(resultBounds, {
               inset: 64,
               animation: { duration: 240 },
             })
@@ -3194,6 +3265,37 @@ export function AiCanvas() {
     [applyAgentCanvasCommands]
   )
 
+  const scheduleWorkspaceSave = useCallback((editor: Editor, immediate = false) => {
+    if (workspaceSaveTimerRef.current !== null) {
+      window.clearTimeout(workspaceSaveTimerRef.current)
+    }
+    workspaceSaveTimerRef.current = window.setTimeout(
+      () => {
+        workspaceSaveTimerRef.current = null
+        void serializeTldrawJson(editor)
+          .then((content) => persistCanvasDocumentToWorkspace(content))
+          .catch(() => undefined)
+      },
+      immediate ? 0 : 700
+    )
+  }, [])
+
+  useEffect(() => {
+    const saveToSelectedWorkspace = () => {
+      const editor = editorRef.current
+      if (editor) scheduleWorkspaceSave(editor, true)
+    }
+    window.addEventListener(
+      CANVAS_WORKSPACE_CHANGED_EVENT,
+      saveToSelectedWorkspace
+    )
+    return () =>
+      window.removeEventListener(
+        CANVAS_WORKSPACE_CHANGED_EVENT,
+        saveToSelectedWorkspace
+      )
+  }, [scheduleWorkspaceSave])
+
   const handleMount = useCallback(
     (editor: Editor) => {
       editorRef.current = editor
@@ -3205,6 +3307,7 @@ export function AiCanvas() {
       migrateVersionLinkArrows(editor)
       syncAllGeneratedMediaToCanvasFrames(editor)
       migrateLooseImportedImages(editor)
+      migrateSliceResultDisplaySizes(editor)
       editor.registerExternalContentHandler("files", async (content) => {
         const imageFiles = content.files.filter((file) =>
           file.type.toLowerCase().startsWith("image/")
@@ -3271,12 +3374,14 @@ export function AiCanvas() {
       }
       syncSelection(editor)
       syncViewportUi(editor)
+      scheduleWorkspaceSave(editor)
       lastSelectionKeyRef.current = editor.getSelectedShapeIds().join("|")
       unlistenRef.current?.()
 
       const stopDocumentListener = editor.store.listen(() => {
         syncSelection(editor)
         scheduleViewportSync(editor)
+        scheduleWorkspaceSave(editor)
       }, {
         source: "all",
         scope: "document",
@@ -3325,7 +3430,7 @@ export function AiCanvas() {
         stopSessionListener()
       }
     },
-    [scheduleViewportSync, syncSelection, syncViewportUi]
+    [scheduleViewportSync, scheduleWorkspaceSave, syncSelection, syncViewportUi]
   )
 
   const handleCanvasPointerDownCapture = useCallback(
@@ -4401,7 +4506,12 @@ export function AiCanvas() {
       setToastMessage("一键切图需要先配置支持图片理解的文字模型；手动切图无需模型")
       return
     }
-    setSlicingSession((current) => current ? { ...current, phase: "detecting", mode: "automatic" } : current)
+    setSlicingSession((current) => current ? {
+      ...current,
+      phase: "detecting",
+      mode: "automatic",
+      isSupplementing: false,
+    } : current)
     try {
       const response = await fetch("/api/slices/candidates", {
         method: "POST",
@@ -4444,8 +4554,17 @@ export function AiCanvas() {
       ...current,
       phase: "manual",
       mode: "manual",
+      isSupplementing: false,
       candidates: [],
       selectedIds: new Set(),
+    } : current)
+  }, [])
+
+  const startSupplementalSlicing = useCallback(() => {
+    setSlicingSession((current) => current ? {
+      ...current,
+      phase: "manual",
+      isSupplementing: true,
     } : current)
   }, [])
 
@@ -4482,6 +4601,28 @@ export function AiCanvas() {
     })
   }, [])
 
+  const updateSliceCandidate = useCallback((id: string, rect: SliceRect) => {
+    setSlicingSession((current) => current ? {
+      ...current,
+      candidates: current.candidates.map((candidate) =>
+        candidate.id === id ? { ...candidate, ...rect } : candidate
+      ),
+    } : current)
+  }, [])
+
+  const deleteSliceCandidate = useCallback((id: string) => {
+    setSlicingSession((current) => {
+      if (!current) return current
+      const selectedIds = new Set(current.selectedIds)
+      selectedIds.delete(id)
+      return {
+        ...current,
+        candidates: current.candidates.filter((candidate) => candidate.id !== id),
+        selectedIds,
+      }
+    })
+  }, [])
+
   const toggleSliceCropMode = useCallback((id: string) => {
     setSlicingSession((current) => current ? {
       ...current,
@@ -4506,13 +4647,24 @@ export function AiCanvas() {
     } : current)
   }, [])
 
+  const openSlicingExportSettings = useCallback(() => {
+    setSlicingSession((current) => current ? { ...current, phase: "export-settings" } : current)
+  }, [])
+
+  const closeSlicingExportSettings = useCallback(() => {
+    setSlicingSession((current) => current ? {
+      ...current,
+      phase: current.mode === "manual" || current.isSupplementing ? "manual" : "reviewing",
+    } : current)
+  }, [])
+
   const exportSelectedSlices = useCallback(async () => {
     const editor = editorRef.current
     const session = slicingSessionRef.current
     if (!editor || !session) return
     const selectedCandidates = session.candidates.filter((candidate) => session.selectedIds.has(candidate.id))
     if (selectedCandidates.length === 0) return
-    const sourceBoundsValue = editor.getShapePageBounds(session.sourceHolderId)
+    const sourceBoundsValue = editor.getShapePageBounds(session.sourceImageId)
     if (!sourceBoundsValue) return
 
     setSlicingSession((current) => current ? { ...current, phase: "exporting" } : current)
@@ -4561,6 +4713,10 @@ export function AiCanvas() {
       const layouts = layoutSliceResults({
         candidates: slices.map((item) => item.candidate),
         sourceBounds,
+        sourceImageSize: {
+          width: session.sourceWidth,
+          height: session.sourceHeight,
+        },
         occupiedBounds: rootCanvasObstacles(editor),
       })
       const layoutById = new Map(layouts.map((layout) => [layout.candidate.id, layout.bounds]))
@@ -4580,7 +4736,9 @@ export function AiCanvas() {
         })
         const bounds = layoutById.get(item.candidate.id)
         if (!bounds) continue
-        const { holderId, imageId } = createImageHolderWithImage(editor, version, bounds)
+        const { holderId, imageId } = createImageHolderWithImage(editor, version, bounds, {
+          mediaInset: 0,
+        })
         const metadata: SliceMetadata = {
           sourceHolderId: session.sourceHolderId,
           sourceImageId: session.sourceImageId,
@@ -4604,7 +4762,12 @@ export function AiCanvas() {
           id: holderId,
           type: "frame",
           props: { name: item.candidate.name },
-          meta: { ...holder.meta, sourceSliceHolderId: session.sourceHolderId, sliceMetadata: metadata },
+          meta: {
+            ...holder.meta,
+            sourceSliceHolderId: session.sourceHolderId,
+            sliceMetadata: metadata,
+            sliceDisplayLayoutVersion: SLICE_DISPLAY_LAYOUT_VERSION,
+          },
         })
         if (image) editor.updateShape({
           id: imageId,
@@ -4631,8 +4794,9 @@ export function AiCanvas() {
       setVersions((current) => [...current, ...createdVersions])
       editor.select(session.sourceHolderId)
       setSliceResultCount(getSliceResultHolders(editor, session.sourceHolderId).length)
+      setSliceDownloadSourceId(session.sourceHolderId)
       stopSlicing()
-      setToastMessage(`已生成 ${resultHolderIds.length} 张切图，可从下载按钮打包下载`)
+      setToastMessage(`已生成 ${resultHolderIds.length} 张切图`)
     } catch (error) {
       setSlicingSession((current) => current ? {
         ...current,
@@ -4642,9 +4806,12 @@ export function AiCanvas() {
     }
   }, [stopSlicing])
 
-  const downloadSliceArchive = useCallback(async () => {
+  const downloadSliceArchive = useCallback(async (sourceHolderId?: TLShapeId) => {
     const editor = editorRef.current
     if (!editor) return
+    if (sourceHolderId && editor.getShape(sourceHolderId)) {
+      editor.select(sourceHolderId)
+    }
     const target = getSlicingTarget(editor)
     if (!target) return
     const resultHolders = getSliceResultHolders(editor, target.sourceHolderId)
@@ -4685,6 +4852,7 @@ export function AiCanvas() {
         throw new Error(payload.error || "打包下载失败")
       }
       triggerBlobDownload(await response.blob(), `canvas-slices-${new Date().toISOString().slice(0, 10)}.zip`)
+      setToastMessage("切图压缩包已开始下载")
     } catch (error) {
       setToastMessage(errorMessage(error, "打包下载失败"))
     }
@@ -4989,7 +5157,24 @@ export function AiCanvas() {
       {toastMessage && (
         <div className="canvas-toast" role="status" aria-live="polite">
           <p>{toastMessage}</p>
-          <Button type="button" size="icon-xs" variant="ghost" aria-label="关闭提示" onClick={() => setToastMessage("")}>
+          {sliceDownloadSourceId && toastMessage.startsWith("已生成") && (
+            <button
+              type="button"
+              className="canvas-toast__action"
+              onClick={() => void downloadSliceArchive(sliceDownloadSourceId)}
+            >
+              <HugeiconsIcon icon={ImageDownloadIcon} size={15} strokeWidth={1.7} />
+              打包下载
+            </button>
+          )}
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            className="canvas-toast__close"
+            aria-label="关闭提示"
+            onClick={() => setToastMessage("")}
+          >
             ×
           </Button>
         </div>
@@ -5004,11 +5189,16 @@ export function AiCanvas() {
           selectedIds={slicingSession.selectedIds}
           onAutomatic={() => void startAutomaticSlicing()}
           onManual={startManualSlicing}
+          onSupplementManual={startSupplementalSlicing}
           onAddManual={addManualSlice}
+          onUpdateCandidate={updateSliceCandidate}
+          onDeleteCandidate={deleteSliceCandidate}
           onToggleCandidate={toggleSliceCandidate}
           onToggleCropMode={toggleSliceCropMode}
           onSelectAll={selectAllSlices}
           onClear={clearSlices}
+          onOpenExportSettings={openSlicingExportSettings}
+          onCloseExportSettings={closeSlicingExportSettings}
           onExport={() => void exportSelectedSlices()}
           onCancel={stopSlicing}
         />

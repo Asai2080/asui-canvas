@@ -22,6 +22,22 @@ describe("visual prompt template routing", () => {
     expect(guidance).toContain("一种主风格 + 至多一种辅助效果 + 一个点缀色")
   })
 
+  it("recognizes natural digital-page wording without leaking photography rules", () => {
+    const cases = [
+      "生成一个面向自由职业者的移动端项目收支首页，尺寸 750x1624",
+      "设计一个手机端健康记录首页，尺寸 750x1624",
+      "生成 Web 端运营工作台，尺寸 1440x1024",
+    ]
+
+    for (const instruction of cases) {
+      const guidance = buildTemplatePromptGuidance(instruction, 750, 1624).join("\n")
+      expect(selectVisualPromptTemplate(instruction).id).toBe("ui-interface")
+      expect(guidance).toContain("UI 与产品界面")
+      expect(guidance).not.toContain("35mm")
+      expect(guidance).not.toContain("景深")
+    }
+  })
+
   it("keeps landing pages distinct from work tools", () => {
     const guidance = buildTemplatePromptGuidance(
       "生成一个产品官网落地页",
@@ -38,6 +54,9 @@ describe("visual prompt template routing", () => {
 
   it("routes product, brand, and classical requests to their own profiles", () => {
     expect(selectVisualPromptTemplate("生成一张运动鞋产品广告图").id).toBe(
+      "product"
+    )
+    expect(selectVisualPromptTemplate("生成一张无线耳机充电盒的高端产品广告图").id).toBe(
       "product"
     )
     expect(selectVisualPromptTemplate("生成一套品牌视觉识别方案").id).toBe(
@@ -57,6 +76,12 @@ describe("visual prompt template routing", () => {
     expect(selectVisualPromptTemplate(instruction).id).toBe("general")
     expect(guidance).toContain("不堆叠无动机特效")
     expect(guidance).not.toContain("毛玻璃")
+  })
+
+  it("does not apply a specialized poster method when the request is generic", () => {
+    expect(selectVisualPromptMethod("生成一张未来剧院主题商业海报")?.id).toBe(
+      "poster-layout-system"
+    )
   })
 
   it("does not inject preset UI effects unless the user asks for them", () => {

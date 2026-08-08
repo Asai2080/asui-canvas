@@ -333,6 +333,38 @@ describe("built-in Skill end-to-end contracts", () => {
     )
   })
 
+  it("passes the selected image through the preserve-background cover workflow", async () => {
+    const root = await createRoot()
+    const context = imageContext("cover-preserve-context")
+    await createStoredCanvasContextSnapshot(context, root)
+    const task = createAgentTask(
+      {
+        userInstruction:
+          "为春季新品制作封面，主标题：春日新章。使用 10 正面对视风，当前选中的人物图作为图 1，没有其他素材。人物表情 6，背景 7 保留原背景，字体 1，文字效果 4。",
+        executionMode: "auto",
+        skillId: "builtin-cover-design",
+        contextSnapshotId: context.id,
+        selectedCanvasId: context.selectedNodeId,
+      },
+      { id: "task-cover-preserve-e2e", eventId: "event-cover-preserve", now }
+    )
+    await createStoredAgentTask(task, root)
+    const { dependencies, imageInputs } = createDependencies(root)
+
+    await runUntilWritingCanvas(task.id, dependencies)
+
+    expect(imageInputs).toHaveLength(1)
+    expect(imageInputs[0].sourceImageSrc).toBe(
+      "https://example.test/cover-preserve-context-source.png"
+    )
+    expect(imageInputs[0].prompt).toContain("背景模式：保留原背景")
+    expect(imageInputs[0].prompt).toContain(
+      "原背景 < 主标题文字 < 人物主体"
+    )
+    expect(imageInputs[0].prompt).not.toContain("建立一个主色、一个辅助色")
+    expect(imageInputs[0].prompt).not.toContain("柔和主光塑造主体体积")
+  })
+
   it("runs four-view generation from only the current selected image", async () => {
     const root = await createRoot()
     const context = imageContext("four-view-context")
@@ -990,6 +1022,172 @@ describe("built-in Skill end-to-end contracts", () => {
     expect(
       batch.commands.filter(({ type }) => type === "create-image-node")
     ).toHaveLength(1)
+    expect(batch.commands).toContainEqual(
+      expect.objectContaining({
+        type: "connect-nodes",
+        sourceNodeId: context.selectedNodeId,
+      })
+    )
+    expect(completed.status).toBe("completed")
+  })
+
+  it("runs metal Logo sculpture generation and connects it to the selected Logo", async () => {
+    const root = await createRoot()
+    const context = imageContext("metal-logo-context")
+    await createStoredCanvasContextSnapshot(context, root)
+    const task = createAgentTask(
+      {
+        userInstruction: "品牌名称：ASUI，背景色：深灰，金属颜色：枪灰色",
+        executionMode: "auto",
+        skillId: "builtin-metal-logo-sculpture",
+        contextSnapshotId: context.id,
+        selectedCanvasId: context.selectedNodeId,
+      },
+      { id: "task-metal-logo-e2e", eventId: "event-metal-logo", now }
+    )
+    await createStoredAgentTask(task, root)
+    const { dependencies, imageInputs, videoInputs } = createDependencies(root)
+
+    const writing = await runUntilWritingCanvas(task.id, dependencies)
+
+    expect(writing.compiledPrompt?.summary).toBe("金属 Logo 雕塑：ASUI")
+    expect(imageInputs).toHaveLength(1)
+    expect(videoInputs).toHaveLength(0)
+    expect(imageInputs[0]).toMatchObject({
+      sourceImageSrc: "https://example.test/metal-logo-context-source.png",
+      referenceImageSrcs: [],
+      width: 1024,
+      height: 1024,
+    })
+    expect(imageInputs[0].prompt).toContain("抛光外框")
+    expect(imageInputs[0].prompt).toContain("下沉的同色哑光嵌面")
+
+    const promptBatch = await capturePromptBatch(writing)
+    expect(promptBatch.commands).toContainEqual(
+      expect.objectContaining({
+        type: "create-prompt-node",
+        title: "金属 Logo 雕塑方案",
+      })
+    )
+    const { batch, completed } = await applyResultBatch(writing, root)
+    expect(
+      batch.commands.filter(({ type }) => type === "create-image-node")
+    ).toHaveLength(1)
+    expect(batch.commands).toContainEqual(
+      expect.objectContaining({
+        type: "connect-nodes",
+        sourceNodeId: context.selectedNodeId,
+      })
+    )
+    expect(completed.status).toBe("completed")
+  })
+
+  it("runs official-brand metal Logo sculpture generation without a reference image", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: [
+          "品牌名称：拼多多",
+          "背景色：浅灰",
+          "金属颜色：红色",
+        ].join("\n"),
+        executionMode: "auto",
+        skillId: "builtin-metal-logo-sculpture",
+      },
+      {
+        id: "task-metal-logo-official-e2e",
+        eventId: "event-metal-logo-official",
+        now,
+      }
+    )
+    await createStoredAgentTask(task, root)
+    const { dependencies, imageInputs, videoInputs } = createDependencies(root)
+    dependencies.textAdapter = {
+      interpret: vi.fn(async () => ({
+        message: "已识别官方品牌主图形。",
+        summary: "拼多多金属 Logo 雕塑",
+        normalizedInstruction: [
+          "拼多多官方 App 图标是红白分区的圆角心形外轮廓。",
+          "中央保留清晰的‘拼’字符号、对称负空间和原有元素间距。",
+        ].join("\n"),
+        intent: "image" as const,
+        target: { mediaType: "image" as const },
+      })),
+    }
+
+    const writing = await runUntilWritingCanvas(task.id, dependencies)
+
+    expect(writing.compiledPrompt?.summary).toBe("金属 Logo 雕塑：拼多多")
+    expect(imageInputs).toHaveLength(1)
+    expect(videoInputs).toHaveLength(0)
+    expect(imageInputs[0]).toMatchObject({
+      sourceImageSrc: undefined,
+      referenceImageSrcs: [],
+      width: 1024,
+      height: 1024,
+    })
+    expect(imageInputs[0].prompt).toContain("官方主图形识别模式")
+    expect(imageInputs[0].prompt).toContain("红白分区的圆角心形")
+    expect(imageInputs[0].prompt).toContain("对称负空间")
+    expect(imageInputs[0].prompt).not.toContain("逐字排印品牌名称")
+
+    const promptBatch = await capturePromptBatch(writing)
+    expect(promptBatch.commands).toContainEqual(
+      expect.objectContaining({
+        type: "create-prompt-node",
+        title: "金属 Logo 雕塑方案",
+      })
+    )
+    const { batch, completed } = await applyResultBatch(writing, root)
+    expect(
+      batch.commands.filter(({ type }) => type === "create-image-node")
+    ).toHaveLength(1)
+    expect(
+      batch.commands.filter(({ type }) => type === "connect-nodes")
+    ).toHaveLength(0)
+    expect(completed.status).toBe("completed")
+  })
+
+  it("runs Playful App Icon generation without leaking an unrelated selected image", async () => {
+    const root = await createRoot()
+    const context = imageContext("playful-icon-context")
+    await createStoredCanvasContextSnapshot(context, root)
+    const task = createAgentTask(
+      {
+        userInstruction: "为一个帮助用户专注 25 分钟并减少分心的 App 设计 iOS 图标",
+        executionMode: "auto",
+        skillId: "builtin-design-playful-app-icons",
+        contextSnapshotId: context.id,
+        selectedCanvasId: context.selectedNodeId,
+      },
+      { id: "task-playful-icon-e2e", eventId: "event-playful-icon", now }
+    )
+    await createStoredAgentTask(task, root)
+    const { dependencies, imageInputs, videoInputs } = createDependencies(root)
+
+    const writing = await runUntilWritingCanvas(task.id, dependencies)
+
+    expect(writing.compiledPrompt?.summary).toContain("Playful App Icon")
+    expect(imageInputs).toHaveLength(1)
+    expect(videoInputs).toHaveLength(0)
+    expect(imageInputs[0]).toMatchObject({
+      sourceImageSrc: undefined,
+      referenceImageSrcs: [],
+      width: 1024,
+      height: 1024,
+    })
+    expect(imageInputs[0].prompt).toContain("提出三个真正不同的原创方向")
+    expect(imageInputs[0].prompt).toContain("32px")
+
+    const promptBatch = await capturePromptBatch(writing)
+    expect(promptBatch.commands).toContainEqual(
+      expect.objectContaining({
+        type: "create-prompt-node",
+        title: "App 图标设计方案",
+      })
+    )
+    const { batch, completed } = await applyResultBatch(writing, root)
+    expect(batch.commands.filter(({ type }) => type === "create-image-node")).toHaveLength(1)
     expect(batch.commands).toContainEqual(
       expect.objectContaining({
         type: "connect-nodes",

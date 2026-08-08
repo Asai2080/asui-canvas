@@ -26,6 +26,8 @@
 /public/canvas-assets/
 /.asui-codex/
 /.asui-agent/
+/outputs/
+/services/birefnet/__pycache__/
 
 # debug
 npm-debug.log*
@@ -35,6 +37,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel

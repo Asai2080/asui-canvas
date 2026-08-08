@@ -25,12 +25,18 @@ import {
   buildProfessionalCreativeBrief,
   compileGenerationPrompt,
 } from "./prompts/compiler"
+import {
+  isUiDesignInstruction,
+  isWeakUiCreativeBrief,
+} from "./prompts/ui-spec"
 import { resolveBuiltinSkillIntake } from "./skills/intake"
 import {
   isAntibesHolidaySkillName,
   isBrandStickerPhotoSkillName,
   isClassicalPoemSilkVideoSkillName,
   isIanXiaoheiSkillName,
+  isMetalLogoSculptureSkillName,
+  isPlayfulAppIconsSkillName,
   isStillImageMotionDirectorSkillName,
   skillMediaIntent,
 } from "./skills/identifiers"
@@ -145,12 +151,47 @@ function stillImageMotionInterpretationBrief(instruction: string) {
 }
 
 function brandStickerInterpretationBrief(instruction: string) {
+  const usesOfficialIcon =
+    /(?:Logo\s*依据\s*[:：]?\s*)?使用官方品牌图标|官方应用图标|官方\s*(?:App\s*)?(?:Logo|图标)/i.test(
+      instruction
+    )
   return [
     "【品牌贴纸商业写真简报】",
     `用户目标：${instruction}`,
-    "锁定品牌名称、背景色和 Logo 依据；有参考图时逐字保留字形、比例、间距与品牌色，没有参考图时只使用用户确认的纯文字字标。",
+    "锁定品牌名称、背景色和 Logo 依据；有参考图时逐字保留字形、比例、间距与品牌色；没有参考图时，官方图形模式先识别品牌公开且稳定的主 Logo 或 App 图标，纯文字模式才逐字排印品牌名称。",
+    usesOfficialIcon
+      ? "当前使用官方图形模式：输出具体的外轮廓、色彩分区、内部符号、负空间、间距与交叠关系，不只复述‘使用官方 Logo’，也不凭空添加图形细节。"
+      : "",
     "唯一主体是一张完整 die-cut 覆膜贴纸，明确贴纸外轮廓、切边厚度、凸起印刷、受控虹彩高光和一个统一轻微卷角。",
     "使用 4:5 无缝纯色棚拍背景，贴纸漂浮且四周留有安全边距；禁止桌面、地面、底座、接触阴影、第二张贴纸和额外品牌文案。",
+  ].join("\n")
+}
+
+function metalLogoSculptureInterpretationBrief(instruction: string) {
+  const usesOfficialIcon =
+    /(?:Logo\s*依据\s*[:：]?\s*)?使用官方品牌图标|官方应用图标|官方\s*(?:App\s*)?(?:Logo|图标)/i.test(
+      instruction
+    )
+  return [
+    "【金属 Logo 雕塑产品摄影简报】",
+    `用户目标：${instruction}`,
+    "锁定品牌名称、背景颜色、金属对象颜色和 Logo 几何依据；有参考图时只使用它控制正面轮廓、比例、负空间、元素间距与字母顺序，不继承其颜色。",
+    usesOfficialIcon
+      ? "官方主图形识别模式：先根据品牌名称识别公开且稳定的官方主 Logo 或 App 图标，再用具体可视几何描述其标志类型、外轮廓、色彩分区、内部字母或符号、负空间、间距与交叠关系。不得只复述‘使用官方 Logo’，不得降级为品牌名排印，不得发明不存在的细节。"
+      : "没有参考图时，仅在用户明确选择纯文字字标后逐字排印品牌名称，不声称它是官方图形标志。",
+    "把 Logo 转译为一个可制造的厚重统一金属实体，明确抛光外框、宽倒角、极窄装配缝和下沉哑光嵌面的唯一四层结构，不增加原标志不存在的机械细节。",
+    "使用 1:1 近正面 90–110mm 高端产品摄影、左上大型冷白柔光箱和右后窄条灯；对象完整悬浮，占画布宽度 70–75%，背景完全均匀且无地面、底座和接触阴影。",
+  ].join("\n")
+}
+
+function playfulAppIconInterpretationBrief(instruction: string) {
+  return [
+    "【Playful App Icon 概念设计简报】",
+    `用户目标：${instruction}`,
+    "先提炼产品的唯一主要工作、目标用户和期望情绪，再压缩成“具体物体 + 可见动作 + 明确情绪”。不能只复述用户原话或只添加可爱、现代、高级等形容词。",
+    "提出三个真正不同的原创方向，每个方向明确产品隐喻、视觉路线、外轮廓、动作或表情、唯一记忆钩子和三色配色；至少改变隐喻、轮廓、视角、动作或钩子中的两项，不能只换颜色。",
+    "分别检查产品含义、32px 黑色轮廓、小尺寸表情、灰阶对比和原创性，明确选出一个最强方向并说明原因；最终只生成胜出方向，不做三宫格。",
+    "把胜出方向写成可直接生图的结构规格：一个主体、最多一个功能道具、主体占 70%–85%、2–5 个宽圆大形、8%–15% 关键安全边距、单一路线、单一记忆钩子、满版安静背景、无文字和无已知品牌模仿。",
   ].join("\n")
 }
 
@@ -172,6 +213,12 @@ function buildInterpretationBrief(
   }
   if (isBrandStickerPhotoSkillName(input.skill?.name)) {
     return brandStickerInterpretationBrief(input.userInstruction.trim())
+  }
+  if (isMetalLogoSculptureSkillName(input.skill?.name)) {
+    return metalLogoSculptureInterpretationBrief(input.userInstruction.trim())
+  }
+  if (isPlayfulAppIconsSkillName(input.skill?.name)) {
+    return playfulAppIconInterpretationBrief(input.userInstruction.trim())
   }
   return buildProfessionalCreativeBrief(input.userInstruction.trim(), intent)
 }
@@ -258,10 +305,13 @@ function localInterpretation(
       /代码|编程|shell|终端|命令|文件系统|读取文件|写入文件|密钥|API Key|联网搜索|网络请求/i.test(
         instruction
       )
+    const chatRequest = /聊天|闲聊|聊聊天|对话功能/i.test(instruction)
     return {
       message: unsafeOperation
         ? "我目前专注于图片和视频创作，不能执行代码、文件、密钥或任意网络操作。你可以告诉我希望生成或修改什么画面。"
-        : "有什么我可以帮你的吗？比如：\n\n• 生成图片\n• 生成视频\n\n请告诉我你的需求！",
+        : chatRequest
+          ? "可以简单交流，但我主要负责图片和视频创作。你可以直接告诉我想生成或修改什么画面。"
+          : "有什么我可以帮你的吗？比如：\n\n• 生成图片\n• 生成视频\n\n请告诉我你的需求！",
       summary: unsafeOperation ? "超出图片和视频创作范围" : "普通对话",
       normalizedInstruction: boundedNormalizedInstruction(instruction),
       intent: unsafeOperation ? "unsupported" : "conversation",
@@ -286,10 +336,30 @@ function localInterpretation(
   }
 }
 
+function textModelFallbackMessage(
+  error: unknown,
+  executionMode: AgentTask["executionMode"],
+  apiKey?: string
+) {
+  const detail = error instanceof Error ? error.message.trim() : "未知错误"
+  const withoutSecrets = detail
+    .replace(apiKey?.trim() || /$^/g, "[REDACTED]")
+    .replace(/Bearer\s+\S+/gi, "Bearer [REDACTED]")
+    .replace(/sk-[a-z0-9_-]+/gi, "[REDACTED]")
+    .slice(0, 180)
+  const next = executionMode === "confirm"
+    ? "我已切换到本地规则整理提示词，确认后再执行。"
+    : "我已切换到本地规则规划并继续执行。"
+  return `Agent 推理模型未成功返回（${withoutSecrets || "未知错误"}）。${next}`
+}
+
 function isGenericCreativeBrief(
   sourceInstruction: string,
   normalizedInstruction: string
 ) {
+  if (isUiDesignInstruction(sourceInstruction)) {
+    return isWeakUiCreativeBrief(normalizedInstruction)
+  }
   const scenarioChecks = [
     {
       active: /足球|踢球|射门/i.test(sourceInstruction),
@@ -332,6 +402,13 @@ function isGenericCreativeBrief(
     /侧后方|三角动线|前景.+中景|中景.+远景/,
   ].filter((marker) => marker.test(normalizedInstruction)).length
   return lacksScenarioDetail || (genericPhrases >= 3 && concreteEvidence < 2)
+}
+
+function focusedConversationReply(instruction: string, message: string) {
+  if (/聊天|闲聊|聊聊天|对话功能/i.test(instruction)) {
+    return "可以简单交流，但我主要负责图片和视频创作。你可以直接告诉我想生成或修改什么画面。"
+  }
+  return message
 }
 
 function hasTextModelCredentials(credentials?: TextModelCredentials) {
@@ -397,7 +474,12 @@ async function understandTask(
       ),
     },
   })
-  if (intake.clarification) return intake.clarification
+  if (intake.clarification) {
+    return {
+      ...intake.clarification,
+      resolvedInstruction: intake.resolvedInstruction,
+    }
+  }
   const input = {
     userInstruction: task.userInstruction,
     context: creativeContext,
@@ -414,7 +496,10 @@ async function understandTask(
     dependencies.textAdapter || hasTextModelCredentials(dependencies.textCredentials)
   )
   if (!useTextModel) {
-    return localInterpretation(resolvedInput, false, task.executionMode)
+    return {
+      ...localInterpretation(resolvedInput, false, task.executionMode),
+      resolvedInstruction: intake.resolvedInstruction,
+    }
   }
 
   try {
@@ -451,9 +536,14 @@ async function understandTask(
       !modelCreativeIntent || modelBriefIsGeneric || modelBriefConflictsWithIanSkill
         ? undefined
         : interpreted.normalizedInstruction.trim()
+    const uiCreativeIntent =
+      creativeIntent === "image" &&
+      isUiDesignInstruction(intake.resolvedInstruction)
     const normalizedInstruction = boundedNormalizedInstruction(
       creativeIntent
-        ? isIanXiaoheiSkillName(skill?.name)
+        ? uiCreativeIntent
+          ? modelBrief ?? localBrief ?? intake.resolvedInstruction
+          : isIanXiaoheiSkillName(skill?.name)
           ? [localBrief, modelBrief].filter(Boolean).join("\n\n")
           : [modelBrief, localBrief].filter(Boolean).join("\n\n")
         : interpreted.normalizedInstruction
@@ -469,12 +559,13 @@ async function understandTask(
           : skill
             ? "我会按所选 Skill 整理专业图片提示词，并自动生成后写回画布。"
             : "我已识别为视觉设计任务，会整理专业提示词并自动生成后写回画布。"
-        : interpreted.message,
+        : focusedConversationReply(resolvedInput.userInstruction, interpreted.message),
       summary:
         correctedSkillIntent && creativeIntent
           ? creativeTaskSummary(creativeIntent, task.executionMode)
           : interpreted.summary,
       normalizedInstruction,
+      resolvedInstruction: intake.resolvedInstruction,
       intent: creativeIntent ?? interpreted.intent,
       source: "text-model",
       target:
@@ -485,8 +576,17 @@ async function understandTask(
               mediaType: creativeIntent,
             },
     }
-  } catch {
-    return localInterpretation(resolvedInput, true, task.executionMode)
+  } catch (error) {
+    const fallback = localInterpretation(resolvedInput, true, task.executionMode)
+    return {
+      ...fallback,
+      message: textModelFallbackMessage(
+        error,
+        task.executionMode,
+        dependencies.textCredentials?.apiKey
+      ),
+      resolvedInstruction: intake.resolvedInstruction,
+    }
   }
 }
 
@@ -653,7 +753,8 @@ export async function runAgentTaskTick(
         taskId: task.id,
         userInstruction:
           task.interpretation?.normalizedInstruction ?? task.userInstruction,
-        sourceInstruction: task.userInstruction,
+        sourceInstruction:
+          task.interpretation?.resolvedInstruction ?? task.userInstruction,
         context: creativeContext,
         skill,
         target: {

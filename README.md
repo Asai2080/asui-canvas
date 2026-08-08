@@ -16,6 +16,14 @@
 
 环境要求：Node.js 18 或更高版本。
 
+### 一键启动
+
+- macOS：双击项目根目录的 `Start ASUI Canvas.command`。
+- Windows：双击项目根目录的 `Start ASUI Canvas.bat`。
+- 终端：执行 `npm run start:one-click`。
+
+首次启动会自动安装 npm 依赖、创建 `.env.local` 默认配置，并在浏览器打开项目。已有 `.env.local` 不会被覆盖；API Key 请在网页的 API 配置面板中填写。若 `3030` 端口被其他程序占用，启动器会自动选择下一个可用端口。
+
 ```bash
 npm install
 npm run dev -- -p 3020

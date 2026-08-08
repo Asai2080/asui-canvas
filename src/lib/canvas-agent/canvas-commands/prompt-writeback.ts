@@ -73,6 +73,8 @@ function promptNodeTitle(compiledPrompt: CompiledPrompt) {
   if (compiledPrompt.summary.startsWith("Antibes Holiday")) return "Antibes 插画方案"
   if (compiledPrompt.summary.startsWith("静态图运镜导演")) return "静态图运镜方案"
   if (compiledPrompt.summary.startsWith("品牌贴纸写真")) return "品牌贴纸写真方案"
+  if (compiledPrompt.summary.startsWith("金属 Logo 雕塑")) return "金属 Logo 雕塑方案"
+  if (compiledPrompt.summary.startsWith("Playful App Icon")) return "App 图标设计方案"
   return "专业提示词"
 }
 

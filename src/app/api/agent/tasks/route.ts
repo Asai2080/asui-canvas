@@ -20,6 +20,7 @@ const requestSchema = z
     selectedCanvasId: z.string().trim().min(1).optional(),
     skillId: z.string().trim().min(1).optional(),
     contextSnapshotId: z.string().trim().min(1).optional(),
+    continuationOfTaskId: z.string().trim().min(1).optional(),
     contextSnapshot: canvasContextSnapshotSchema.optional(),
   })
   .refine(

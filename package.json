@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "start:one-click": "bash scripts/one-click-start.sh",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",

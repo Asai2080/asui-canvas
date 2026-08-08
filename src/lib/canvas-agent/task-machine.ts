@@ -15,6 +15,7 @@ type CreateAgentTaskInput = {
   selectedCanvasId?: string
   skillId?: string
   contextSnapshotId?: string
+  continuationOfTaskId?: string
   retryOfTaskId?: string
 }
 
@@ -117,6 +118,7 @@ export function createAgentTask(
     selectedCanvasId: input.selectedCanvasId,
     skillId: input.skillId,
     contextSnapshotId: input.contextSnapshotId,
+    continuationOfTaskId: input.continuationOfTaskId,
     retryOfTaskId: input.retryOfTaskId,
     resultNodeIds: [],
     createdAt: now,

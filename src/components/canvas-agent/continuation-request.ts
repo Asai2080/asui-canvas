@@ -7,6 +7,7 @@ export type ContinuationRequestOverrides = {
   skillId?: string
   requestedOutputCount?: number
   executionMode: AgentExecutionMode
+  continuationOfTaskId?: string
 }
 
 export function continuationRequestOverrides(
@@ -16,5 +17,13 @@ export function continuationRequestOverrides(
     skillId: task.skillId,
     requestedOutputCount: task.requestedOutputCount,
     executionMode: task.executionMode ?? "confirm",
+    continuationOfTaskId: task.id,
   }
+}
+
+export function canContinueClarification(
+  task: AgentTask,
+  selectedSkillId?: string
+) {
+  return !selectedSkillId || task.skillId === selectedSkillId
 }

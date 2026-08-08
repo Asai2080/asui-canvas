@@ -26,4 +26,54 @@ describe("layoutSliceResults", () => {
     const keys = new Set(result.map(({ bounds }) => `${bounds.x}:${bounds.y}`))
     expect(keys.size).toBe(4)
   })
+
+  it("keeps the slice at its source display size instead of capping it", () => {
+    const [result] = layoutSliceResults({
+      sourceBounds: { x: 0, y: 0, w: 750, h: 1624 },
+      sourceImageSize: { width: 750, height: 1624 },
+      occupiedBounds: [],
+      candidates: [
+        {
+          id: "candidate-title",
+          name: "page-title",
+          assetType: "region",
+          cropMode: "rectangle",
+          x: 10,
+          y: 10,
+          width: 640,
+          height: 220,
+          confidence: 1,
+          recommended: true,
+        },
+      ],
+    })
+
+    expect(result.bounds.w).toBe(640)
+    expect(result.bounds.h).toBe(220)
+  })
+
+  it("matches the slice to a scaled source image on the canvas", () => {
+    const [result] = layoutSliceResults({
+      sourceBounds: { x: 0, y: 0, w: 375, h: 812 },
+      sourceImageSize: { width: 750, height: 1624 },
+      occupiedBounds: [],
+      candidates: [
+        {
+          id: "candidate-title",
+          name: "page-title",
+          assetType: "region",
+          cropMode: "rectangle",
+          x: 50,
+          y: 100,
+          width: 600,
+          height: 200,
+          confidence: 1,
+          recommended: true,
+        },
+      ],
+    })
+
+    expect(result.bounds.w).toBe(300)
+    expect(result.bounds.h).toBe(100)
+  })
 })

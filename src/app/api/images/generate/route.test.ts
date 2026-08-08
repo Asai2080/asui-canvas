@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import sharp from "sharp"
 
 import { POST } from "./route"
 
@@ -195,7 +196,7 @@ describe("image generation route", () => {
     expect(body.output_format).toBe("png")
   })
 
-  it("maps arbitrary canvas sizes to the nearest OpenRouter-supported aspect ratio", async () => {
+  it("uses the nearest divisible-by-16 size for OpenRouter GPT Image 2", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -222,11 +223,136 @@ describe("image generation route", () => {
       })
     )
     const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)) as {
-      aspect_ratio: string
+      size: string
+      aspect_ratio?: string
     }
 
     expect(response.status).toBe(200)
-    expect(body.aspect_ratio).toBe("4:3")
+    expect(body.size).toBe("944x720")
+    expect(body.aspect_ratio).toBeUndefined()
+  })
+
+  it("raises small GPT Image 2 pixel requests above the provider minimum budget", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({
+        data: [{ url: "https://example.test/generated.png" }],
+      })
+    )
+
+    const response = await POST(
+      createRequest({
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKey: "sk-test",
+        model: "openai/gpt-5.4-image-2",
+        prompt: "生成一张横版海报",
+        width: 1024,
+        height: 576,
+      })
+    )
+    const body = JSON.parse(
+      String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)
+    ) as { size: string }
+
+    expect(response.status).toBe(200)
+    expect(body.size).toBe("1088x608")
+  })
+
+  it("preserves the full UI frame and returns the exact requested pixels", async () => {
+    const providerImage = await sharp(
+      Buffer.from(
+        '<svg width="752" height="1632" xmlns="http://www.w3.org/2000/svg"><rect width="752" height="1632" fill="white"/><rect width="752" height="120" fill="#ff0000"/><rect y="1512" width="752" height="120" fill="#0000ff"/></svg>'
+      )
+    )
+      .png()
+      .toBuffer()
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({
+        data: [{ b64_json: providerImage.toString("base64") }],
+      })
+    )
+
+    const response = await POST(
+      createRequest({
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKey: "sk-test",
+        model: "openai/gpt-5.4-image-2",
+        prompt: "生成一张正视、平面的 750 × 1624 移动端 App 高保真产品界面",
+        width: 750,
+        height: 1624,
+      })
+    )
+    const payload = (await response.json()) as {
+      version: { src: string; width: number; height: number }
+    }
+    const body = JSON.parse(
+      String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body)
+    ) as { prompt: string; size: string; aspect_ratio?: string }
+    const normalized = Buffer.from(payload.version.src.split(",")[1], "base64")
+    const normalizedImage = sharp(normalized)
+    const metadata = await normalizedImage.metadata()
+    const topPixel = await normalizedImage.clone().extract({ left: 375, top: 0, width: 1, height: 1 }).removeAlpha().raw().toBuffer()
+    const bottomPixel = await normalizedImage.clone().extract({ left: 375, top: 1623, width: 1, height: 1 }).removeAlpha().raw().toBuffer()
+
+    expect(response.status).toBe(200)
+    expect(body.size).toBe("752x1632")
+    expect(body.aspect_ratio).toBeUndefined()
+    expect(body.prompt).toContain("OpenRouter 像素适配")
+    expect(body.prompt).toContain("等比微裁")
+    expect(body.prompt).toContain("不拉伸、不增加留白")
+    expect(payload.version).toMatchObject({ width: 750, height: 1624 })
+    expect(metadata).toMatchObject({ width: 750, height: 1624 })
+    expect([...topPixel]).toEqual([255, 0, 0])
+    expect([...bottomPixel]).toEqual([0, 0, 255])
+  })
+
+  it("preserves UI geometry while normalizing a mismatched provider frame", async () => {
+    const providerImage = await sharp(
+      Buffer.from(
+        '<svg width="100" height="200" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="200" fill="white"/><rect x="30" y="80" width="40" height="40" fill="black"/></svg>'
+      )
+    )
+      .png()
+      .toBuffer()
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({ data: [{ b64_json: providerImage.toString("base64") }] })
+    )
+
+    const response = await POST(
+      createRequest({
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKey: "sk-test",
+        model: "openai/gpt-5.4-image-2",
+        prompt: "生成一张正视、平面的 100 × 100 移动端 App 高保真产品界面",
+        width: 100,
+        height: 100,
+      })
+    )
+    const payload = (await response.json()) as {
+      version: { src: string }
+    }
+    const { data, info } = await sharp(
+      Buffer.from(payload.version.src.split(",")[1], "base64")
+    )
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    const blackPixels: Array<[number, number]> = []
+    for (let y = 0; y < info.height; y += 1) {
+      for (let x = 0; x < info.width; x += 1) {
+        const offset = (y * info.width + x) * info.channels
+        if (data[offset] < 32 && data[offset + 1] < 32 && data[offset + 2] < 32) {
+          blackPixels.push([x, y])
+        }
+      }
+    }
+    const xs = blackPixels.map(([x]) => x)
+    const ys = blackPixels.map(([, y]) => y)
+
+    expect(response.status).toBe(200)
+    const renderedWidth = Math.max(...xs) - Math.min(...xs) + 1
+    const renderedHeight = Math.max(...ys) - Math.min(...ys) + 1
+    expect(renderedWidth).toBeGreaterThan(0)
+    expect(renderedWidth).toBe(renderedHeight)
   })
 
   it("repairs a concatenated GPT image model before calling OpenRouter", async () => {
@@ -289,11 +415,11 @@ describe("image generation route", () => {
         type: string
         image_url: { url: string }
       }>
-      aspect_ratio: string
+      size: string
     }
 
     expect(response.status).toBe(200)
-    expect(body.aspect_ratio).toBe("9:16")
+    expect(body.size).toBe("912x1600")
     expect(body.prompt).toContain("Apply ONLY the requested annotation change")
     expect(body.prompt).toContain("把标题改成阿水拉面")
     expect(body.input_references[0]).toEqual({
@@ -338,7 +464,8 @@ describe("image generation route", () => {
     }
 
     expect(response.status).toBe(200)
-    expect(body.prompt).toContain("uploaded reference images")
+    expect(body.prompt).toContain("2 explicitly selected reference images")
+    expect(body.prompt).toContain("first attached image as the primary reference")
     expect(body.prompt).toContain("Text prompt: make a poster using references")
     expect(body.input_references).toEqual([
       {

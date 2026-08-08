@@ -137,8 +137,22 @@ export function tasksToConversationHistory(
   const activeSkillId =
     activeIndex >= 0 ? ordered[activeIndex]?.skillId : undefined
   const priorTasks = activeIndex >= 0 ? ordered.slice(0, activeIndex) : ordered
+  const activeTask = activeIndex >= 0 ? ordered[activeIndex] : undefined
   let sameWorkflow = priorTasks
-  if (activeIndex >= 0) {
+  if (activeTask?.continuationOfTaskId) {
+    const byId = new Map(ordered.map((task) => [task.id, task]))
+    const ancestry: AgentTask[] = []
+    const visited = new Set<string>()
+    let parentId: string | undefined = activeTask.continuationOfTaskId
+    while (parentId && !visited.has(parentId)) {
+      visited.add(parentId)
+      const parent = byId.get(parentId)
+      if (!parent || parent.createdAt >= activeTask.createdAt) break
+      ancestry.unshift(parent)
+      parentId = parent.continuationOfTaskId
+    }
+    sameWorkflow = ancestry
+  } else if (activeIndex >= 0) {
     sameWorkflow = []
     for (let index = priorTasks.length - 1; index >= 0; index -= 1) {
       const task = priorTasks[index]
@@ -173,7 +187,10 @@ export function tasksToThreadMessages(
         {
           id: `${task.id}-user`,
           role: "user" as const,
-          content: [{ type: "text" as const, text: task.userInstruction }],
+          content: [{
+            type: "text" as const,
+            text: task.retryOfTaskId ? "正在重试原任务" : task.userInstruction,
+          }],
           attachments: [],
           createdAt,
           metadata: { custom: { taskId: task.id } },

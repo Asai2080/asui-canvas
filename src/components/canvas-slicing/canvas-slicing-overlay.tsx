@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type PointerEvent } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   CheckmarkSquare02Icon,
@@ -11,9 +11,18 @@ import {
   CursorRectangleSelection01Icon,
   Delete02Icon,
   Loading03Icon,
+  RulerIcon,
+  Settings01Icon,
 } from "@hugeicons/core-free-icons"
 
 import type { Bounds } from "@/lib/canvas/types"
+import {
+  moveSliceRect,
+  resizeSliceRect,
+  updateSliceRectField,
+  type SliceRectField,
+  type SliceResizeHandle,
+} from "@/lib/canvas-slicing/candidate-editing"
 import type { SliceCandidate, SliceRect } from "@/lib/canvas-slicing/schema"
 
 export type CanvasSlicingPhase =
@@ -21,6 +30,7 @@ export type CanvasSlicingPhase =
   | "detecting"
   | "reviewing"
   | "manual"
+  | "export-settings"
   | "exporting"
 
 type CanvasSlicingOverlayProps = {
@@ -32,16 +42,44 @@ type CanvasSlicingOverlayProps = {
   selectedIds: Set<string>
   onAutomatic: () => void
   onManual: () => void
+  onSupplementManual: () => void
   onAddManual: (rect: SliceRect) => void
+  onUpdateCandidate: (id: string, rect: SliceRect) => void
+  onDeleteCandidate: (id: string) => void
   onToggleCandidate: (id: string) => void
   onToggleCropMode: (id: string) => void
   onSelectAll: () => void
   onClear: () => void
+  onOpenExportSettings: () => void
+  onCloseExportSettings: () => void
   onExport: () => void
   onCancel: () => void
 }
 
 type DragRect = { startX: number; startY: number; x: number; y: number; width: number; height: number }
+
+type CandidateGesture = {
+  candidateId: string
+  handle?: SliceResizeHandle
+  initial: SliceRect
+  pointerId: number
+  startClientX: number
+  startClientY: number
+  selectedAtStart: boolean
+  selectedDuringDrag: boolean
+}
+
+const RESIZE_HANDLES: SliceResizeHandle[] = ["nw", "ne", "sw", "se"]
+type GeometryDraft = Record<SliceRectField, string>
+
+function geometryDraftFromCandidate(candidate: SliceCandidate): GeometryDraft {
+  return {
+    x: String(candidate.x),
+    y: String(candidate.y),
+    width: String(candidate.width),
+    height: String(candidate.height),
+  }
+}
 
 function candidateStyle(candidate: SliceCandidate, sourceWidth: number, sourceHeight: number) {
   return {
@@ -61,15 +99,37 @@ export function CanvasSlicingOverlay({
   selectedIds,
   onAutomatic,
   onManual,
+  onSupplementManual,
   onAddManual,
+  onUpdateCandidate,
+  onDeleteCandidate,
   onToggleCandidate,
   onToggleCropMode,
   onSelectAll,
   onClear,
+  onOpenExportSettings,
+  onCloseExportSettings,
   onExport,
   onCancel,
 }: CanvasSlicingOverlayProps) {
   const [drag, setDrag] = useState<DragRect | null>(null)
+  const [activeCandidateId, setActiveCandidateId] = useState<string | null>(null)
+  const [geometryOpen, setGeometryOpen] = useState(false)
+  const [geometryDraft, setGeometryDraft] = useState<GeometryDraft | null>(null)
+  const candidateGestureRef = useRef<CandidateGesture | null>(null)
+
+  const editable = phase === "reviewing" || phase === "manual"
+  const activeCandidate = candidates.find((candidate) => candidate.id === activeCandidateId)
+
+  useEffect(() => {
+    setGeometryDraft(activeCandidate ? geometryDraftFromCandidate(activeCandidate) : null)
+  }, [
+    activeCandidate?.id,
+    activeCandidate?.x,
+    activeCandidate?.y,
+    activeCandidate?.width,
+    activeCandidate?.height,
+  ])
 
   const pointInImage = (event: PointerEvent<HTMLDivElement>) => ({
     x: Math.max(0, Math.min(bounds.w, event.clientX - bounds.x)),
@@ -77,7 +137,7 @@ export function CanvasSlicingOverlay({
   })
 
   const startManualSelection = (event: PointerEvent<HTMLDivElement>) => {
-    if (phase !== "manual" || event.button !== 0) return
+    if (candidateGestureRef.current || phase !== "manual" || event.button !== 0) return
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -85,7 +145,95 @@ export function CanvasSlicingOverlay({
     setDrag({ startX: point.x, startY: point.y, x: point.x, y: point.y, width: 0, height: 0 })
   }
 
+  const startCandidateGesture = (
+    event: PointerEvent<HTMLElement>,
+    candidate: SliceCandidate,
+    handle?: SliceResizeHandle
+  ) => {
+    if (!editable || event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setActiveCandidateId(candidate.id)
+    setGeometryOpen(true)
+    candidateGestureRef.current = {
+      candidateId: candidate.id,
+      handle,
+      initial: {
+        x: candidate.x,
+        y: candidate.y,
+        width: candidate.width,
+        height: candidate.height,
+      },
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      selectedAtStart: selectedIds.has(candidate.id),
+      selectedDuringDrag: false,
+    }
+    if (handle && !selectedIds.has(candidate.id)) {
+      candidateGestureRef.current.selectedDuringDrag = true
+      onToggleCandidate(candidate.id)
+    }
+  }
+
+  const updateCandidateGesture = (event: PointerEvent<HTMLElement>) => {
+    const gesture = candidateGestureRef.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return false
+    event.preventDefault()
+    event.stopPropagation()
+    const screenDeltaX = event.clientX - gesture.startClientX
+    const screenDeltaY = event.clientY - gesture.startClientY
+    const deltaX = (screenDeltaX / bounds.w) * sourceWidth
+    const deltaY = (screenDeltaY / bounds.h) * sourceHeight
+    if (
+      !gesture.selectedAtStart &&
+      !gesture.selectedDuringDrag &&
+      Math.hypot(screenDeltaX, screenDeltaY) >= 3
+    ) {
+      gesture.selectedDuringDrag = true
+      onToggleCandidate(gesture.candidateId)
+    }
+    onUpdateCandidate(
+      gesture.candidateId,
+      gesture.handle
+        ? resizeSliceRect(
+            gesture.initial,
+            gesture.handle,
+            deltaX,
+            deltaY,
+            sourceWidth,
+            sourceHeight
+          )
+        : moveSliceRect(
+            gesture.initial,
+            deltaX,
+            deltaY,
+            sourceWidth,
+            sourceHeight
+          )
+    )
+    return true
+  }
+
+  const finishCandidateGesture = (event: PointerEvent<HTMLElement>) => {
+    const gesture = candidateGestureRef.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return false
+    event.preventDefault()
+    event.stopPropagation()
+    const moved = Math.hypot(
+      event.clientX - gesture.startClientX,
+      event.clientY - gesture.startClientY
+    )
+    if (!gesture.handle && moved < 3) {
+      onToggleCandidate(gesture.candidateId)
+    }
+    candidateGestureRef.current = null
+    return true
+  }
+
   const updateManualSelection = (event: PointerEvent<HTMLDivElement>) => {
+    if (updateCandidateGesture(event)) return
     if (!drag || phase !== "manual") return
     event.preventDefault()
     event.stopPropagation()
@@ -100,6 +248,7 @@ export function CanvasSlicingOverlay({
   }
 
   const finishManualSelection = (event: PointerEvent<HTMLDivElement>) => {
+    if (finishCandidateGesture(event)) return
     if (!drag || phase !== "manual") return
     event.preventDefault()
     event.stopPropagation()
@@ -114,9 +263,65 @@ export function CanvasSlicingOverlay({
     setDrag(null)
   }
 
+  const cancelPointerInteraction = () => {
+    candidateGestureRef.current = null
+    setDrag(null)
+  }
+
+  const handleCandidateKeyDown = (
+    event: KeyboardEvent<HTMLDivElement>,
+    candidate: SliceCandidate
+  ) => {
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault()
+      onDeleteCandidate(candidate.id)
+      setActiveCandidateId(null)
+      setGeometryOpen(false)
+      return
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      onToggleCandidate(candidate.id)
+      return
+    }
+    const step = event.shiftKey ? 10 : 1
+    const delta = {
+      ArrowLeft: { x: -step, y: 0 },
+      ArrowRight: { x: step, y: 0 },
+      ArrowUp: { x: 0, y: -step },
+      ArrowDown: { x: 0, y: step },
+    }[event.key]
+    if (!delta) return
+    event.preventDefault()
+    onUpdateCandidate(
+      candidate.id,
+      moveSliceRect(candidate, delta.x, delta.y, sourceWidth, sourceHeight)
+    )
+  }
+
   const busy = phase === "detecting" || phase === "exporting"
   const selectionCount = selectedIds.size
-  const reviewCandidates = phase === "reviewing" || phase === "manual"
+  const updateActiveDraft = (field: SliceRectField, value: string) => {
+    if (!/^\d*$/.test(value)) return
+    setGeometryDraft((current) => current ? { ...current, [field]: value } : current)
+  }
+  const commitActiveField = (field: SliceRectField) => {
+    if (!activeCandidate || !geometryDraft) return
+    const rawValue = geometryDraft[field].trim()
+    if (!rawValue) {
+      setGeometryDraft(geometryDraftFromCandidate(activeCandidate))
+      return
+    }
+    const nextRect = updateSliceRectField(
+      activeCandidate,
+      field,
+      Number(rawValue),
+      sourceWidth,
+      sourceHeight
+    )
+    setGeometryDraft(geometryDraftFromCandidate({ ...activeCandidate, ...nextRect }))
+    onUpdateCandidate(activeCandidate.id, nextRect)
+  }
 
   return (
     <div className="canvas-slicing-layer" aria-label="切图模式">
@@ -126,33 +331,57 @@ export function CanvasSlicingOverlay({
         onPointerDown={startManualSelection}
         onPointerMove={updateManualSelection}
         onPointerUp={finishManualSelection}
-        onPointerCancel={() => setDrag(null)}
+        onPointerCancel={cancelPointerInteraction}
       >
         {candidates.map((candidate, index) => {
           const selected = selectedIds.has(candidate.id)
+          const active = activeCandidateId === candidate.id
           return (
             <div
               key={candidate.id}
-              className={`canvas-slicing-candidate${selected ? " is-selected" : ""}${!candidate.recommended ? " is-skipped" : ""}`}
+              className={`canvas-slicing-candidate${selected ? " is-selected" : ""}${active ? " is-active" : ""}${!candidate.recommended ? " is-skipped" : ""}`}
               style={candidateStyle(candidate, sourceWidth, sourceHeight)}
-              aria-label={`${selected ? "取消" : "选择"}${candidate.name}`}
+              aria-label={`${candidate.name}，可拖动并缩放`}
               role="button"
               tabIndex={0}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation()
-                onToggleCandidate(candidate.id)
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault()
-                  onToggleCandidate(candidate.id)
-                }
-              }}
+              onPointerDown={(event) => startCandidateGesture(event, candidate)}
+              onPointerMove={updateCandidateGesture}
+              onPointerUp={finishCandidateGesture}
+              onPointerCancel={cancelPointerInteraction}
+              onKeyDown={(event) => handleCandidateKeyDown(event, candidate)}
             >
               <span>{index + 1}</span>
               <small>{candidate.recommended ? "建议切出" : "建议跳过"} · {candidate.elementType}</small>
               {candidate.reason && <em>{candidate.reason}</em>}
+              {active && editable && (
+                <>
+                  {RESIZE_HANDLES.map((handle) => (
+                    <i
+                      key={handle}
+                      className={`canvas-slicing-candidate__handle is-${handle}`}
+                      aria-hidden="true"
+                      onPointerDown={(event) =>
+                        startCandidateGesture(event, candidate, handle)
+                      }
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    className="canvas-slicing-candidate__delete"
+                    title="删除切图框"
+                    aria-label={`删除 ${candidate.name}`}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onDeleteCandidate(candidate.id)
+                      setActiveCandidateId(null)
+                      setGeometryOpen(false)
+                    }}
+                  >
+                    <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
+                  </button>
+                </>
+              )}
             </div>
           )
         })}
@@ -164,7 +393,7 @@ export function CanvasSlicingOverlay({
         )}
       </div>
 
-      {reviewCandidates && candidates.length > 0 && (
+      {phase === "export-settings" && candidates.length > 0 && (
         <section
           className="canvas-slicing-review"
           aria-label="切图导出设置"
@@ -172,7 +401,7 @@ export function CanvasSlicingOverlay({
         >
           <header>
             <div>
-              <strong>切图导出设置</strong>
+            <strong>切图导出设置</strong>
               <span>默认保留背景，可逐项改为透明 PNG</span>
             </div>
             <span>{selectionCount}/{candidates.length}</span>
@@ -248,23 +477,99 @@ export function CanvasSlicingOverlay({
         {(phase === "reviewing" || phase === "manual") && (
           <>
             <div className="canvas-slicing-controls__count">已选 {selectionCount} 项</div>
+            {phase === "reviewing" && (
+              <button type="button" onClick={onSupplementManual}>
+                <HugeiconsIcon icon={CursorRectangleSelection01Icon} size={16} strokeWidth={1.7} />
+                补充框选
+              </button>
+            )}
+            <button
+              type="button"
+              aria-pressed={geometryOpen}
+              disabled={!activeCandidate}
+              title={activeCandidate ? "输入位置和尺寸" : "请先选择一个切图框"}
+              onClick={() => setGeometryOpen((current) => !current)}
+            >
+              <HugeiconsIcon icon={RulerIcon} size={16} strokeWidth={1.7} />
+              尺寸
+            </button>
             <button type="button" className="is-icon" title="全选" aria-label="全选" onClick={onSelectAll}>
               <HugeiconsIcon icon={CursorAddSelection01Icon} size={16} strokeWidth={1.7} />
             </button>
             <button type="button" className="is-icon" title="清空" aria-label="清空" onClick={onClear}>
               <HugeiconsIcon icon={Delete02Icon} size={16} strokeWidth={1.7} />
             </button>
-            <button type="button" className="is-primary" disabled={selectionCount === 0} onClick={onExport}>
+            <button type="button" className="is-primary" disabled={selectionCount === 0} onClick={onOpenExportSettings}>
               <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} strokeWidth={1.7} />
               完成切图
             </button>
           </>
         )}
 
+        {phase === "export-settings" && (
+          <>
+            <div className="canvas-slicing-controls__count">已选 {selectionCount} 项</div>
+            <button type="button" className="is-icon" title="返回选择" aria-label="返回选择" onClick={onCloseExportSettings}>
+              <HugeiconsIcon icon={CursorRectangleSelection01Icon} size={16} strokeWidth={1.7} />
+            </button>
+            <button type="button" className="is-primary" disabled={selectionCount === 0} onClick={onExport}>
+              <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} strokeWidth={1.7} />
+              开始导出
+            </button>
+          </>
+        )}
+
+        {(phase === "reviewing" || phase === "manual") && (
+          <button type="button" className="is-icon" title="导出设置" aria-label="导出设置" onClick={onOpenExportSettings}>
+            <HugeiconsIcon icon={Settings01Icon} size={16} strokeWidth={1.7} />
+          </button>
+        )}
+
         <button type="button" className="is-icon" title="退出切图" aria-label="退出切图" onClick={onCancel}>
           <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.7} />
         </button>
       </div>
+
+      {editable && activeCandidate && geometryOpen && (
+        <div
+          className="canvas-slicing-geometry"
+          style={{
+            left: Math.max(16, bounds.x + bounds.w / 2),
+            top: Math.max(60, bounds.y - 12),
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {([
+            ["x", "X"],
+            ["y", "Y"],
+            ["width", "W"],
+            ["height", "H"],
+          ] as const).map(([field, label]) => (
+            <label key={field}>
+              <span>{label}</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={geometryDraft?.[field] ?? String(activeCandidate[field])}
+                aria-label={`${activeCandidate.name} ${label}`}
+                onChange={(event) => updateActiveDraft(field, event.target.value)}
+                onBlur={() => commitActiveField(field)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    event.currentTarget.blur()
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault()
+                    setGeometryDraft(geometryDraftFromCandidate(activeCandidate))
+                  }
+                }}
+              />
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

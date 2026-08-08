@@ -1,3 +1,5 @@
+import { isUiDesignInstruction } from "./ui-spec"
+
 export type VisualPromptTemplateId =
   | "ui-interface"
   | "infographic"
@@ -166,7 +168,7 @@ const TEMPLATES: readonly VisualPromptTemplate[] = [
 const MATCHERS: readonly [VisualPromptTemplateId, RegExp][] = [
   ["ui-interface", /APP|应用|UI|UX|界面|网页|网站|web\s*端|落地页|启动页|后台|仪表盘|dashboard|小程序|弹窗|信息卡片/i],
   ["infographic", /信息图|图解|流程图|关系图|知识图谱|时间线|数据可视化|图表|diagram|infographic/i],
-  ["product", /产品图|产品拆解|概念产品|商品|电商|包装|详情页|商业广告|运动鞋|茶饮|饮料|香水|珠宝|美妆|护肤|肤质分析/i],
+  ["product", /产品图|产品广告|产品视觉|产品拆解|概念产品|商品广告|商品|电商|包装|详情页|商业广告|运动鞋|茶饮|饮料|香水|珠宝|美妆|护肤|肤质分析/i],
   ["brand", /品牌视觉|品牌识别|VI\b|logo|标志|字标|品牌触点/i],
   ["poster", /海报|封面|KV|主视觉|宣传图|Campaign|字体设计|排版视觉/i],
   ["architecture", /建筑|室内|空间设计|景观|展厅|店铺|住宅|城市规划|interior|architecture/i],
@@ -367,7 +369,9 @@ function templateById(id: VisualPromptTemplateId) {
 }
 
 export function selectVisualPromptTemplate(instruction: string) {
-  const id = MATCHERS.find(([, pattern]) => pattern.test(instruction))?.[0] ?? "general"
+  const id = isUiDesignInstruction(instruction)
+    ? "ui-interface"
+    : MATCHERS.find(([, pattern]) => pattern.test(instruction))?.[0] ?? "general"
   return templateById(id)
 }
 
@@ -377,7 +381,9 @@ export function selectVisualPromptMethod(instruction: string) {
     METHODS.find(
       (method) =>
         method.templateId === template.id && method.match?.test(instruction)
-    ) ?? METHODS.find((method) => method.templateId === template.id)
+    ) ?? METHODS.find(
+      (method) => method.templateId === template.id && !method.match
+    )
   )
 }
 

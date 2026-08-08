@@ -234,6 +234,59 @@ describe("resolveBuiltinSkillIntake", () => {
     expect(complete.resolvedInstruction).toContain("文字效果：4")
   })
 
+  it("skips expression and background choices when the selected reference is locked", () => {
+    const history = [
+      {
+        role: "user" as const,
+        content:
+          "封面主题：春季新品\n主标题：春日新章\n什么都不变，背景也不要修改",
+      },
+      {
+        role: "assistant" as const,
+        content: "【封面 Skill · 第 1 轮 / 3】请选择构图风格。",
+      },
+      {
+        role: "user" as const,
+        content: "10 正面对视风，主标题：春日新章",
+      },
+    ]
+
+    const visual = resolveBuiltinSkillIntake({
+      userInstruction: "使用当前选中图片作为图1，没有其他素材",
+      skill: skill("封面 Skill"),
+      context: imageContext(),
+      conversationHistory: history,
+    })
+
+    expect(visual.clarification?.summary).toBe("封面文字样式待选择")
+    expect(visual.clarification?.message).not.toContain("人物表情")
+    expect(visual.clarification?.message).not.toContain("背景色调")
+    expect(visual.clarification?.choiceGroups?.map((group) => group.id)).toEqual([
+      "cover-font",
+      "cover-text-effect",
+    ])
+
+    const complete = resolveBuiltinSkillIntake({
+      userInstruction: "1 / 4",
+      skill: skill("封面 Skill"),
+      context: imageContext(),
+      conversationHistory: [
+        ...history,
+        { role: "assistant" as const, content: visual.clarification!.message },
+        {
+          role: "user" as const,
+          content: "使用当前选中图片作为图1，没有其他素材",
+        },
+      ],
+    })
+
+    expect(complete.clarification).toBeUndefined()
+    expect(complete.resolvedInstruction).toContain("人物表情：8")
+    expect(complete.resolvedInstruction).toContain("背景：7")
+    expect(complete.resolvedInstruction).toContain("字体：1")
+    expect(complete.resolvedInstruction).toContain("文字效果：4")
+  })
+
   it("keeps the cover style when the choice UI joins style and title with a slash", () => {
     const intake = resolveBuiltinSkillIntake({
       userInstruction: "无人物，没有其他素材",
@@ -266,6 +319,59 @@ describe("resolveBuiltinSkillIntake", () => {
       "cover-font",
       "cover-text-effect",
     ])
+    expect(
+      intake.clarification?.choiceGroups
+        ?.find((group) => group.id === "cover-background")
+        ?.options.map((option) => [option.value, option.label])
+    ).toContainEqual(["7", "保留原背景"])
+  })
+
+  it("records the preserve-background cover choice as option seven", () => {
+    const complete = resolveBuiltinSkillIntake({
+      userInstruction: "6 / 7 / 1 / 4",
+      skill: skill("封面 Skill"),
+      context: imageContext(),
+      conversationHistory: [
+        {
+          role: "user",
+          content: "封面主题：春日新品\n主标题：春日新章",
+        },
+        {
+          role: "user",
+          content: "10 主标题：春日新章",
+        },
+        {
+          role: "user",
+          content: "使用当前选中的人物图，没有其他参考素材",
+        },
+      ],
+      generationCapabilities: { image: true, video: false },
+    })
+
+    expect(complete.clarification).toBeUndefined()
+    expect(complete.resolvedInstruction).toContain("背景：7")
+  })
+
+  it("requires a selected image before preserving a cover background", () => {
+    const intake = resolveBuiltinSkillIntake({
+      userInstruction: [
+        "封面主题：春日新品",
+        "主标题：春日新章",
+        "构图风格：10 正面对视风",
+        "无人物，没有其他素材",
+        "人物表情：6",
+        "背景：7 保留原背景",
+        "字体：1",
+        "文字效果：4",
+      ].join("\n"),
+      skill: skill("封面 Skill"),
+      generationCapabilities: { image: true, video: false },
+    })
+
+    expect(intake.clarification).toMatchObject({
+      summary: "封面原背景待选择",
+    })
+    expect(intake.clarification?.message).toContain("选中一张图片")
   })
 
   it("recovers all cover rounds from persisted user answers when assistant markers are missing", () => {
@@ -940,9 +1046,98 @@ describe("resolveBuiltinSkillIntake", () => {
     expect(missing.clarification?.message).toContain("品牌名称")
     expect(missing.clarification?.message).toContain("背景颜色")
 
+    const logoChoice = resolveBuiltinSkillIntake({
+      userInstruction: "品牌名称：美团，背景色：白色",
+      skill: skill("品牌贴纸写真 Skill"),
+    })
+    expect(logoChoice.clarification?.choiceGroups?.[0].options).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "brand-sticker-official-icon" }),
+        expect.objectContaining({ id: "brand-sticker-wordmark" }),
+      ])
+    )
+
     const ready = resolveBuiltinSkillIntake({
       userInstruction: "品牌名称：ASUI，背景色：薄荷绿，使用纯文字字标",
       skill: skill("品牌贴纸写真 Skill"),
+      generationCapabilities: { image: true, video: false },
+    })
+    expect(ready.clarification).toBeUndefined()
+  })
+
+  it("defaults metal Logo sculpture to the official brand icon route", () => {
+    const missing = resolveBuiltinSkillIntake({
+      userInstruction: "使用 generate-metal-logo-sculpture",
+      skill: skill("generate-metal-logo-sculpture"),
+    })
+    expect(missing.clarification?.message).toContain("品牌名称")
+    expect(missing.clarification?.message).toContain("背景颜色")
+    expect(missing.clarification?.message).toContain("金属对象颜色")
+
+    const officialDefault = resolveBuiltinSkillIntake({
+      userInstruction: "品牌名称：ASUI，背景色：深灰，金属颜色：枪灰色",
+      skill: skill("generate-metal-logo-sculpture"),
+      generationCapabilities: { image: true, video: false },
+    })
+    expect(officialDefault.clarification).toBeUndefined()
+    expect(officialDefault.resolvedInstruction).toContain(
+      "Logo 依据：使用官方品牌图标"
+    )
+
+    const officialIcon = resolveBuiltinSkillIntake({
+      userInstruction: [
+        "品牌名称：拼多多",
+        "背景色：浅灰",
+        "金属颜色：红色",
+        "Logo 依据：使用官方品牌图标",
+      ].join("\n"),
+      skill: skill("generate-metal-logo-sculpture"),
+      generationCapabilities: { image: true, video: false },
+    })
+    expect(officialIcon.clarification).toBeUndefined()
+    expect(officialIcon.resolvedInstruction).toContain(
+      "Logo 依据：使用官方品牌图标"
+    )
+
+    const wordmark = resolveBuiltinSkillIntake({
+      userInstruction: "品牌名称：ASUI，背景色：深灰，金属颜色：枪灰色，使用纯文字字标",
+      skill: skill("generate-metal-logo-sculpture"),
+      generationCapabilities: { image: true, video: false },
+    })
+    expect(wordmark.clarification).toBeUndefined()
+    expect(wordmark.resolvedInstruction).toContain("使用纯文字字标")
+    expect(wordmark.resolvedInstruction).not.toContain("使用官方品牌图标")
+
+    const ready = resolveBuiltinSkillIntake({
+      userInstruction: "品牌名称：ASUI，背景色：深灰，金属颜色：枪灰色",
+      skill: skill("generate-metal-logo-sculpture"),
+      context: imageContext(),
+      generationCapabilities: { image: true, video: false },
+    })
+    expect(ready.clarification).toBeUndefined()
+  })
+
+  it("collects the App purpose and platform without asking for low-risk art details", () => {
+    const missingPurpose = resolveBuiltinSkillIntake({
+      userInstruction: "使用 design-playful-app-icons",
+      skill: skill("design-playful-app-icons"),
+    })
+    expect(missingPurpose.clarification?.summary).toBe("App 图标产品用途待补充")
+
+    const missingPlatform = resolveBuiltinSkillIntake({
+      userInstruction: "为一个帮助用户专注 25 分钟并减少分心的 App 设计图标",
+      skill: skill("design-playful-app-icons"),
+    })
+    expect(missingPlatform.clarification?.summary).toBe("App 图标平台待确认")
+    expect(missingPlatform.clarification?.choiceGroups?.[0].options.map((option) => option.label)).toEqual([
+      "iOS",
+      "Android",
+      "通用概念",
+    ])
+
+    const ready = resolveBuiltinSkillIntake({
+      userInstruction: "为一个帮助用户专注 25 分钟并减少分心的 App 设计 iOS 图标",
+      skill: skill("design-playful-app-icons"),
       generationCapabilities: { image: true, video: false },
     })
     expect(ready.clarification).toBeUndefined()

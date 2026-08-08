@@ -128,6 +128,9 @@ export const agentInterpretationSchema = z.object({
   message: z.string().trim().min(1).max(2_000),
   summary: z.string().trim().min(1).max(1_000),
   normalizedInstruction: z.string().trim().min(1).max(4_000),
+  // The merged user facts after Skill intake. This is distinct from the
+  // model-authored brief and must survive choice-based continuation tasks.
+  resolvedInstruction: z.string().trim().min(1).max(20_000).optional(),
   intent: z.enum(["image", "video", "conversation", "unsupported"]),
   source: z.enum(["text-model", "local-rules"]),
   choiceGroups: z.array(agentChoiceGroupSchema).min(1).max(4).optional(),
@@ -193,6 +196,7 @@ export const agentTaskSchema = z.object({
   selectedCanvasId: z.string().trim().min(1).optional(),
   skillId: agentTaskIdSchema.optional(),
   contextSnapshotId: agentTaskIdSchema.optional(),
+  continuationOfTaskId: agentTaskIdSchema.optional(),
   retryOfTaskId: agentTaskIdSchema.optional(),
   interpretation: agentInterpretationSchema.optional(),
   compiledPrompt: compiledPromptSchema.optional(),

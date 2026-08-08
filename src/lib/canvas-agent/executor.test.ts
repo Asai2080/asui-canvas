@@ -273,6 +273,97 @@ describe("executeAgentTask", () => {
     })
   })
 
+  it("persists a new revision while an existing provider video job is still pending", async () => {
+    const root = await createRoot()
+    const plan = videoPlan("task-video-pending")
+    plan.steps[0].status = "running"
+    plan.steps[0].attempts = 1
+    const task = agentTaskSchema.parse({
+      ...executingTask("task-video-pending", plan),
+      providerJobIds: {
+        "generate-video-1": "provider-job-existing",
+      },
+      history: [
+        {
+          id: "event-video-submitted",
+          status: "executing",
+          message: "视频任务已提交，等待供应商生成",
+          createdAt: "2026-07-25T09:01:00.000Z",
+          stepId: "generate-video-1",
+        },
+      ],
+    })
+    await createStoredAgentTask(task, root)
+    const create = vi.fn()
+    const poll = vi.fn(async () => ({
+      state: "pending" as const,
+      task: {
+        taskId: "provider-job-existing",
+        status: "running",
+        statusText: "任务状态：running",
+      },
+    }))
+
+    const result = await executeAgentTask(task.id, {
+      root,
+      now: () => "2026-07-25T09:02:00.000Z",
+      imageAdapter: { generate: vi.fn() },
+      videoAdapter: { create, poll },
+    })
+
+    expect(create).not.toHaveBeenCalled()
+    expect(poll).toHaveBeenCalledOnce()
+    expect(result.revision).toBe(task.revision + 1)
+    expect(result.providerJobIds?.["generate-video-1"]).toBe(
+      "provider-job-existing"
+    )
+    expect((await getStoredAgentTask(task.id, root))?.task.revision).toBe(
+      task.revision + 1
+    )
+  })
+
+  it("stops polling a provider video job after the execution timeout", async () => {
+    const root = await createRoot()
+    const plan = videoPlan("task-video-timeout")
+    plan.steps[0].status = "running"
+    plan.steps[0].attempts = 1
+    const task = agentTaskSchema.parse({
+      ...executingTask("task-video-timeout", plan),
+      providerJobIds: {
+        "generate-video-1": "provider-job-stale",
+      },
+      history: [
+        {
+          id: "event-video-submitted",
+          status: "executing",
+          message: "视频任务已提交，等待供应商生成",
+          createdAt: "2026-07-25T09:00:00.000Z",
+          stepId: "generate-video-1",
+        },
+      ],
+    })
+
+    await createStoredAgentTask(task, root)
+
+    await expect(
+      executeAgentTask(task.id, {
+        root,
+        now: () => "2026-07-25T09:31:00.001Z",
+        imageAdapter: { generate: vi.fn() },
+        videoAdapter: {
+          create: vi.fn(),
+          poll: vi.fn(async () => ({
+            state: "pending" as const,
+            task: {
+              taskId: "provider-job-stale",
+              status: "running",
+            },
+          })),
+        },
+      })
+    ).rejects.toThrow(/超过 30 分钟.*provider-job-stale/)
+  })
+
   it("passes the selected source image and references into create-image steps", async () => {
     const root = await createRoot()
     await createStoredCanvasContextSnapshot({

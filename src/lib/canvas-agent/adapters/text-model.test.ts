@@ -3,6 +3,40 @@ import { describe, expect, it, vi } from "vitest"
 import { createTextModelAdapter } from "./text-model"
 
 describe("text model adapter", () => {
+  it("requests structured JSON output from OpenRouter", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      expect(String(url)).toBe("https://openrouter.ai/api/v1/chat/completions")
+      const requestBody = JSON.parse(String(init?.body)) as {
+        response_format?: { type?: string }
+        temperature?: number
+      }
+      expect(requestBody.response_format).toEqual({ type: "json_object" })
+      expect(requestBody.temperature).toBeUndefined()
+      return Response.json({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              message: "我会整理并生成图片。",
+              summary: "图片生成",
+              normalizedInstruction: "生成一张图片",
+              intent: "image",
+            }),
+          },
+        }],
+      })
+    })
+    const adapter = createTextModelAdapter({ fetchImpl })
+
+    await adapter.interpret(
+      { userInstruction: "生成一张图片" },
+      {
+        baseUrl: "https://openrouter.ai/",
+        apiKey: "text-secret",
+        model: "gpt-5.5",
+      }
+    )
+  })
+
   it("parses a structured interpretation from an OpenAI-compatible response", async () => {
     const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const requestBody = JSON.parse(String(init?.body)) as {
@@ -31,6 +65,12 @@ describe("text model adapter", () => {
       )
       expect(requestBody.messages[0].content).toContain(
         "camera support, focal length, movement path"
+      )
+      expect(requestBody.messages[0].content).toContain(
+        "respond like a normal capable AI assistant"
+      )
+      expect(requestBody.messages[0].content).toContain(
+        "smallest grouped question needed to proceed"
       )
       expect(requestBody.messages.slice(1, 3)).toEqual([
         { role: "user", content: "你能做什么" },
@@ -115,6 +155,78 @@ describe("text model adapter", () => {
     expect(result).toMatchObject({
       intent: "conversation",
       summary: "普通对话",
+    })
+  })
+
+  it("keeps a conversation response when the model uses an unknown target media type", async () => {
+    const adapter = createTextModelAdapter({
+      fetchImpl: vi.fn(async () =>
+        Response.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  message: "你好，我可以帮你生成图片或视频。",
+                  summary: "用户打招呼",
+                  normalizedInstruction: "等待用户提出图片或视频创作需求。",
+                  intent: "conversation",
+                  target: { mediaType: "unknown", count: 1 },
+                }),
+              },
+            },
+          ],
+        })
+      ),
+    })
+
+    const result = await adapter.interpret(
+      { userInstruction: "你好" },
+      {
+        baseUrl: "https://openrouter.ai/",
+        apiKey: "text-secret",
+        model: "gpt-5.4",
+      }
+    )
+
+    expect(result).toMatchObject({
+      intent: "conversation",
+      target: { count: 1 },
+    })
+    expect(result.target?.mediaType).toBeUndefined()
+  })
+
+  it("uses the user instruction when the model leaves the conversation brief empty", async () => {
+    const adapter = createTextModelAdapter({
+      fetchImpl: vi.fn(async () =>
+        Response.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  message: "你好，我可以帮你生成图片或视频。",
+                  summary: "用户问候",
+                  normalizedInstruction: "",
+                  intent: "conversation",
+                }),
+              },
+            },
+          ],
+        })
+      ),
+    })
+
+    const result = await adapter.interpret(
+      { userInstruction: "你好" },
+      {
+        baseUrl: "https://openrouter.ai/",
+        apiKey: "text-secret",
+        model: "gpt-5.5",
+      }
+    )
+
+    expect(result).toMatchObject({
+      intent: "conversation",
+      normalizedInstruction: "你好",
     })
   })
 
@@ -275,6 +387,78 @@ describe("text model adapter", () => {
       src: "/canvas-assets/imported-image.png",
       mimeType: "image/png",
     })
+  })
+
+  it("sends UI references at high detail and requires an explicit visual analysis", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const requestBody = JSON.parse(String(init?.body)) as {
+        messages: Array<{
+          content: string | Array<{
+            type: string
+            text?: string
+            image_url?: { url: string; detail: string }
+          }>
+        }>
+      }
+      const systemPrompt = String(requestBody.messages[0].content)
+      expect(systemPrompt).toContain("【参考图分析】")
+      expect(systemPrompt).toContain("current requested page type overrides")
+      const content = requestBody.messages.at(-1)?.content
+      expect(content).toEqual(expect.arrayContaining([
+        {
+          type: "image_url",
+          image_url: {
+            url: "https://example.test/login-reference.png",
+            detail: "high",
+          },
+        },
+      ]))
+      return Response.json({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              message: "我会先拆解参考图，再生成登录页。",
+              summary: "参考图风格的登录页",
+              normalizedInstruction:
+                "【参考图分析】薄荷绿渐变、角色插画与按钮栈。\n【UI 产品定义】登录页。\n【当前状态】未登录。\n【可见内容与顺序】标题、插画、登录按钮。\n【准确短文案】手机号登录。\n【设计系统】圆润年轻。\n【画布与可用性】750x1624。\n【禁止】首页。",
+              intent: "image",
+            }),
+          },
+        }],
+      })
+    })
+    const adapter = createTextModelAdapter({ fetchImpl })
+
+    await adapter.interpret(
+      {
+        userInstruction: "严格参考这张图生成记录排便 App 登录页，750x1624",
+        context: {
+          id: "context-ui-reference",
+          createdAt: "2026-08-06T08:00:00.000Z",
+          scope: "selection",
+          selectedNodeId: "login-reference",
+          sourceNode: {
+            id: "login-reference",
+            kind: "image",
+            bounds: { x: 0, y: 0, w: 750, h: 1624 },
+            media: {
+              referenceType: "url",
+              mediaType: "image",
+              src: "https://example.test/login-reference.png",
+            },
+            referenceIds: [],
+          },
+          annotations: [],
+          connectedNodes: [],
+          references: [],
+        },
+      },
+      {
+        baseUrl: "https://text.example.com/v1",
+        apiKey: "text-secret",
+        model: "text-model",
+      }
+    )
   })
 
   it("does not expose the API key when the provider fails", async () => {

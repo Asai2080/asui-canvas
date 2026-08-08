@@ -121,6 +121,25 @@ export function isBrandStickerPhotoSkillName(name?: string) {
   return normalized === "generate-brand-sticker-photo" || normalized === "品牌贴纸写真-skill"
 }
 
+export function isMetalLogoSculptureSkillName(name?: string) {
+  if (!name) return false
+  const normalized = normalizedSkillName(name)
+  return (
+    normalized === "generate-metal-logo-sculpture" ||
+    normalized === "金属-logo-雕塑-skill"
+  )
+}
+
+export function isPlayfulAppIconsSkillName(name?: string) {
+  if (!name) return false
+  const normalized = normalizedSkillName(name)
+  return (
+    normalized === "design-playful-app-icons" ||
+    normalized === "playful-app-icons" ||
+    normalized === "趣味-app-图标-skill"
+  )
+}
+
 export function isIanXiaoheiVariantKey(variantKey?: string) {
   return variantKey?.startsWith("ian-xiaohei-") ?? false
 }
@@ -133,11 +152,16 @@ export function skillMediaIntent(name?: string): "image" | "video" | undefined {
     isSocialCardSkillName(name) ||
     isPortraitSkillName(name) ||
     isCanvas3dStickerSkillName(name) ||
-    isIanXiaoheiSkillName(name)
+    isIanXiaoheiSkillName(name) ||
+    isPlayfulAppIconsSkillName(name)
   ) {
     return "image"
   }
-  if (isAntibesHolidaySkillName(name) || isBrandStickerPhotoSkillName(name)) return "image"
+  if (
+    isAntibesHolidaySkillName(name) ||
+    isBrandStickerPhotoSkillName(name) ||
+    isMetalLogoSculptureSkillName(name)
+  ) return "image"
   if (isStillImageMotionDirectorSkillName(name)) return "video"
   if (isClassicalPoemSilkVideoSkillName(name)) return undefined
   if (isHanddrawnVideoSkillName(name)) return "video"
@@ -158,6 +182,8 @@ export function skillDisplayName(name: string) {
   if (isAntibesHolidaySkillName(name)) return "Antibes Holiday Skill"
   if (isStillImageMotionDirectorSkillName(name)) return "静态图运镜导演 Skill"
   if (isBrandStickerPhotoSkillName(name)) return "品牌贴纸写真 Skill"
+  if (isMetalLogoSculptureSkillName(name)) return "generate-metal-logo-sculpture"
+  if (isPlayfulAppIconsSkillName(name)) return "design-playful-app-icons"
   return name
 }
 

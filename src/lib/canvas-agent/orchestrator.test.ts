@@ -80,6 +80,7 @@ describe("runAgentTaskTick", () => {
 
     await runAgentTaskTick(task.id, deps)
     const understood = await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
     const compiled = await runAgentTaskTick(task.id, deps)
 
     expect(understood.interpretation).toMatchObject({
@@ -890,6 +891,9 @@ describe("runAgentTaskTick", () => {
       source: "local-rules",
       intent: "image",
     })
+    expect(understood.interpretation?.message).toContain(
+      "Agent 推理模型未成功返回"
+    )
     expect(understood.interpretation?.message).toContain("已切换到本地规则")
     expect(JSON.stringify(understood)).not.toContain("text-secret")
   })
@@ -952,6 +956,39 @@ describe("runAgentTaskTick", () => {
     expect(brief).not.toContain("【专业创作目标】")
   })
 
+  it("replaces a generic UI model brief with a concrete product specification", async () => {
+    const root = await createRoot()
+    const userInstruction = "生成一个移动端记账 App 首页，尺寸 750x1624"
+    const task = createAgentTask(
+      { userInstruction, executionMode: "confirm" },
+      { id: "task-concrete-ui-expansion", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      textAdapter: {
+        interpret: vi.fn(async () => ({
+          message: "UI 提示词已整理。",
+          summary: "移动端记账首页",
+          normalizedInstruction:
+            "现代简洁，高质量，高级感，信息层级清晰，组件统一，用户体验良好。",
+          intent: "image" as const,
+          target: { mediaType: "image" as const, width: 750, height: 1624 },
+        })),
+      },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const understood = await runAgentTaskTick(task.id, deps)
+    const brief = understood.interpretation?.normalizedInstruction ?? ""
+
+    expect(brief).toContain("【UI 产品定义】")
+    expect(brief).toContain("本月已支出 ¥3,286.40")
+    expect(brief).toContain("“记一笔”")
+    expect(brief).toContain("安全区 x=48–702px，y=65–1527px")
+    expect(brief).not.toContain("高级感")
+  })
+
   it("professionally deepens every creative model result even when it is already long", async () => {
     const root = await createRoot()
     const userInstruction = "生成一张未来香水广告，玻璃瓶悬浮在水面上"
@@ -989,6 +1026,99 @@ describe("runAgentTaskTick", () => {
     expect(brief).toContain("【构图与摄影】")
     expect(brief).toContain("【光线与色彩】")
     expect(brief).toContain("【材质与质量】")
+  })
+
+  it("preserves the official graphical Logo route in the metal sculpture brief", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction: [
+          "品牌名称：拼多多",
+          "背景色：浅灰",
+          "金属颜色：红色",
+          "Logo 依据：使用官方品牌图标",
+        ].join("\n"),
+        executionMode: "confirm",
+        skillId: "builtin-metal-logo-sculpture",
+      },
+      { id: "task-metal-logo-official", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const interpret = vi.fn(async () => ({
+      message: "已识别品牌主图形。",
+      summary: "拼多多金属 Logo 雕塑",
+      normalizedInstruction: [
+        "官方应用图标的外轮廓为圆角心形。",
+        "内部使用红白分区，中央保留‘拼’字和对称负空间。",
+      ].join("\n"),
+      intent: "image" as const,
+      target: { mediaType: "image" as const },
+    }))
+    const deps = { ...dependencies(root), textAdapter: { interpret } }
+
+    await runAgentTaskTick(task.id, deps)
+    const understood = await runAgentTaskTick(task.id, deps)
+    const brief = understood.interpretation?.normalizedInstruction ?? ""
+
+    expect(interpret).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userInstruction: expect.stringContaining(
+          "Logo 依据：使用官方品牌图标"
+        ),
+      }),
+      expect.anything()
+    )
+    expect(brief).toContain("圆角心形")
+    expect(brief).toContain("红白分区")
+    expect(brief).toContain("对称负空间")
+    expect(brief).toContain("官方主图形识别模式")
+    expect(brief).not.toContain("没有参考图时只使用用户确认的纯文字字标")
+  })
+
+  it("carries the original request through a Skill choice continuation", async () => {
+    const root = await createRoot()
+    const task = createAgentTask(
+      {
+        userInstruction:
+          "Logo 依据：使用官方品牌图标，根据品牌名称识别公开且稳定的官方主图形",
+        executionMode: "confirm",
+        skillId: "builtin-brand-sticker-photo",
+      },
+      { id: "task-brand-choice-continuation", eventId: "event-created", now }
+    )
+    await createStoredAgentTask(task, root)
+    const deps = {
+      ...dependencies(root),
+      conversationHistory: [
+        {
+          role: "user" as const,
+          content: "品牌名称：美团，背景色：白色",
+        },
+        {
+          role: "assistant" as const,
+          content: "请选择 Logo 依据。",
+        },
+      ],
+      textAdapter: {
+        interpret: vi.fn(async (input: TextModelInterpretationInput) => ({
+          message: "已锁定美团官方品牌图形。",
+          summary: "美团品牌贴纸写真",
+          normalizedInstruction: input.userInstruction,
+          intent: "image" as const,
+          target: { mediaType: "image" as const },
+        })),
+      },
+    }
+
+    await runAgentTaskTick(task.id, deps)
+    const understood = await runAgentTaskTick(task.id, deps)
+    await runAgentTaskTick(task.id, deps)
+    const compiled = await runAgentTaskTick(task.id, deps)
+
+    expect(understood.interpretation?.resolvedInstruction).toContain("品牌名称：美团")
+    expect(compiled.compiledPrompt?.originalGoal).toContain("品牌名称：美团")
+    expect(compiled.compiledPrompt?.outputs[0].prompt).toContain("官方主图形识别模式")
+    expect(compiled.compiledPrompt?.outputs[0].prompt).not.toContain("用户已确认使用纯文字字标")
   })
 
   it("advances preparation one recoverable status at a time", async () => {

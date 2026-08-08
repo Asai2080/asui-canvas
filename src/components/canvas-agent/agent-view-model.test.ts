@@ -87,6 +87,18 @@ describe("agent view model", () => {
     expect(selectForegroundTask([completed, queued])?.id).toBe("queued")
   })
 
+  it("labels a retry as a retry instead of duplicating the original user prompt", () => {
+    const retried = {
+      ...task("retry", "queued", "2026-07-26T08:01:00.000Z"),
+      userInstruction: "生成一张海报",
+      retryOfTaskId: "failed-source",
+    }
+
+    expect(tasksToThreadMessages([retried])[0]?.content).toEqual([
+      { type: "text", text: "正在重试原任务" },
+    ])
+  })
+
   it("never writes historical prompt tasks into the current canvas session", () => {
     const historicalStoryboard = {
       ...task(
@@ -376,6 +388,32 @@ describe("agent view model", () => {
         activeCover.id
       )
     ).toEqual([])
+  })
+
+  it("follows only the explicit continuation chain for Skill answers", () => {
+    const first = {
+      ...task("first", "completed", "2026-07-26T08:00:00.000Z"),
+      skillId: "builtin-brand-sticker-photo",
+      userInstruction: "品牌名称：旧品牌，背景色：蓝色",
+    } satisfies AgentTask
+    const unrelated = {
+      ...task("unrelated", "completed", "2026-07-26T08:01:00.000Z"),
+      skillId: "builtin-brand-sticker-photo",
+      userInstruction: "品牌名称：另一个品牌，背景色：红色",
+    } satisfies AgentTask
+    const continuation = {
+      ...task("continuation", "understanding", "2026-07-26T08:02:00.000Z"),
+      skillId: "builtin-brand-sticker-photo",
+      userInstruction: "Logo 依据：使用官方品牌图标",
+      continuationOfTaskId: first.id,
+    } satisfies AgentTask
+
+    expect(
+      tasksToConversationHistory([first, unrelated, continuation], continuation.id)
+    ).toEqual([
+      { role: "user", content: first.userInstruction },
+      { role: "assistant", content: getAgentTaskResultText(first) },
+    ])
   })
 
   it("hides legacy revision conflict details behind a retry message", () => {

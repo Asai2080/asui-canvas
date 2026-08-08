@@ -153,6 +153,17 @@
     ry: 30px !important;
   }
 
+  .canvas-surface .asui-node-frame.asui-node-frame--slice .tl-frame__body {
+    stroke-width: 2px !important;
+    rx: 8px !important;
+    ry: 8px !important;
+  }
+
+  .canvas-surface .asui-node-frame.asui-node-frame--slice .asui-generated-media {
+    border-radius: 6px;
+    clip-path: inset(0 round 6px);
+  }
+
   .canvas-surface .asui-node-frame {
     display: contents;
   }
@@ -740,11 +751,14 @@
 
   .canvas-slicing-candidate {
     @apply absolute min-h-2 min-w-2 border border-dashed border-white/70 bg-black/10 text-left text-white transition-colors;
+    cursor: move;
+    touch-action: none;
     box-shadow: 0 0 0 1px rgb(0 0 0 / 24%);
   }
 
   .canvas-slicing-candidate:hover,
-  .canvas-slicing-candidate.is-selected {
+  .canvas-slicing-candidate.is-selected,
+  .canvas-slicing-candidate.is-active {
     @apply border-primary bg-primary/10;
     box-shadow: 0 0 0 1px rgb(163 254 68 / 42%), 0 0 14px rgb(163 254 68 / 18%);
   }
@@ -776,6 +790,36 @@
 
   .canvas-slicing-candidate:hover > em {
     @apply block;
+  }
+
+  .canvas-slicing-candidate__handle {
+    @apply absolute z-20 block size-4 bg-transparent;
+    touch-action: none;
+  }
+
+  .canvas-slicing-candidate__handle::after {
+    @apply absolute inset-1 rounded-sm border border-[#1c1c21] bg-primary shadow-sm;
+    content: "";
+  }
+
+  .canvas-slicing-candidate__handle.is-nw {
+    @apply -left-2 -top-2 cursor-nwse-resize;
+  }
+
+  .canvas-slicing-candidate__handle.is-ne {
+    @apply -right-2 -top-2 cursor-nesw-resize;
+  }
+
+  .canvas-slicing-candidate__handle.is-sw {
+    @apply -bottom-2 -left-2 cursor-nesw-resize;
+  }
+
+  .canvas-slicing-candidate__handle.is-se {
+    @apply -bottom-2 -right-2 cursor-nwse-resize;
+  }
+
+  .canvas-slicing-candidate__delete {
+    @apply absolute right-1 top-1 z-30 flex size-6 items-center justify-center rounded-md border border-white/10 bg-[#1c1c21]/95 text-[#f1f1f3] shadow-lg transition-colors hover:bg-red-500 hover:text-white;
   }
 
   .canvas-slicing-review {
@@ -853,7 +897,7 @@
   }
 
   .canvas-slicing-controls button {
-    @apply flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[#d4d4d8] transition-colors hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-35;
+    @apply flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[#d4d4d8] transition-colors hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-35;
   }
 
   .canvas-slicing-controls button.is-icon {
@@ -864,9 +908,29 @@
     @apply bg-primary text-primary-foreground hover:bg-primary/85;
   }
 
+  .canvas-slicing-controls button[aria-pressed="true"]:not(.is-primary) {
+    @apply bg-white/[0.09] text-primary;
+  }
+
   .canvas-slicing-controls__status,
   .canvas-slicing-controls__count {
     @apply flex h-8 items-center gap-2 whitespace-nowrap px-2 text-[#b8b8c0];
+  }
+
+  .canvas-slicing-geometry {
+    @apply pointer-events-auto absolute flex -translate-x-1/2 translate-y-1 items-center gap-1 rounded-lg border border-white/10 bg-[#1c1c21]/98 p-1 text-[10px] text-[#8f8f98] shadow-xl backdrop-blur-xl;
+  }
+
+  .canvas-slicing-geometry label {
+    @apply flex items-center gap-1;
+  }
+
+  .canvas-slicing-geometry label + label {
+    @apply border-l border-white/[0.08] pl-1;
+  }
+
+  .canvas-slicing-geometry input {
+    @apply h-7 w-14 rounded-md border border-white/[0.08] bg-black/25 px-1.5 text-[11px] tabular-nums text-white outline-none transition-colors focus:border-primary/70;
   }
 
   .canvas-agent-slice-suggestion {
@@ -965,7 +1029,11 @@
     @apply min-w-0 flex-1 overflow-y-auto break-words;
   }
 
-  .canvas-toast button {
+  .canvas-toast__action {
+    @apply flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-xs font-medium leading-none text-primary-foreground transition-colors hover:bg-primary/85;
+  }
+
+  .canvas-toast .canvas-toast__close {
     @apply flex size-6 shrink-0 items-center justify-center rounded-full text-lg leading-none text-destructive transition-colors hover:bg-destructive/15;
   }
 
@@ -1085,6 +1153,26 @@
 
   .canvas-agent-empty p {
     @apply mt-2.5 max-w-[320px] text-[14px] leading-6 text-[#86868E];
+  }
+
+  .canvas-agent-workspace {
+    @apply mt-5 flex items-center justify-center;
+  }
+
+  .canvas-agent-workspace > button {
+    @apply flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-[#202023] px-4 text-[13px] font-medium text-[#D7D7DC] shadow-sm transition-colors;
+  }
+
+  .canvas-agent-workspace > button:hover:not(:disabled) {
+    @apply border-primary/40 bg-[#252629] text-white;
+  }
+
+  .canvas-agent-workspace > button svg {
+    @apply text-primary;
+  }
+
+  .canvas-agent-workspace > button:disabled {
+    @apply cursor-wait opacity-60;
   }
 
   .agent-message {

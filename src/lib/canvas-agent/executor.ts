@@ -86,6 +86,9 @@ const GENERATION_TOOLS = new Set([
   "generate_3d_model",
 ])
 
+const VIDEO_JOB_SUBMITTED_MESSAGE = "视频任务已提交，等待供应商生成"
+const VIDEO_JOB_TIMEOUT_MS = 30 * 60 * 1_000
+
 const CANVAS_3D_STICKER_STYLE_REFERENCE_SRCS = [
   "/builtin-skill-assets/canvas-3d-sticker-characters-chibi.png",
   "/builtin-skill-assets/canvas-3d-sticker-isometric-city.png",
@@ -352,6 +355,18 @@ function generationIsComplete(task: AgentTask) {
   )
 }
 
+function videoJobStartedAt(task: AgentTask, stepId: string) {
+  return (
+    [...task.history]
+      .reverse()
+      .find(
+        (event) =>
+          event.stepId === stepId &&
+          event.message === VIDEO_JOB_SUBMITTED_MESSAGE
+      )?.createdAt ?? task.updatedAt
+  )
+}
+
 async function moveToWritingCanvas(
   task: AgentTask,
   dependencies: ExecuteAgentTaskDependencies,
@@ -499,6 +514,7 @@ export async function executeAgentTask(
       input,
       dependencies.videoCredentials ?? {}
     )
+    const submittedAt = now()
     return persistTask(task, dependencies.root, now, (draft) => ({
       ...draft,
       activeStepId: generationStep.id,
@@ -520,6 +536,16 @@ export async function executeAgentTask(
             ),
           }
         : undefined,
+      history: [
+        ...draft.history,
+        {
+          id: createId("event"),
+          status: "executing" as const,
+          message: VIDEO_JOB_SUBMITTED_MESSAGE,
+          createdAt: submittedAt,
+          stepId: generationStep.id,
+        },
+      ],
     }))
   }
 
@@ -529,7 +555,17 @@ export async function executeAgentTask(
     dependencies.videoCredentials ?? {}
   )
   if (pollResult.state === "pending") {
-    return task
+    const elapsed =
+      Date.parse(now()) - Date.parse(videoJobStartedAt(task, generationStep.id))
+    if (Number.isFinite(elapsed) && elapsed > VIDEO_JOB_TIMEOUT_MS) {
+      throw new Error(
+        `视频任务等待超过 30 分钟（任务 ID：${providerJobId}），请重试或检查供应商控制台`
+      )
+    }
+    // Persist every provider status check so the client receives a new
+    // revision and schedules the next poll. Returning the unchanged task
+    // leaves the client-side revision guard permanently locked.
+    return persistTask(task, dependencies.root, now, (draft) => draft)
   }
 
   task = await persistTask(task, dependencies.root, now, (draft) =>

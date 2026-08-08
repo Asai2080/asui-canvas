@@ -27,9 +27,8 @@ import {
 
 type SkillPickerProps = {
   value: string
-  onChange: (skillId: string) => void
   selectedSkill?: SkillRecord
-  onSkillSelect?: (skill?: SkillRecord) => void
+  onSkillChange: (skill?: SkillRecord) => void
   modelValue: string
   onModelChange: (model: string) => void
   compact?: boolean
@@ -39,9 +38,8 @@ type PickerTab = "model" | "skill"
 
 export function SkillPicker({
   value,
-  onChange,
   selectedSkill: externalSelectedSkill,
-  onSkillSelect,
+  onSkillChange,
   modelValue,
   onModelChange,
   compact = false,
@@ -175,8 +173,7 @@ export function SkillPicker({
       throw new Error(payload.error ?? "Skill 导入失败")
     }
     await loadSkills()
-    onChange(payload.skill.id)
-    onSkillSelect?.(payload.skill)
+    onSkillChange(payload.skill)
     setSourcePath("")
     setIsOpen(false)
   }
@@ -344,8 +341,7 @@ export function SkillPicker({
                   type="button"
                   className={`agent-resource-option${!value ? " is-selected" : ""}`}
                   onClick={() => {
-                    onChange("")
-                    onSkillSelect?.()
+                    onSkillChange()
                     setIsOpen(false)
                   }}
                 >
@@ -364,8 +360,7 @@ export function SkillPicker({
                     type="button"
                     className={`agent-resource-option${skill.id === value ? " is-selected" : ""}`}
                     onClick={() => {
-                      onChange(skill.id)
-                      onSkillSelect?.(skill)
+                      onSkillChange(skill)
                       setIsOpen(false)
                     }}
                   >

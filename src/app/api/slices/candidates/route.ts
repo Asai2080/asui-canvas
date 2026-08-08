@@ -26,6 +26,10 @@ function chatEndpoint(baseUrl: string) {
   if (!/^https?:$/.test(url.protocol) || url.username || url.password) {
     throw new Error("文字模型 Base URL 无效")
   }
+  const isOpenRouter = url.hostname === "openrouter.ai" || url.hostname.endsWith(".openrouter.ai")
+  if (isOpenRouter && !url.pathname.startsWith("/api/v1")) {
+    url.pathname = "/api/v1"
+  }
   if (!url.pathname.endsWith("/chat/completions")) {
     url.pathname = `${url.pathname.replace(/\/$/, "")}/chat/completions`
   }
@@ -63,7 +67,11 @@ function parseJson(value: string) {
     const start = trimmed.indexOf("{")
     const end = trimmed.lastIndexOf("}")
     if (start < 0 || end <= start) throw new Error("视觉模型未返回切图 JSON")
-    return JSON.parse(trimmed.slice(start, end + 1)) as Record<string, unknown>
+    try {
+      return JSON.parse(trimmed.slice(start, end + 1)) as Record<string, unknown>
+    } catch {
+      throw new Error("视觉模型返回的切图 JSON 不完整，请重试")
+    }
   }
 }
 
@@ -77,10 +85,15 @@ export async function POST(request: Request) {
       height: input.height,
     })
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 45_000)
+    // Full-screen UI analysis regularly takes longer than ordinary chat.
+    // Keep this above the provider's typical 45-60 second vision latency.
+    const timeout = setTimeout(() => controller.abort(), 120_000)
 
     try {
-      const response = await fetch(chatEndpoint(input.textBaseUrl), {
+      const endpoint = chatEndpoint(input.textBaseUrl)
+      const isOpenRouter = new URL(endpoint).hostname.endsWith("openrouter.ai")
+      const supportsTemperature = !/^gpt-5(?:[.\-]|$)/i.test(input.textModel)
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${input.textApiKey}`,
@@ -88,13 +101,15 @@ export async function POST(request: Request) {
         },
         body: JSON.stringify({
           model: input.textModel,
-          temperature: 0.1,
+          ...(supportsTemperature ? { temperature: 0.1 } : {}),
+          ...(isOpenRouter ? { response_format: { type: "json_object" } } : {}),
+          ...(isOpenRouter ? { reasoning: { effort: "low", exclude: true } } : {}),
           messages: [
             {
               role: "user",
               content: [
                 { type: "text", text: buildSliceCandidatePrompt(input.width, input.height, formatOmniParserHints(detectorResult?.hints ?? [])) },
-                { type: "image_url", image_url: { url: imageUrl } },
+                { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
               ],
             },
           ],
