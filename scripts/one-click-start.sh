@@ -45,9 +45,16 @@ ensure_dependencies() {
     return
   fi
 
-  [[ -f "$ROOT_DIR/package-lock.json" ]] || fail "缺少 package-lock.json，无法安全安装依赖。"
   log "首次启动，正在安装项目依赖，这一步只需要执行一次"
-  npm ci --no-audit --no-fund
+  if [[ -f "$ROOT_DIR/package-lock.json" ]]; then
+    if npm ci --no-audit --no-fund; then
+      return
+    fi
+    log "锁文件与依赖声明不同步，正在自动修复依赖安装"
+  fi
+
+  npm install --no-audit --no-fund
+  [[ -x "$ROOT_DIR/node_modules/.bin/next" ]] || fail "依赖安装未完成，请检查 npm 输出后重试。"
 }
 
 ensure_env() {

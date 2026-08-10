@@ -16,9 +16,12 @@ where npm >nul 2>nul || (
 if not exist "node_modules\.bin\next.cmd" (
   echo [ASUI Canvas] 首次启动，正在安装项目依赖...
   call npm ci --no-audit --no-fund || (
-    echo [ASUI Canvas] 依赖安装失败。
-    pause
-    exit /b 1
+    echo [ASUI Canvas] 锁文件与依赖声明不同步，正在自动修复依赖安装...
+    call npm install --no-audit --no-fund || (
+      echo [ASUI Canvas] 依赖安装失败。
+      pause
+      exit /b 1
+    )
   )
 )
 

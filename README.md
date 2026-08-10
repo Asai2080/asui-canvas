@@ -20,7 +20,7 @@
 - Windows：双击项目根目录的 `Start ASUI Canvas.bat`。
 - 终端用户也只需执行 `npm run start:one-click`。
 
-启动器会自动检查 Node.js、首次安装项目依赖、创建安全的 `.env.local` 默认文件，并在浏览器中打开画布。默认地址为 `http://localhost:3001`；端口被占用时会使用下一个可用端口。
+启动器会自动检查 Node.js、首次安装项目依赖、创建安全的 `.env.local` 默认文件，并在浏览器中打开画布。默认地址为 `http://localhost:3001`；端口被占用时会使用下一个可用端口。若本地依赖锁文件不同步，启动器会自动修复依赖安装。
 
 日常使用不需要手动执行 `npm install`、创建 `.env` 或填写环境变量。macOS 若未安装 Node.js 且已安装 Homebrew，启动器会尝试自动安装；其他情况只需先安装一次 Node.js 18+，之后始终双击启动即可。
 
